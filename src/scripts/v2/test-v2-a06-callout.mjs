@@ -65,6 +65,7 @@ assert.deepEqual(C.rankSupply(list.map(() => sup({})), "2026-09-30").map((c) => 
   const [a, none, both, noHh] = ["가", "n", "b", "h"].map((n) => four.find((c) => c.name === n));
   assert.deepEqual(C.cardRows(a, 2026).map((r) => r.label), ["입주(예정) 시기", "세대수", "타입", "원천", "직선거리"]);
   assert.deepEqual(C.cardRows(a, 2026).map((r) => r.value), ["2027년 3월", "1,305세대", "타입 미확인", "청약홈", "500m"]);
+  assert.equal(C.calloutHoverText(a), "가 · 1,305세대 · 입주 2027년 3월", "A06 점 hover 요약은 확인된 값만 표시");
   assert.deepEqual([C.cardRows(none, 2026)[0].value, C.cardRows(none, 2026)[0].missing, C.cardRows(none, 2026)[3].value], ["일정 확인필요", true, "입주예정"]);
   assert.equal(C.cardRows(both, 2026)[3].value, "청약홈 · 입주예정", "중복 가능이면 두 원천");
   assert.deepEqual([C.overlapChip(both), C.overlapChip(a)], ["중복 가능", null]);
@@ -88,6 +89,7 @@ assert.deepEqual(C.rankSupply(list.map(() => sup({})), "2026-09-30").map((c) => 
   const many = C.rankSupply(Array.from({ length: 25 }, (_, i) => sup({ name: `p${i}`, plannedMonth: `2027-${String((i % 12) + 1).padStart(2, "0")}`, lng: 127 + i * 1e-4 })), "2026-09-30");
   assert.deepEqual([1, 2, 3].map((p) => C.pageItems(many, p).length), [10, 10, 5]);
   assert.match(C.pageRange(3, 25, undefined, true), /^입주 시기순 21–25 \/ 전체 25곳$/);
+  assert.equal(C.calloutPageTitleTail(many, 2, "곳", many.slice(8, 12).map((complex) => complex.key), 9), "9–12번 / 전체 25곳", "A06 설명 장 제목은 곳 단위를 쓴다");
   assert.deepEqual([C.calloutReportPages("overview", 25), C.calloutReportPages("top10", 25), C.calloutReportPages("all", 25), C.calloutReportPages("top10", 0)], [1, 2, 4, 1]);
   const st = C.supplyStats(list);
   assert.deepEqual(st.stats.map((s) => s.unit), ["곳", "세대", "세대"]);

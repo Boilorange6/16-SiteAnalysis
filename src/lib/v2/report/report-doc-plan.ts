@@ -23,6 +23,7 @@ import type { Scene } from "../scene";
 import type { MapPolygon, TileResult } from "../tile-result";
 import type { A05Filter } from "../engine/a05-filter";
 import { sheetCapacity, sheetView } from "../ui/sheet";
+import { pageItems } from "../ui/callout-layout";
 
 export type ReportDocPlanContext = {
   summary: SummaryView;
@@ -546,7 +547,31 @@ function calloutViewForPage(page: CalloutPage, view: TileView, ctx: ReportDocPla
   return { ...filtered, tileId: page.tileId };
 }
 
-function calloutSlideForPage(doc: ReportDoc, page: CalloutPage, view: TileView, ctx: ReportDocPlanContext): ReportSlide | null {
+function calloutLabelCountForPage(page: CalloutPage, view: TileView, ctx: ReportDocPlanContext): number {
+  const pageView = calloutViewForPage(page, view, ctx);
+  const model = pageView.callout;
+  if (!model) return 0;
+  if (page.part.shownKeys === undefined) return pageItems(model.complexes, page.part.page).length;
+  const available = new Set(model.complexes.map((complex) => complex.key));
+  return page.part.shownKeys.filter((key) => available.has(key)).slice(0, 10).length;
+}
+
+function calloutNumberStartFor(doc: ReportDoc, pageIndex: number, page: CalloutPage, view: TileView, ctx: ReportDocPlanContext): number {
+  if (page.part.page <= 0) return 1;
+  // 옛 저장본은 pageItems가 이미 전역 순위이므로 기존 번호를 그대로 보존한다.
+  if (page.part.shownKeys === undefined) {
+    const model = calloutViewForPage(page, view, ctx).callout;
+    return model ? pageItems(model.complexes, page.part.page)[0]?.rank ?? 1 : 1;
+  }
+  let count = 0;
+  for (const candidate of doc.pages.slice(0, pageIndex)) {
+    if (candidate.kind !== "tile" || candidate.tileId !== page.tileId || candidate.part.type !== "callout" || candidate.part.page <= 0) continue;
+    count += calloutLabelCountForPage(candidate as CalloutPage, view, ctx);
+  }
+  return count + 1;
+}
+
+function calloutSlideForPage(doc: ReportDoc, page: CalloutPage, pageIndex: number, view: TileView, ctx: ReportDocPlanContext): ReportSlide | null {
   if (page.part.type !== "callout") return null;
   const pageView = calloutViewForPage(page, view, ctx);
   if (!pageView.callout) return null;
@@ -565,6 +590,7 @@ function calloutSlideForPage(doc: ReportDoc, page: CalloutPage, view: TileView, 
       pages,
       filterLine: pageView.filterLine,
       ...(page.part.shownKeys !== undefined ? { shownKeys: [...page.part.shownKeys] } : {}),
+      numberStart: calloutNumberStartFor(doc, pageIndex, page, view, ctx),
     },
   };
 }
@@ -578,7 +604,7 @@ export function planReportDoc(doc: ReportDoc, views: ReadonlyMap<string, TileVie
   const sourcePages = sourcePageCount(sourceRows.length);
   const date = ctx.analysisDate ?? "미확인";
   const raw: PlannedSlide[] = [];
-  for (const page of doc.pages) {
+  for (const [pageIndex, page] of doc.pages.entries()) {
     if (page.kind === "cover") {
       raw.push(plannedWithMeta({
         kind: "cover",
@@ -615,7 +641,7 @@ export function planReportDoc(doc: ReportDoc, views: ReadonlyMap<string, TileVie
       const view = views.get(page.tileId);
       const slide = view
         ? page.part.type === "callout"
-          ? calloutSlideForPage(doc, page as CalloutPage, view, ctx)
+          ? calloutSlideForPage(doc, page as CalloutPage, pageIndex, view, ctx)
           : slideForPart(page, tileSlides(page.tileId, view, page.settings, viewContext))
         : null;
       const selected = markMissing(slide ?? missingSlide(page, ctx.summary));

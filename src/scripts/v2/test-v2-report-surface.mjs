@@ -15,6 +15,7 @@ const slideSurfaceSource = readFileSync(new URL("../../components/v2/report/slid
 const reportModeSource = readFileSync(new URL("../../components/v2/report/report-mode.tsx", import.meta.url), "utf8");
 const reportModeCss = readFileSync(new URL("../../components/v2/report/report-mode.module.css", import.meta.url), "utf8");
 const drawerTilesSource = readFileSync(new URL("../../components/v2/report/drawer-tiles.tsx", import.meta.url), "utf8");
+const drawerMapSource = readFileSync(new URL("../../components/v2/report/drawer-map.tsx", import.meta.url), "utf8");
 
 const source = GODEOK_RESULTS.find((result) => result.tileCode === "A01");
 assert.ok(source, "A01 fixture가 필요하다");
@@ -69,6 +70,12 @@ assert.match(drawerTilesSource, /placeholder="타일 이름 검색"/, "타일 �
 assert.match(reportModeSource, /viewBox="0 0 20 20"/, "보고서 도구 막대는 20px 인라인 SVG 아이콘을 사용한다");
 assert.doesNotMatch(reportModeSource, />▤<|>◈<|>◌</, "보고서 도구 막대에 유니코드 기호를 쓰지 않는다");
 assert.match(reportModeCss, /\.searchBox input[\s\S]*?min-height:\s*44px[\s\S]*?height:\s*44px/s, "검색 입력이 44px 전체 높이를 채운다");
+assert.match(drawerMapSource, /aria-label="개요 장 추가"/, "설명표 장에서 개요 장 추가 경로를 제공한다");
+assert.match(reportModeSource, /firstDetailIndex[\s\S]*?calloutPageFor\(history\.present,[\s\S]*?, 0\)/s, "개요 장은 첫 설명 장 앞에 page 0으로 만든다");
+assert.match(reportModeSource, /index: firstDetailIndex/, "개요 장 삽입 위치는 첫 설명 장 앞이다");
+assert.match(reportModeSource, /commitDoc\(next, "개요 장을 추가했습니다\."\)/, "개요 장 추가는 commitDoc으로 실행 취소 가능하다");
+assert.match(slideSurfaceSource, /data-callout-point="true"/, "설명선 개요·번호 점에 44px hit 영역을 둔다");
+assert.match(slideSurfaceSource, /data-callout-hover-tooltip="true"/, "설명선 점 hover 정보는 미리보기 층에만 둔다");
 
 const missing = {
   ...a3,

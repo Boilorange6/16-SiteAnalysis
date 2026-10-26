@@ -16,11 +16,15 @@ export type CalloutDrawerConfig = {
   model: NonNullable<TileView["callout"]>;
   view: TileView;
   shownKeys: string[];
+  numberStart: number;
+  otherPageLabels: ReadonlyMap<string, string>;
+  canAddOverview: boolean;
   filter: A05Filter | null;
   onShownKeys: (keys: string[]) => void;
   onFilter: (filter: A05Filter | null) => void;
   onAutoGenerate: (by: CalloutSort) => void;
   onAddBlank: () => void;
+  onAddOverview: () => void;
   onMessage: (message: string) => void;
 };
 
@@ -112,6 +116,7 @@ function CalloutSettings({ config }: { config: CalloutDrawerConfig }) {
   return <section className={styles.mapSection} aria-labelledby={`map-callout-pages-heading-${config.pageId}`}>
     <h3 id={`map-callout-pages-heading-${config.pageId}`} className={styles.mapSectionTitle}>설명표 장</h3>
     <div className={styles.inlineActions}>
+      {config.canAddOverview && <button type="button" className={styles.secondaryButton} onClick={config.onAddOverview} aria-label="개요 장 추가">개요 장 추가</button>}
       <button type="button" className={styles.secondaryButton} onClick={() => setAutoOpen((open) => !open)} aria-expanded={autoOpen} aria-label="라벨 자동 생성">라벨 자동 생성</button>
       <button type="button" className={styles.secondaryButton} onClick={config.onAddBlank} aria-label="빈 설명 장 추가">빈 설명 장 추가</button>
     </div>
@@ -125,11 +130,13 @@ function CalloutSettings({ config }: { config: CalloutDrawerConfig }) {
         const index = config.shownKeys.indexOf(complex.key);
         const name = cardName(complex);
         const hollow = isHollowComplexMarker(complex);
+        const number = enabled && index >= 0 ? config.numberStart + index : null;
+        const otherPageLabel = config.otherPageLabels.get(complex.key);
         return <div key={complex.key} className={styles.calloutLabelRow} role="listitem">
           <label className={styles.calloutLabelCheck}>
             <input type="checkbox" checked={enabled} onChange={() => toggle(complex)} aria-label={`${name} 설명선 ${enabled ? "끄기" : "켜기"}`} />
             <span className={styles.calloutLabelDot} style={{ background: hollow ? "#fff" : dotColor(complex), borderColor: dotColor(complex) }} aria-hidden="true" />
-            <span className={styles.calloutLabelText}><span className={styles.calloutLabelName}>{name}</span><span className={styles.calloutLabelMeta}>{calloutMeta(complex)}</span></span>
+            <span className={styles.calloutLabelText}><span className={styles.calloutLabelName}>{name}{number !== null ? ` · ${number}번` : ""}{otherPageLabel ? ` · ${otherPageLabel}` : ""}</span><span className={styles.calloutLabelMeta}>{calloutMeta(complex)}</span></span>
           </label>
           {enabled && <span className={styles.calloutLabelOrder}><button type="button" className={styles.tinyButton} disabled={index <= 0} onClick={() => move(complex.key, -1)} aria-label={`${name} 라벨 위로`}>↑</button><button type="button" className={styles.tinyButton} disabled={index < 0 || index >= config.shownKeys.length - 1} onClick={() => move(complex.key, 1)} aria-label={`${name} 라벨 아래로`}>↓</button></span>}
         </div>;

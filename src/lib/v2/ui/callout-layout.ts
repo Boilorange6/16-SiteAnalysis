@@ -355,6 +355,41 @@ export const pageCount = (n: number, size = PAGE_SIZE) => Math.ceil(n / size);
 export const pageItems = (all: Complex[], page: number, size = PAGE_SIZE) => all.slice((page - 1) * size, page * size);
 export const pageRange = (page: number, n: number, size = PAGE_SIZE, supply = false) =>
   `${supply ? "입주 시기순" : "세대수 상위"} ${(page - 1) * size + 1}–${Math.min(n, page * size)} / 전체 ${fmtInt(n)}${supply ? "곳" : "단지"}`;
+/** 보고서 설명표 장의 실제 항목과 번호. 옛 저장본은 Complex.rank를 유지한다. */
+export function calloutPageItems(all: Complex[], page: number, shownKeys?: readonly string[], numberStart = 1): Complex[] {
+  const legacyItems = pageItems(all, page);
+  const keys = shownKeys === undefined ? legacyItems.map((complex) => complex.key) : shownKeys;
+  const byKey = new Map(all.map((complex) => [complex.key, complex]));
+  return keys.flatMap((key) => {
+    const complex = byKey.get(key);
+    return complex ? [complex] : [];
+  }).slice(0, PAGE_SIZE).map((complex, index) => ({
+    ...complex,
+    rank: shownKeys === undefined ? complex.rank : numberStart + index,
+  }));
+}
+/** 설명선 장 제목 꼬리. 값이 없는 빈 장은 기존 라벨 0개 문구를 유지한다. */
+export function calloutPageTitleTail(all: Complex[], page: number, unit: string, shownKeys?: readonly string[], numberStart = 1): string {
+  if (page === 0) return `개요 · 전체 ${fmtInt(all.length)}${unit}`;
+  const items = calloutPageItems(all, page, shownKeys, numberStart);
+  if (items.length === 0) return `라벨 0개 / 전체 ${fmtInt(all.length)}${unit}`;
+  return `${items[0]!.rank}–${items.at(-1)!.rank}번 / 전체 ${fmtInt(all.length)}${unit}`;
+}
+/** 점에 올렸을 때 보여 줄 최소 정보. 확인되지 않은 값은 표시하지 않는다. */
+export function calloutHoverText(c: Complex): string {
+  const householdUnit = c.layer === "officetel" ? "호" : "세대";
+  const values = [
+    c.name,
+    c.households === null ? null : `${fmtInt(c.households)}${householdUnit}`,
+    c.supply
+      ? c.supply.plannedMonth
+        ? `입주 ${fmtMonth(c.supply.plannedMonth)}`
+        : null
+      : c.approvalYear === null ? null : `${c.approvalYear}년`,
+    c.floorsMax === null ? null : `최고 ${fmtInt(c.floorsMax)}층`,
+  ].filter((value): value is string => Boolean(value));
+  return values.join(" · ") || "확인된 정보 없음";
+}
 /** 카드 이름 띠의 "중복 가능" 칩 */
 export const overlapChip = (c: Complex) => (c.supply?.overlap ? "중복 가능" : null);
 /** 보고서에 들어가는 A05 장 수: 개요 1장 + 설명표 장. 단지가 없으면 개요(상태 판)만 */

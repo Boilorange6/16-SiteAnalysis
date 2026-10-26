@@ -6,7 +6,7 @@ import type { Dispatch, RefObject } from "react";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import { clampTextBox, defaultFrame, DEFAULT_REPORT_FONT_SIZES, EMPTY_REPORT_DOC, newPageId, REPORT_FONT_SIZE_KEYS, REPORT_FONT_SIZE_LIMITS, reportDocReducer, textBoxDefaults, TEXT_BOX_DEFAULTS, type FontSizeKey, type MapFrameState, type PageElementKey, type PagePanels, type ReportDoc, type ReportDocAction, type ReportFontSizeOverrides, type ReportFontSizes, type ReportFormat, type ReportPage, type TextBox, type TextBoxKind, type TilePart } from "@/lib/v2/report/report-doc";
 import { mapFrameScaleOptions, scaleForFrame, scaleOptionsForFrame, siteAnchoredZoomPatch, siteFitPatch, zoomForScale } from "@/lib/v2/ui/report-scale";
-import { SLIDE_OVERVIEW_FILL, calloutKeyFromTag, pageItems, sortComplexes, type CalloutSort, type Complex } from "@/lib/v2/ui/callout-layout";
+import { SLIDE_OVERVIEW_FILL, calloutKeyFromTag, calloutPageItems, sortComplexes, type CalloutSort, type Complex } from "@/lib/v2/ui/callout-layout";
 import { layoutRects, legendMatches, slideGeometry, slideLayout, slideLegend, slidePanelRects, slideSiteX, slideSize, terrainSectionLayout } from "@/lib/v2/ui/overlay-layout";
 import { calloutPageFor, importLegacyReport, hasLegacyReport, pagesForTile, planReportDoc, recommendedPages } from "@/lib/v2/report/report-doc-plan";
 import { pageStripItems } from "@/lib/v2/report/report-page-strip";
@@ -314,14 +314,26 @@ function pageTitleForToast(page: ReportPage, views: ReadonlyMap<string, TileView
   return pageTypeLabel(page);
 }
 
-function shownCalloutKeys(page: CalloutPage, model: CalloutModel): string[] {
-  const available = new Set(model.complexes.map((complex) => complex.key));
-  const keys = page.part.shownKeys ?? pageItems(model.complexes, page.part.page).map((complex) => complex.key);
-  return keys.filter((key) => available.has(key)).slice(0, 10);
+function shownCalloutKeys(page: CalloutPage, model: CalloutModel, numberStart = 1): string[] {
+  return calloutPageItems(model.complexes, page.part.page, page.part.shownKeys, numberStart).map((complex) => complex.key);
 }
 
 function calloutComplexForKey(model: CalloutModel, key: string): Complex | undefined {
   return model.complexes.find((complex) => complex.key === key);
+}
+
+function otherCalloutPageLabels(plan: PlannedSlide[], current: CalloutPage): ReadonlyMap<string, string> {
+  const labels = new Map<string, string[]>();
+  for (const slide of plan) {
+    if (slide.kind !== "tile" || !slide.callout || slide.view.tileId !== current.tileId || slide.callout.page <= 0 || slide.page?.id === current.id) continue;
+    const items = calloutPageItems(slide.callout.model.complexes, slide.callout.page, slide.callout.shownKeys, slide.callout.numberStart ?? 1);
+    for (const item of items) {
+      const currentLabels = labels.get(item.key) ?? [];
+      currentLabels.push(`${slide.callout.page}장 ${item.rank}번`);
+      labels.set(item.key, currentLabels);
+    }
+  }
+  return new Map([...labels].map(([key, labelsForKey]) => [key, labelsForKey.join(" · ")]));
 }
 
 export default function ReportMode({ board, dispatch, views, summary, analysisDate, basemap, dirty, demo = false, busy = false, onPresentation, results, scene, analysisSiteParcel, resultFor }: ReportModeProps) {
@@ -1034,7 +1046,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
       ? { ...toTileView(result, scene, analysisSiteParcel, normalizeA05Filter(filter)), tileId: current.page.tileId }
       : baseView;
     if (!nextView?.callout) return;
-    const keys = shownCalloutKeys(current.page, current.slide.callout.model).filter((key) => nextView.callout!.complexes.some((complex) => complex.key === key));
+    const keys = shownCalloutKeys(current.page, current.slide.callout.model, current.slide.callout.numberStart ?? 1).filter((key) => nextView.callout!.complexes.some((complex) => complex.key === key));
     apply({ type: "calloutFilter", id: current.page.id, filter: normalizeA05Filter(filter), keys }, "이 장의 설명선 필터를 바꿨습니다.");
   }, [analysisSiteParcel, apply, calloutPageSelection, resultFor, results, scene, views]);
   const autoGenerateCallout = useCallback((by: CalloutSort) => {
@@ -1075,6 +1087,20 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     const next = reportDocReducer({ ...history.present, pages: shifted }, { type: "add", pages: [blank], index: index + 1 });
     commitDoc(next, "빈 설명 장을 추가했습니다.");
     setSelectedId(blank.id);
+    setSelectedSlideKey(null);
+    setSelection({ kind: "map" });
+  }, [calloutPageSelection, commitDoc, history.present, planContext, views]);
+  const addOverviewCalloutPage = useCallback(() => {
+    const current = calloutPageSelection;
+    if (!current) return;
+    const view = views.get(current.page.tileId);
+    if (!view?.callout) return;
+    const firstDetailIndex = history.present.pages.findIndex((page) => page.kind === "tile" && page.tileId === current.page.tileId && page.part.type === "callout" && page.part.page > 0);
+    if (firstDetailIndex < 0 || history.present.pages.some((page) => page.kind === "tile" && page.tileId === current.page.tileId && page.part.type === "callout" && page.part.page === 0)) return;
+    const overview = calloutPageFor(history.present, view, current.page.settings, planContext, 0);
+    const next = reportDocReducer(history.present, { type: "add", pages: [overview], index: firstDetailIndex });
+    commitDoc(next, "개요 장을 추가했습니다.");
+    setSelectedId(overview.id);
     setSelectedSlideKey(null);
     setSelection({ kind: "map" });
   }, [calloutPageSelection, commitDoc, history.present, planContext, views]);
@@ -1186,7 +1212,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   const hideMapLabel = useCallback((key: string) => {
     const calloutKey = calloutKeyFromTag(key);
     if (calloutPageSelection && calloutKey) {
-      const keys = shownCalloutKeys(calloutPageSelection.page, calloutPageSelection.slide.callout!.model);
+      const keys = shownCalloutKeys(calloutPageSelection.page, calloutPageSelection.slide.callout!.model, calloutPageSelection.slide.callout!.numberStart ?? 1);
       if (!keys.includes(calloutKey)) return;
       apply({ type: "calloutShown", id: calloutPageSelection.page.id, keys: keys.filter((candidate) => candidate !== calloutKey) }, "라벨을 껐습니다");
       setSelection(null);
@@ -1206,7 +1232,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     if (!calloutPageSelection || !calloutKey) return;
     const model = calloutPageSelection.slide.callout!.model;
     if (!calloutComplexForKey(model, calloutKey)) return;
-    const keys = shownCalloutKeys(calloutPageSelection.page, model);
+    const keys = shownCalloutKeys(calloutPageSelection.page, model, calloutPageSelection.slide.callout!.numberStart ?? 1);
     if (keys.includes(calloutKey)) return;
     if (keys.length >= 10) {
       showToast("한 장에 10개까지입니다. 다른 라벨을 끄거나 새 장에서 켜세요");
@@ -1322,20 +1348,25 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     if (!calloutPageSelection) return undefined;
     const callout = calloutPageSelection.slide.callout;
     if (!callout) return undefined;
+    const numberStart = callout.numberStart ?? 1;
     return {
       pageId: calloutPageSelection.page.id,
       pageNumber: calloutPageSelection.page.part.page,
       model: callout.model,
       view: calloutPageSelection.slide.view,
-      shownKeys: shownCalloutKeys(calloutPageSelection.page, callout.model),
+      shownKeys: shownCalloutKeys(calloutPageSelection.page, callout.model, numberStart),
+      numberStart,
+      otherPageLabels: otherCalloutPageLabels(plan, calloutPageSelection.page),
+      canAddOverview: !history.present.pages.some((page) => page.kind === "tile" && page.tileId === calloutPageSelection.page.tileId && page.part.type === "callout" && page.part.page === 0),
       filter: calloutPageSelection.page.part.filter ?? null,
       onShownKeys: (keys) => apply({ type: "calloutShown", id: calloutPageSelection.page.id, keys }, "라벨 구성을 바꿨습니다."),
       onFilter: changeCalloutFilter,
       onAutoGenerate: autoGenerateCallout,
       onAddBlank: addBlankCalloutPage,
+      onAddOverview: addOverviewCalloutPage,
       onMessage: showToast,
     };
-  }, [addBlankCalloutPage, apply, autoGenerateCallout, calloutPageSelection, changeCalloutFilter, showToast]);
+  }, [addBlankCalloutPage, addOverviewCalloutPage, apply, autoGenerateCallout, calloutPageSelection, changeCalloutFilter, history.present.pages, plan, showToast]);
   const calloutLegendModel = selectedSlide?.kind === "tile" ? selectedSlide.callout?.model : undefined;
   const legendContextItems = useMemo<LegendContextMenuItem[]>(() => {
     if (calloutLegendModel) {

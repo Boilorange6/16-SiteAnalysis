@@ -61,7 +61,7 @@ export type ReportSlide =
       /** D22 화면에서 고른 계절. 저장값이 없으면 연간이다. */
       roseSeason?: RoseSeason;
       /** 주변 단지 설명선 장: page 0 = 개요, 1.. = 설명표 (지도 이미지는 단지 없이, 점·지시선·표는 pptx 도형) */
-      callout?: { model: CalloutModel; page: number; pages: number; filterLine?: string | null; shownKeys?: string[] };
+      callout?: { model: CalloutModel; page: number; pages: number; filterLine?: string | null; shownKeys?: string[]; numberStart?: number };
       /** 보드에서 켜 둔 지도 요소 라벨만 보고서 이미지에 그린다. */
       pinnedKeys?: string[];
       /** D17 수치지형도 선택 단면. view에 단면이 있을 때만 저장한다. */

@@ -7,7 +7,7 @@ import { metersPerPixel, slideViewport, zoomViewAt, type MapView } from "@/lib/v
 import { mapFrameScaleOptions, scaleOptionsForFrame, zoomForScale } from "@/lib/v2/ui/report-scale";
 import { SLIDE_LEGEND, calloutLegendEntries, layoutRects, slideCalloutAvoidance, slideCalloutLegendLayout, slideGeometry, slideLayout, slideLegend, slideLegendGeometry, slidePanelRects, slidePanelScale, slideReserved, slideSize, slideSiteX, terrainSectionLayout, type Rect, type SlideFormat, type TerrainSectionLayout } from "@/lib/v2/ui/overlay-layout";
 import { coverLayout, fitBlock, fitFooterText, fontSizeForStyle, sourceLayout, titlePlateRect, type Slide } from "@/lib/v2/report/pptx-kit";
-import { SLIDE_OVERVIEW_FILL, calloutKeyFromTag, calloutKeyTag, slideCalloutFrame } from "@/lib/v2/ui/callout-layout";
+import { SLIDE_OVERVIEW_FILL, calloutHoverText, calloutKeyFromTag, calloutKeyTag, calloutPageTitleTail, slideCalloutFrame } from "@/lib/v2/ui/callout-layout";
 import { a05ReportModule } from "@/lib/v2/tile/a05/report";
 import { layerStyle, legendItemsOf, legendLabelOf } from "@/lib/v2/ui/map-layers";
 import { reportSummaryNotes, terrainCrossingLayer, terrainElevationLabel, terrainSectionAxisStops, terrainSectionBands, terrainSectionElevationAt, terrainSectionMarkerGeometry, terrainSectionPosition, terrainSectionTotal, sortTerrainCrossings, TERRAIN_CROSSING_LABELS, TERRAIN_SECTION_LABELS, TERRAIN_SECTION_TABLE_MAX_ROWS } from "@/lib/v2/ui/terrain-section";
@@ -1214,7 +1214,9 @@ function ReportTitlePanel({ color, title, kind, rect, unit, style = {}, interact
 }
 
 function TitlePanel({ slide, rect, unit, interaction, onText }: { slide: Extract<PlannedSlide, { kind: "tile" }>; rect: Rect; unit: number; interaction?: PanelInteraction; onText?: () => void }) {
-  return <ReportTitlePanel color={slide.view.color} title={slide.page?.titleOverride ?? slide.view.title} kind={slide.view.kindLabel} rect={rect} unit={unit} style={slide.style} interaction={interaction} />;
+  const calloutTail = slide.callout ? calloutPageTitleTail(slide.callout.model.complexes, slide.callout.page, slide.callout.model.unit, slide.callout.shownKeys, slide.callout.numberStart ?? 1) : null;
+  const kind = [slide.view.kindLabel, calloutTail].filter((value): value is string => Boolean(value)).join(" · ");
+  return <ReportTitlePanel color={slide.view.color} title={slide.page?.titleOverride ?? slide.view.title} kind={kind} rect={rect} unit={unit} style={slide.style} interaction={interaction} />;
 }
 
 function SummaryPanel({ slide, rect, unit, terrainSectionShown = false, interaction, onText }: { slide: Extract<PlannedSlide, { kind: "tile" }>; rect: Rect; unit: number; terrainSectionShown?: boolean; interaction?: PanelInteraction; onText?: () => void }) {
@@ -2154,7 +2156,7 @@ function CalloutSlideOverlay({ slide, part, dragging = false }: { slide: Extract
 }
 
 type CalloutCardTarget = { key: string; label: string; rect: Rect };
-type CalloutMiniTarget = { key: string; label: string; point: [number, number] };
+type CalloutPointTarget = { key: string; label: string; point: [number, number]; radius: number; mini: boolean };
 
 function calloutCardTargets(slide: Extract<PlannedSlide, { kind: "tile" }>): CalloutCardTarget[] {
   return recordCalloutOps(slide).flatMap((op) => {
@@ -2166,13 +2168,13 @@ function calloutCardTargets(slide: Extract<PlannedSlide, { kind: "tile" }>): Cal
   });
 }
 
-function calloutMiniTargets(slide: Extract<PlannedSlide, { kind: "tile" }>): CalloutMiniTarget[] {
+function calloutPointTargets(slide: Extract<PlannedSlide, { kind: "tile" }>): CalloutPointTarget[] {
   return recordCalloutOps(slide).flatMap((op) => {
     if (op.kind !== "shape" || op.type !== "ellipse" || typeof op.o.objectName !== "string") return [];
-    const match = /\|callout-key:([^|]+)\|([^|]+)\|mini$/.exec(op.o.objectName);
+    const match = /\|callout-key:([^|]+)\|([^|]+)\|(dot|mini)$/.exec(op.o.objectName);
     if (!match) return [];
     const key = calloutKeyFromTag(`callout-key:${match[1]}`);
-    return key ? [{ key: calloutKeyTag(key), label: match[2] || "콜아웃", point: [op.o.x + op.o.w / 2, op.o.y + op.o.h / 2] as [number, number] }] : [];
+    return key ? [{ key: calloutKeyTag(key), label: match[2] || "콜아웃", point: [op.o.x + op.o.w / 2, op.o.y + op.o.h / 2] as [number, number], radius: op.o.w / 2, mini: match[3] === "mini" }] : [];
   });
 }
 
@@ -2192,7 +2194,13 @@ function CalloutSelectionLayer({ slide, unit, format, legendRect, selectedCardKe
 }) {
   const styles = useSurfaceStyles();
   const cards = useMemo(() => calloutCardTargets(slide), [slide]);
-  const miniTargets = useMemo(() => calloutMiniTargets(slide), [slide]);
+  const pointTargets = useMemo(() => calloutPointTargets(slide), [slide]);
+  const [hoveredPointKey, setHoveredPointKey] = useState<string | null>(null);
+  const pointPointerType = useRef<string | null>(null);
+  const hoveredPoint = pointTargets.find((target) => target.key === hoveredPointKey) ?? null;
+  const hoveredComplex = hoveredPoint
+    ? slide.callout?.model.complexes.find((complex) => calloutKeyTag(complex.key) === hoveredPoint.key) ?? null
+    : null;
   const selectedCard = cards.find((card) => card.key === selectedCardKey) ?? null;
   const bounds = { w: slideSize(format).w * unit, h: slideSize(format).h * unit };
   const cardButton = (card: CalloutCardTarget) => {
@@ -2244,24 +2252,45 @@ function CalloutSelectionLayer({ slide, unit, format, legendRect, selectedCardKe
   const selectedCardPosition = selectedCard && selectedCardOffset
     ? { left: selectedCard.rect.x * unit + selectedCardOffset.left, top: selectedCard.rect.y * unit + selectedCardOffset.top }
     : null;
-  const miniButton = (target: CalloutMiniTarget) => {
+  const pointTooltip = hoveredPoint && hoveredComplex ? (() => {
+    const text = calloutHoverText(hoveredComplex);
+    const fontSize = Math.max(9, 9 * unit / 72);
+    const textWidth = [...text].reduce((sum, character) => sum + (character.charCodeAt(0) > 0x7f ? fontSize : fontSize * 0.55), 0);
+    const width = Math.min(300, Math.max(72, textWidth + 16));
+    const height = Math.max(22, fontSize * 1.7);
+    const point = [hoveredPoint.point[0] * unit, hoveredPoint.point[1] * unit] as const;
+    const left = Math.max(4, Math.min(bounds.w - width - 4, point[0] + 10));
+    const top = Math.max(4, Math.min(bounds.h - height - 4, point[1] - height - 10));
+    const ringRadius = Math.max(12, hoveredPoint.radius * unit + 7);
+    return <>
+      <span data-callout-hover-ring="true" aria-hidden="true" style={{ position: "absolute", left: point[0] - ringRadius, top: point[1] - ringRadius, width: ringRadius * 2, height: ringRadius * 2, boxSizing: "border-box", border: "2.4px solid #111827", borderRadius: "50%", pointerEvents: "none", zIndex: 98 }} />
+      <span data-callout-hover-tooltip="true" style={{ position: "absolute", left, top, width, maxWidth: Math.max(40, bounds.w - 8), minHeight: height, boxSizing: "border-box", display: "flex", alignItems: "center", padding: "0 8px", background: "#111827", color: "#fff", opacity: 0.94, border: "0.8px solid rgba(255,255,255,.75)", borderRadius: 5, fontSize, fontWeight: 600, lineHeight: 1.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", pointerEvents: "none", zIndex: 99 }}>{text}</span>
+    </>;
+  })() : null;
+  const pointButton = (target: CalloutPointTarget) => {
     const size = 44;
     return <button
       key={target.key}
       type="button"
       className={styles.decorationHitTarget}
-      data-callout-mini={target.key}
-      aria-label={`${target.label} 라벨 켜기`}
+      data-callout-point="true"
+      data-callout-mini={target.mini ? target.key : undefined}
+      aria-label={target.mini ? `${target.label} 라벨 켜기` : `${target.label} 정보 보기`}
       style={{ left: target.point[0] * unit - size / 2, top: target.point[1] * unit - size / 2, width: size, height: size, pointerEvents: "auto" }}
-      onPointerDown={(event) => event.stopPropagation()}
-      onClick={(event) => { event.stopPropagation(); onShowLabel?.(target.key); }}
+      onPointerDown={(event) => { event.stopPropagation(); pointPointerType.current = event.pointerType; }}
+      onPointerEnter={(event) => { pointPointerType.current = event.pointerType; if (event.pointerType !== "touch") setHoveredPointKey(target.key); }}
+      onPointerLeave={(event) => { if (event.pointerType !== "touch") setHoveredPointKey(null); pointPointerType.current = null; }}
+      onFocus={() => { if (pointPointerType.current !== "touch") setHoveredPointKey(target.key); }}
+      onBlur={() => { pointPointerType.current = null; setHoveredPointKey(null); }}
+      onClick={(event) => { event.stopPropagation(); if (target.mini) onShowLabel?.(target.key); }}
     />;
   };
   return <div className={styles.elementActionLayer ?? styles.mapSelectionToolbar} data-element-action-layer="true">
     {legendTarget}
-    {miniTargets.map(miniButton)}
+    {pointTargets.map(pointButton)}
     {cards.map(cardButton)}
     {selectedCard && selectedCardPosition && <ElementActionBar elementLabel={selectedCard.label} left={selectedCardPosition.left} top={selectedCardPosition.top} onDelete={() => onHideLabel?.(selectedCard.key)} />}
+    {pointTooltip}
   </div>;
 }
 
@@ -2626,7 +2655,7 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
   // 편집 중이 아닌 지도 층은 포인터를 받지 않으므로, 패널·글상자가 아닌 지도 영역 클릭을 좌표로 판단한다.
   const onMapArea = (event: React.MouseEvent<HTMLElement>): boolean => {
     const target = event.target as HTMLElement;
-    if (target.closest("[data-map-pick], [data-map-label-selection], [data-map-label-handle], [data-map-selection-toolbar], [data-element-action-bar], [data-report-decoration], [data-decoration-frame], [data-callout-card], [data-callout-mini], [data-callout-panel]")) return false;
+    if (target.closest("[data-map-pick], [data-map-label-selection], [data-map-label-handle], [data-map-selection-toolbar], [data-element-action-bar], [data-report-decoration], [data-decoration-frame], [data-callout-card], [data-callout-point], [data-callout-mini], [data-callout-panel]")) return false;
     if (target.closest("[data-preview-map]")) return mapSelectable;
     if (!mapSelectable || !onSelect || target.closest("[data-panel-key], [data-panel-frame], [data-text-box]")) return false;
     const rect = event.currentTarget.querySelector<HTMLElement>("[data-preview-map]")?.getBoundingClientRect();
@@ -2643,7 +2672,7 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
           style={canvasStyle(unit)}
           onPointerDownCapture={(event) => {
             const target = event.target as HTMLElement;
-            if (target.closest("[data-map-pick], [data-map-label-selection], [data-map-label-handle], [data-map-selection-toolbar], [data-element-action-bar], [data-report-decoration], [data-decoration-frame], [data-callout-card], [data-callout-mini], [data-callout-panel]")) return;
+            if (target.closest("[data-map-pick], [data-map-label-selection], [data-map-label-handle], [data-map-selection-toolbar], [data-element-action-bar], [data-report-decoration], [data-decoration-frame], [data-callout-card], [data-callout-point], [data-callout-mini], [data-callout-panel]")) return;
             const sheetCellTarget = target.closest<HTMLElement>("[data-sheet-cell-index]");
             if (displaySlide.kind === "sheet" && sheetCellTarget && !mapActive && onSheetCellActivate) {
               const index = Number(sheetCellTarget.dataset.sheetCellIndex);

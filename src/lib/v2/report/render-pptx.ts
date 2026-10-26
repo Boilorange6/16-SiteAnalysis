@@ -5,7 +5,7 @@
  */
 import PptxGenJS from "pptxgenjs";
 import { groupTaggedShapes } from "../../pptx-shape-group";
-import { fmtInt, pageItems } from "../ui/callout-layout";
+import { calloutPageTitleTail } from "../ui/callout-layout";
 import { legendItemsOf, STRIP_COLORS } from "../ui/map-layers";
 import { SLIDE, SLIDE_LEGEND, layoutRects, slideGeometry, slideLayout, slideLegend, slideLegendGeometry, slidePanelRects, slidePanelScale, slideSize, terrainSectionLayout, type Rect, type SlideFormat, type SlideLegendOptions } from "../ui/overlay-layout";
 import type { Badge, TileView } from "../ui/tile-view";
@@ -490,9 +490,7 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
     addEditableMap(s, p, p.map, { style, format, frame: frameForLayout(p, format), reportFrame: frameOf(p), layout: layoutOf(p) });
     if (mapStatus?.denseLayers.length || mapStatus?.rasterValues.length) fallbackNotes.push(nativeMapFallbackNote(p.map));
   } else if (p.map) fallbackNotes.push(nativeMapFallbackNote(p.map));
-  const coTail = co ? (co.page === 0
-    ? `개요 · 전체 ${fmtInt(co.model.complexes.length)}${co.model.unit}`
-    : `라벨 ${fmtInt(co.shownKeys?.filter((key) => co.model.complexes.some((complex) => complex.key === key)).length ?? pageItems(co.model.complexes, co.page).length)}개 / 전체 ${fmtInt(co.model.complexes.length)}${co.model.unit}`) : null;
+  const coTail = co ? calloutPageTitleTail(co.model.complexes, co.page, co.model.unit, co.shownKeys, co.numberStart ?? 1) : null;
   if (!pageElementDeleted(p.page, "title")) titlePlate(s, v.color, p.page?.titleOverride ?? v.title, [v.kindLabel, p.faceLabel, coTail].filter((t, i, a) => t && a.indexOf(t) === i).join(" · "), co && co.page > 0 ? g.w - 2 * g.edge : summaryX - 2 * g.edge, style, hasSummary, format);
   if (co && co.page > 0) {
     calloutReport?.render({ slide: s, planned: p, part: "page" });

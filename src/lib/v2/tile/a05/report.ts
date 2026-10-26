@@ -1,5 +1,5 @@
 import { GROUP_TAG_PREFIX } from "../../../pptx-shape-group";
-import { INCH, SLIDE_OVERVIEW_FILL, calloutKeyTag, cardName, cardRows, dotColor, dotRadius, inkOn, isHollowComplexMarker, layoutCallouts, overlapChip, pageItems, rowsFor, slideCalloutFrame, type CalloutFrame, type Complex, type Placed, type Pt } from "../../ui/callout-layout";
+import { INCH, SLIDE_OVERVIEW_FILL, calloutKeyTag, calloutPageItems, cardName, cardRows, dotColor, dotRadius, inkOn, isHollowComplexMarker, layoutCallouts, overlapChip, rowsFor, slideCalloutFrame, type CalloutFrame, type Complex, type Placed, type Pt } from "../../ui/callout-layout";
 import { makeProjector, slideViewport } from "../../ui/map-projection";
 import { scaleOptionsForFrame, zoomForScale } from "../../ui/report-scale";
 import { calloutLegendEntries, slideCalloutLegendLayout, slideSiteX, type CalloutLegendOptions } from "../../ui/overlay-layout";
@@ -118,7 +118,7 @@ function calloutOverview(s: Slide, p: PlannedSlide & { kind: "tile" }) {
   const labelsScale = fontSizeForStyle(style, "labels") / 10;
   const proj = projector(p, cm, slideSiteX(style, style.summary !== false), SLIDE_OVERVIEW_FILL);
   const hMax = Math.max(0, ...cm.complexes.map((c) => c.households ?? 0));
-  cm.complexes.forEach((c) => numberDot(s, c, proj(c), dotRadius(c.households, hMax, INCH.rMin, INCH.rMax), labelsScale, false));
+  cm.complexes.forEach((c) => numberDot(s, c, proj(c), dotRadius(c.households, hMax, INCH.rMin / 2, INCH.rMax / 2), labelsScale, false));
   if (cm.complexes.length === 0) {
     const w = 4.6;
     const h = 1.2;
@@ -153,14 +153,8 @@ function calloutStatItem(s: Slide, cm: CalloutModel): ReportItem {
 function calloutPage(s: Slide, p: PlannedSlide & { kind: "tile" }) {
   const { model: cm, page } = p.callout!;
   const frame = p.page?.kind === "tile" ? p.page.frame : undefined;
-  const legacyItems = pageItems(cm.complexes, page);
   const requestedKeys = p.callout?.shownKeys;
-  const keys = requestedKeys === undefined ? legacyItems.map((c) => c.key) : requestedKeys;
-  const byKey = new Map(cm.complexes.map((c) => [c.key, c]));
-  const items = keys.flatMap((key) => {
-    const complex = byKey.get(key);
-    return complex ? [complex] : [];
-  }).slice(0, 10).map((complex, index) => ({ ...complex, rank: index + 1 }));
+  const items = calloutPageItems(cm.complexes, page, requestedKeys, p.callout?.numberStart ?? 1);
   const shownKeys = new Set(items.map((c) => c.key));
   const f = slideCalloutFrame(rowsFor(items));
   const proj = projector(p, cm, f.siteX, f.fill);

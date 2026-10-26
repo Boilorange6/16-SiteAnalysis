@@ -83,6 +83,26 @@ assert.equal(a05Pages[0].part.shownKeys, undefined, "개요는 옛 pageItems 규
 assert.deepEqual(a05Pages[1].part.shownKeys, [], "초기 설명표는 빈 장");
 const initialA05Plan = planReportDoc({ ...EMPTY_REPORT_DOC, pages: a05Pages }, views, tileContext);
 assert.deepEqual(initialA05Plan.find((slide) => slide.page?.id === a05Pages[1].id)?.callout.shownKeys, [], "빈 설명표 계획은 shownKeys=[]를 전달");
+assert.equal(initialA05Plan.find((slide) => slide.page?.id === a05Pages[1].id)?.callout.numberStart, 1, "빈 설명표의 번호 시작은 1");
+const a05AllSettings = { ...tileReportSettingsFromBoard(board, "t-A05"), callout: "all" };
+
+const continuationKeys = a05View.callout.complexes.slice(0, 8).map((complex) => complex.key);
+const continuationNextKeys = a05View.callout.complexes.slice(8, 12).map((complex) => complex.key);
+const continuationFirst = calloutPageFor(EMPTY_REPORT_DOC, a05View, a05AllSettings, tileContext, 1, continuationKeys, null);
+const continuationBlank = calloutPageFor({ ...EMPTY_REPORT_DOC, pages: [continuationFirst] }, a05View, a05AllSettings, tileContext, 2, [], null);
+const continuationNext = calloutPageFor({ ...EMPTY_REPORT_DOC, pages: [continuationFirst, continuationBlank] }, a05View, a05AllSettings, tileContext, 3, continuationNextKeys, null);
+const continuationPlan = planReportDoc({ ...EMPTY_REPORT_DOC, pages: [continuationFirst, continuationBlank, continuationNext] }, views, tileContext);
+assert.deepEqual(
+  [continuationFirst, continuationBlank, continuationNext].map((page) => continuationPlan.find((slide) => slide.page?.id === page.id)?.callout.numberStart),
+  [1, 9, 9],
+  "같은 타일의 앞 장 라벨 수만 번호를 이어가고 빈 장은 0개로 센다",
+);
+const a06View = views.get("t-A06");
+assert.ok(a06View?.callout, "A06 view");
+const a06Page = calloutPageFor({ ...EMPTY_REPORT_DOC, pages: [continuationFirst] }, a06View, tileReportSettingsFromBoard(board, "t-A06"), tileContext, 1, a06View.callout.complexes.slice(0, 2).map((complex) => complex.key), null);
+const crossTilePlan = planReportDoc({ ...EMPTY_REPORT_DOC, pages: [continuationFirst, a06Page, continuationNext] }, views, tileContext);
+assert.equal(crossTilePlan.find((slide) => slide.page?.id === continuationNext.id)?.callout.numberStart, 9, "다른 타일 장은 번호 연속 계산에 영향을 주지 않는다");
+assert.equal(crossTilePlan.find((slide) => slide.page?.id === a06Page.id)?.callout.numberStart, 1, "A06도 자체 장 순서로 번호를 시작한다");
 
 // 설명표 장수 변경은 연속 callout 구간만 새 계획으로 바꾸고 같은 page 번호의 편집을 보존한다.
 const editedTop10Pages = a05Pages.map((page, index) => page.kind === "tile" ? {
@@ -94,7 +114,6 @@ const editedTop10Pages = a05Pages.map((page, index) => page.kind === "tile" ? {
   fontSizes: { labels: 14 },
 } : page);
 const editedTop10Doc = { ...EMPTY_REPORT_DOC, pages: editedTop10Pages };
-const a05AllSettings = { ...tileReportSettingsFromBoard(board, "t-A05"), callout: "all" };
 const filteredYear = { year: { min: 2000, max: null } };
 const retainedKey = a05View.callout.complexes.find((complex) => complex.approvalYear !== null && complex.approvalYear >= 2000)?.key;
 const filteredOutKey = a05View.callout.complexes.find((complex) => complex.approvalYear === null || complex.approvalYear < 2000)?.key;
@@ -131,6 +150,15 @@ assert.deepEqual(allCalloutPages[1].frame.offsetM, [2, -3], "같은 page 1의 fr
 assert.equal(allCalloutPages[0].notes, "기존 메모 0", "개요 메모 보존");
 assert.equal(allCalloutPages[1].textBoxes[0].text, "기존 글상자 1", "같은 page의 글상자 보존");
 assert.equal(allCalloutPages[1].fontSizes.labels, 14, "같은 page의 글자 크기 보존");
+const generatedPlan = planReportDoc(allHistory.present, views, tileContext);
+assert.deepEqual(
+  generatedPages.map((page) => generatedPlan.find((slide) => slide.page?.id === page.id)?.callout.numberStart),
+  [1, 11, 21],
+  "25개 자동 생성은 1–10, 11–20, 21–25로 번호를 잇는다",
+);
+const oldDetailPage = calloutPageFor(EMPTY_REPORT_DOC, a05View, a05AllSettings, tileContext, 2);
+const oldDetailSlide = planReportDoc({ ...EMPTY_REPORT_DOC, pages: [oldDetailPage] }, views, tileContext).find((slide) => slide.page?.id === oldDetailPage.id);
+assert.equal(oldDetailSlide?.callout.numberStart, 11, "shownKeys 없는 옛 장은 기존 전역 순위를 유지한다");
 assert.equal(historyUndo(allHistory).present.pages[0].id, editedTop10Pages[0].id, "tileCallout은 history undo 대상");
 
 const a05OverviewPages = [calloutPageFor(allHistory.present, a05View, a05AllSettings, tileContext, 0)];
