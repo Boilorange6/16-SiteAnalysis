@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import { guideTileGroups, guideTiles } from "@/lib/v2/ui/guide-catalog";
 import { readGuideSourceSnapshot, type GuideSourceRelease } from "@/lib/v2/ui/guide-sources";
 import { cleanSourceText, sourceName } from "@/lib/v2/ui/tile-catalog";
+import { sourceOps } from "@/lib/v2/ui/source-details";
 import { NEIGHBORHOOD_REFERENCE, RADIUS_OPTIONS } from "@/lib/v2/ui/radius-options";
 import styles from "./guide.module.css";
 
@@ -36,7 +37,7 @@ function updateCycle(row: GuideSourceRelease): string {
     const value = row.rights[key];
     if (typeof value === "string" && value.trim()) return value;
   }
-  return "갱신 주기 미기록";
+  return sourceOps(row.sourceId).cycle ?? "갱신 주기 미기록";
 }
 
 function providerLabel(row: GuideSourceRelease): string {
