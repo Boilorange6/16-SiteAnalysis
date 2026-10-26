@@ -169,9 +169,8 @@ export default function AdminPage() {
     [overview, selectedSource],
   );
   const visibleTiles = useMemo(() => {
-    const filtered = filterTiles(overview?.tiles ?? [], filter, pendingByTile);
-    return sourceTileCodes ? filtered.filter((tile) => sourceTileCodes.has(tile.code)) : filtered;
-  }, [filter, overview, pendingByTile, sourceTileCodes]);
+    return filterTiles(overview?.tiles ?? [], filter, pendingByTile);
+  }, [filter, overview, pendingByTile]);
   const warningCount = sourceRows.filter((row) => row.warn === "stale").length;
   const missingCount = sourceRows.filter((row) => row.warn === "missing").length;
   const mismatchCount = overview?.tiles.filter((tile) => tile.check.status === "mismatch").length ?? 0;
