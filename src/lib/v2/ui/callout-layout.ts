@@ -44,6 +44,16 @@ export const MISSING = "확인필요";
 const n0 = (v: number | null | undefined) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 export const fmtInt = (n: number) => n.toLocaleString("en-US");
 export const complexKey = (layer: string, lng: number, lat: number, name: string | null | undefined) => `${layer}|${lng.toFixed(6)}|${lat.toFixed(6)}|${name ?? ""}`;
+/** 같은 층·좌표·이름이 여러 건이면(동별 오피스텔 등) 정렬 순서대로 #2, #3을 붙여 키를 겹치지 않게 한다 */
+function keyed<T extends { layer: string; lng: number; lat: number; name: string | null }>(list: T[]): Array<T & { id: string; key: string; rank: number }> {
+  const seen = new Map<string, number>();
+  return list.map((c, i) => {
+    const base = complexKey(c.layer, c.lng, c.lat, c.name);
+    const n = (seen.get(base) ?? 0) + 1;
+    seen.set(base, n);
+    return { ...c, id: `c${i + 1}`, key: n === 1 ? base : `${base}#${n}`, rank: i + 1 };
+  });
+}
 export const calloutKeyTag = (key: string) => `callout-key:${encodeURIComponent(key)}`;
 export function calloutKeyFromTag(value: string): string | null {
   const match = /^callout-key:(.+)$/.exec(value);
@@ -79,7 +89,7 @@ export function rankComplexes(features: MapFeature[]): Complex[] {
       a.lng - b.lng ||
       a.lat - b.lat,
   );
-  return list.map((c, i) => ({ ...c, id: `c${i + 1}`, key: complexKey(c.layer, c.lng, c.lat, c.name), rank: i + 1 }));
+  return keyed(list);
 }
 
 // ── A06: 입주(예정) 시기 버킷·정렬 ──
@@ -143,7 +153,7 @@ export function rankSupply(features: MapFeature[], analysisDate: string): Comple
       a.lng - b.lng ||
       a.lat - b.lat;
   });
-  return list.map((c, i) => ({ ...c, id: `c${i + 1}`, key: complexKey(c.layer, c.lng, c.lat, c.name), rank: i + 1 }));
+  return keyed(list);
 }
 
 export type CalloutSort = "year" | "households" | "floors" | "supply";

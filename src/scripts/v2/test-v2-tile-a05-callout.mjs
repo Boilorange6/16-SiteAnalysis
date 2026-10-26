@@ -19,6 +19,8 @@ const feat = (o) => ({ layer: "apt", lng: 127, lat: 37, ...o });
   assert.deepEqual(list.map((c) => c.rank), [1, 2, 3, 4, 5]);
   assert.equal(list[3].households, 50, "households가 없으면 weight");
   assert.deepEqual(C.rankComplexes([feat({ name: "x" }), feat({ name: "y" })]).map((c) => c.id), ["c1", "c2"]);
+  const dupKeys = C.rankComplexes([feat({ name: "같은" }), feat({ name: "같은" }), feat({ name: "같은" })]).map((c) => c.key);
+  assert.equal(new Set(dupKeys).size, 3, "같은 층·좌표·이름이 여러 건이어도 키는 겹치지 않는다");
   const sortable = C.rankComplexes([
     feat({ name: "연식", households: 100, approvalYear: 1990, floorsMax: 12, distanceM: 100 }),
     feat({ name: "최신", households: 50, approvalYear: 2020, floorsMax: 30, distanceM: 200 }),
