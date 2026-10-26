@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 
 const C = await import("../../lib/v2/ui/callout-layout.ts");
+const O = await import("../../lib/v2/ui/overlay-layout.ts");
 
 const feat = (o) => ({ layer: "apt", lng: 127, lat: 37, ...o });
 
@@ -66,6 +67,67 @@ const feat = (o) => ({ layer: "apt", lng: 127, lat: 37, ...o });
   const [typed] = C.rankComplexes([feat({ unitTypes: [{ typeM2: 84, units: 2840 }, { typeM2: 59, units: 1210 }, { typeM2: 114, units: 520 }, { typeM2: 49, units: 10 }, { typeM2: 74, units: 200 }] })]);
   assert.equal(C.cardRows(typed, 2026)[1].value, "59㎡ 1,210 · 84㎡ 2,840 · 114㎡ 520 외 2타입");
   assert.equal(C.summarize([]).medianYear, null);
+}
+
+// ── 보고서 범례·라벨 계약: 숨김/순서/placement와 A05 도형 배율 ──
+{
+  const { GODEOK_RESULTS } = await import("../../lib/v2/ui/fixtures/godeok.ts");
+  const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
+  const { defaultFrame } = await import("../../lib/v2/report/report-doc.ts");
+  const { a05ReportModule } = await import("../../lib/v2/tile/a05/report.ts");
+  const model = toTileView(GODEOK_RESULTS.find((result) => result.tileCode === "A05")).callout;
+  assert.ok(model, "A05 콜아웃 모델");
+  const hiddenLegend = model.legend.items[0].label;
+  const orderedLegend = model.legend.items[2].label;
+  const entries = O.calloutLegendEntries(model, { hidden: [hiddenLegend], order: [orderedLegend], placement: "below" });
+  assert.equal(entries[0].text, model.legend.title);
+  assert.equal(entries[1].text, orderedLegend, "콜아웃 범례 순서 계약");
+  assert.equal(entries.some((entry) => entry.text === hiddenLegend), false, "콜아웃 범례 숨김 계약");
+  assert.deepEqual(O.calloutLegendEntries(model, { placement: "hidden" }), [], "placement hidden이면 콜아웃 범례 없음");
+  const baseLegendLayout = O.slideCalloutLegendLayout([{ text: "범례" }], 0, 1, 4, 1);
+  const scaledLegendLayout = O.slideCalloutLegendLayout([{ text: "범례" }], 0, 1, 4, 1.4);
+  assert.ok(scaledLegendLayout.rect.w > baseLegendLayout.rect.w, "범례 글자 배율이 폭 계산에도 반영");
+
+  const capture = (style = {}, framePatch = {}) => {
+    const shapes = [];
+    const texts = [];
+    const slide = {
+      addShape: (kind, options) => shapes.push({ kind, options }),
+      addText: (value, options) => texts.push({ value, options }),
+    };
+    const frame = { ...defaultFrame(), ...framePatch, legend: { ...defaultFrame().legend, ...(framePatch.legend ?? {}) } };
+    a05ReportModule.report.render({
+      slide,
+      part: "page",
+      planned: {
+        kind: "tile",
+        style,
+        callout: { model, page: 1, pages: C.calloutReportPages("all", model.complexes.length) },
+        page: { kind: "tile", frame },
+      },
+    });
+    return { shapes, texts };
+  };
+  const base = capture();
+  const scaled = capture({ fontSizes: { legend: 14, labels: 14 } });
+  const baseLegendText = base.texts.find((item) => item.options.objectName?.includes("panel-callout-legend"));
+  const scaledLegendText = scaled.texts.find((item) => item.options.objectName?.includes("panel-callout-legend"));
+  assert.equal(baseLegendText.options.fontSize, 9, "기본 범례 글자 크기는 기존 9pt");
+  assert.equal(scaledLegendText.options.fontSize, 12.6, "범례 14pt는 기존 설명선 기준의 1.4배");
+  const baseCardNumber = base.texts.find((item) => item.options.objectName?.endsWith("|card-no"));
+  const scaledCardNumber = scaled.texts.find((item) => item.options.objectName?.endsWith("|card-no"));
+  const baseDotNumber = base.texts.find((item) => item.options.objectName?.endsWith("|dot-no"));
+  const scaledDotNumber = scaled.texts.find((item) => item.options.objectName?.endsWith("|dot-no"));
+  assert.equal(baseCardNumber.options.fontSize, 8, "기본 카드 번호 글자 크기는 기존 8pt");
+  assert.ok(scaledCardNumber.options.fontSize > baseCardNumber.options.fontSize, "labels 배율이 카드 글자에 반영");
+  assert.ok(scaledDotNumber.options.fontSize > baseDotNumber.options.fontSize, "labels 배율이 번호 점 글자에 반영");
+  const hiddenId = model.complexes[0].id;
+  const hiddenCard = capture({}, { hiddenLabelKeys: [`callout-${hiddenId}`] });
+  assert.equal(hiddenCard.shapes.some((item) => item.options.objectName?.includes(`callout-${hiddenId}|`) && item.options.objectName?.endsWith("|card")), false, "숨긴 콜아웃 카드 없음");
+  assert.equal(hiddenCard.shapes.some((item) => item.options.objectName?.includes(`callout-${hiddenId}|`) && item.options.objectName?.includes("|leader-")), false, "숨긴 콜아웃 지시선 없음");
+  assert.ok(hiddenCard.shapes.some((item) => item.options.objectName?.includes(`callout-${hiddenId}|`) && item.options.objectName?.endsWith("|dot")), "숨긴 콜아웃 점은 유지");
+  const hiddenLegendRender = capture({}, { legend: { placement: "hidden" } });
+  assert.equal(hiddenLegendRender.shapes.some((item) => item.options.objectName?.includes("panel-callout-legend")), false, "범례 placement hidden은 PPT 도형도 숨김");
 }
 
 // ── 페이지: 10단지씩, 제목 문구, 보고서 장수 ──

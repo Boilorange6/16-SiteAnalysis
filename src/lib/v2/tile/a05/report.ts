@@ -2,10 +2,10 @@ import { GROUP_TAG_PREFIX } from "../../../pptx-shape-group";
 import { INCH, SLIDE_OVERVIEW_FILL, cardName, cardRows, dotColor, dotRadius, inkOn, isHollowComplexMarker, layoutCallouts, overlapChip, pageItems, rowsFor, slideCalloutFrame, type CalloutFrame, type Complex, type Placed, type Pt } from "../../ui/callout-layout";
 import { makeProjector, slideViewport } from "../../ui/map-projection";
 import { scaleOptionsForFrame, zoomForScale } from "../../ui/report-scale";
-import { slideCalloutLegendLayout, slideSiteX } from "../../ui/overlay-layout";
+import { calloutLegendEntries, slideCalloutLegendLayout, slideSiteX, type CalloutLegendOptions } from "../../ui/overlay-layout";
 import type { CalloutModel } from "../../ui/tile-view";
 import { unitTypeSummaryParts } from "../../unit-types";
-import { E, FONT, INK, IW, IX, L, MUTED, SLIDE, fitPt, hex, plate, seg, textIn, type ReportItem, type Slide } from "../../report/pptx-kit";
+import { E, FONT, INK, IW, IX, L, MUTED, SLIDE, fitPt, fontSizeForStyle, hex, plate, seg, textIn, type ReportItem, type Slide } from "../../report/pptx-kit";
 import type { PlannedSlide } from "../../report/report-plan";
 import type { TileReportRenderContext } from "../../report/types";
 import type { TileReportModule } from "../types";
@@ -31,12 +31,12 @@ function projector(p: PlannedSlide & { kind: "tile" }, model: CalloutModel, site
   };
 }
 
-function numberDot(s: Slide, c: Complex, at: Pt, r: number) {
+function numberDot(s: Slide, c: Complex, at: Pt, r: number, labelsScale = 1) {
   const color = dotColor(c);
   const hollow = isHollowComplexMarker(c);
   s.addShape("ellipse", { x: at[0] - r - 0.025, y: at[1] - r - 0.025, w: 2 * r + 0.05, h: 2 * r + 0.05, fill: { color: "FFFFFF", transparency: 8 }, line: { color: "FFFFFF", width: 0, transparency: 100 }, objectName: cTag(c, "dot-halo") });
   s.addShape("ellipse", { x: at[0] - r, y: at[1] - r, w: 2 * r, h: 2 * r, fill: { color: hollow ? "FFFFFF" : hex(color), transparency: hollow ? 100 : 0 }, line: { color: hex(color), width: 0.7, transparency: 0 }, objectName: cTag(c, "dot") });
-  s.addText(String(c.rank), { x: at[0] - r, y: at[1] - r, w: 2 * r, h: 2 * r, align: "center", valign: "middle", fontFace: FONT, fontSize: r >= 0.17 ? 9 : 8, bold: true, color: hex(hollow ? color : inkOn(color)), margin: 0, objectName: cTag(c, "dot-no") });
+  s.addText(String(c.rank), { x: at[0] - r, y: at[1] - r, w: 2 * r, h: 2 * r, align: "center", valign: "middle", fontFace: FONT, fontSize: (r >= 0.17 ? 9 : 8) * labelsScale, bold: true, color: hex(hollow ? color : inkOn(color)), margin: 0, objectName: cTag(c, "dot-no") });
 }
 
 function unitTypeLines(value: string, fontSize: number, width: number): string[] {
@@ -55,36 +55,36 @@ function unitTypeLines(value: string, fontSize: number, width: number): string[]
   return lines.length > 0 ? lines : [value];
 }
 
-function fitUnitTypeValue(value: string, maxPt: number, width: number): { fontSize: number; lines: string[] } {
-  for (let fontSize = maxPt; fontSize >= 6; fontSize -= 0.5) {
+function fitUnitTypeValue(value: string, maxPt: number, width: number, minPt = 6): { fontSize: number; lines: string[] } {
+  for (let fontSize = maxPt; fontSize >= minPt; fontSize -= 0.5) {
     const lines = unitTypeLines(value, fontSize, width);
     if (lines.length <= 2) return { fontSize, lines };
   }
-  return { fontSize: 6, lines: unitTypeLines(value, 6, width) };
+  return { fontSize: minPt, lines: unitTypeLines(value, minPt, width) };
 }
 
-function calloutCard(s: Slide, c: Complex, p: Placed, f: CalloutFrame, year: number) {
+function calloutCard(s: Slide, c: Complex, p: Placed, f: CalloutFrame, year: number, labelsScale = 1) {
   const { m } = f;
   const color = dotColor(c);
   const hollow = isHollowComplexMarker(c);
   const chip = overlapChip(c);
   s.addShape("roundRect", { x: p.x, y: p.y, w: f.cardW, h: f.cardH, fill: { color: "FFFFFF", transparency: 8 }, line: { color: INK, width: 0.5, transparency: 88 }, rectRadius: 0.08, objectName: cTag(c, "card") });
   s.addShape("ellipse", { x: p.x + 0.09, y: p.y + m.head / 2 - 0.09, w: 0.18, h: 0.18, fill: { color: hollow ? "FFFFFF" : hex(color), transparency: hollow ? 100 : 0 }, line: { color: hex(color), width: 0.5, transparency: 0 }, objectName: cTag(c, "card-no-bg") });
-  s.addText(String(c.rank), { x: p.x + 0.09, y: p.y + m.head / 2 - 0.09, w: 0.18, h: 0.18, align: "center", valign: "middle", fontFace: FONT, fontSize: 8, bold: true, color: hex(hollow ? color : inkOn(color)), margin: 0, objectName: cTag(c, "card-no") });
+  s.addText(String(c.rank), { x: p.x + 0.09, y: p.y + m.head / 2 - 0.09, w: 0.18, h: 0.18, align: "center", valign: "middle", fontFace: FONT, fontSize: 8 * labelsScale, bold: true, color: hex(hollow ? color : inkOn(color)), margin: 0, objectName: cTag(c, "card-no") });
   const name = cardName(c);
   const chipW = chip ? 0.62 : 0;
-  s.addText(name, { x: p.x + 0.34, y: p.y, w: f.cardW - 0.42 - chipW, h: m.head, valign: "middle", fontFace: FONT, fontSize: fitPt(name, 9.5, f.cardW - 0.42 - chipW, 1, 7), bold: true, color: c.name ? INK : AMBER, margin: 0, objectName: cTag(c, "name") });
+  s.addText(name, { x: p.x + 0.34, y: p.y, w: f.cardW - 0.42 - chipW, h: m.head, valign: "middle", fontFace: FONT, fontSize: fitPt(name, 9.5 * labelsScale, f.cardW - 0.42 - chipW, 1, 7 * labelsScale), bold: true, color: c.name ? INK : AMBER, margin: 0, objectName: cTag(c, "name") });
   if (chip) {
     s.addShape("roundRect", { x: p.x + f.cardW - 0.68, y: p.y + m.head / 2 - 0.09, w: 0.6, h: 0.18, fill: { color: "FDF1D3" }, line: { color: "FDF1D3", width: 0 }, rectRadius: 0.09, objectName: cTag(c, "chip-bg") });
-    s.addText(chip, { x: p.x + f.cardW - 0.68, y: p.y + m.head / 2 - 0.09, w: 0.6, h: 0.18, align: "center", valign: "middle", fontFace: FONT, fontSize: 7.5, bold: true, color: "7A5200", margin: 0, objectName: cTag(c, "chip") });
+    s.addText(chip, { x: p.x + f.cardW - 0.68, y: p.y + m.head / 2 - 0.09, w: 0.6, h: 0.18, align: "center", valign: "middle", fontFace: FONT, fontSize: 7.5 * labelsScale, bold: true, color: "7A5200", margin: 0, objectName: cTag(c, "chip") });
   }
   seg(s, [p.x, p.y + m.head], [p.x + f.cardW, p.y + m.head], INK, 0.5, 90, cTag(c, "head-sep"));
-  const fs = Math.min(8.5, Math.floor(m.row * 72 * 0.68 * 2) / 2);
+  const fs = Math.min(8.5 * labelsScale, Math.floor(m.row * 72 * 0.68 * labelsScale * 2) / 2);
   let y = p.y + m.head + 0.03;
   cardRows(c, year).forEach((r, i) => {
     const lw = r.label === "입주(예정) 시기" ? 1.0 : 0.55;
     const valueW = f.cardW - 0.2 - lw;
-    const fitted = r.unitType ? fitUnitTypeValue(r.value, fs, valueW) : { fontSize: fitPt(r.value, fs, valueW, 1, 6), lines: [r.value] };
+    const fitted = r.unitType ? fitUnitTypeValue(r.value, fs, valueW, 6 * labelsScale) : { fontSize: fitPt(r.value, fs, valueW, 1, 6 * labelsScale), lines: [r.value] };
     const rowH = r.unitType ? m.row * 2 : m.row;
     s.addText(r.label, { x: p.x + 0.1, y, w: lw, h: rowH, valign: "middle", fontFace: FONT, fontSize: fs, color: MUTED, margin: 0, objectName: cTag(c, `row-${i}-label`) });
     s.addText(fitted.lines.join("\n"), { x: p.x + 0.1 + lw, y, w: valueW, h: rowH, align: "right", valign: "middle", fontFace: FONT, fontSize: fitted.fontSize, bold: true, color: r.missing ? AMBER : INK, margin: 0, objectName: cTag(c, `row-${i}-value`) });
@@ -93,9 +93,10 @@ function calloutCard(s: Slide, c: Complex, p: Placed, f: CalloutFrame, year: num
 }
 
 /** 준공 연대 색 + 크기 = 세대수 범례 판. 아래 가장자리(bottom)에 붙고, 폭(maxW)을 넘으면 줄을 바꾄다 */
-function calloutLegend(s: Slide, model: CalloutModel, x: number, bottom: number, maxW: number) {
-  const entries = [{ text: model.legend.title, color: null as string | null, hollow: false }, ...model.legend.items.map((it) => ({ text: it.label, color: it.color, hollow: it.hollow === true })), { text: model.legend.sizeLabel, color: null, hollow: false }];
-  const layout = slideCalloutLegendLayout(entries, x, bottom, maxW);
+function calloutLegend(s: Slide, model: CalloutModel, x: number, bottom: number, maxW: number, style: PlannedSlide["style"], legendOptions?: CalloutLegendOptions) {
+  const entries = calloutLegendEntries(model, legendOptions);
+  const legendScale = fontSizeForStyle(style, "legend") / 10;
+  const layout = slideCalloutLegendLayout(entries, x, bottom, maxW, legendScale);
   if (!layout) return;
   const { rect: r, rows } = layout;
   const group = `${GROUP_TAG_PREFIX}panel-callout-legend|범례|item`;
@@ -104,7 +105,7 @@ function calloutLegend(s: Slide, model: CalloutModel, x: number, bottom: number,
     row.forEach((e) => {
       const y = r.y + 0.07 + ri * 0.24;
       if (e.color) s.addShape("ellipse", { x: r.x + 0.15 + e.x, y: y + 0.06, w: 0.12, h: 0.12, fill: { color: e.hollow ? "FFFFFF" : hex(e.color), transparency: e.hollow ? 100 : 0 }, line: { color: hex(e.color), width: 0.5, transparency: 0 }, objectName: group });
-      s.addText(e.text, { x: r.x + 0.15 + e.x + (e.color ? 0.16 : 0), y, w: e.w, h: 0.24, valign: "middle", fontFace: FONT, fontSize: 9, bold: !e.color, color: e.color ? INK : MUTED, margin: 0, objectName: group });
+      s.addText(e.text, { x: r.x + 0.15 + e.x + (e.color ? 0.16 : 0), y, w: e.w, h: 0.24, valign: "middle", fontFace: FONT, fontSize: 9 * legendScale, bold: !e.color, color: e.color ? INK : MUTED, margin: 0, objectName: group });
     }),
   );
 }
@@ -113,9 +114,11 @@ function calloutLegend(s: Slide, model: CalloutModel, x: number, bottom: number,
 function calloutOverview(s: Slide, p: PlannedSlide & { kind: "tile" }) {
   const cm = p.callout!.model;
   const style = p.style ?? {};
+  const frame = p.page?.kind === "tile" ? p.page.frame : undefined;
+  const labelsScale = fontSizeForStyle(style, "labels") / 10;
   const proj = projector(p, cm, slideSiteX(style, style.summary !== false), SLIDE_OVERVIEW_FILL);
   const hMax = Math.max(0, ...cm.complexes.map((c) => c.households ?? 0));
-  cm.complexes.forEach((c) => numberDot(s, c, proj(c), dotRadius(c.households, hMax, INCH.rMin, INCH.rMax)));
+  cm.complexes.forEach((c) => numberDot(s, c, proj(c), dotRadius(c.households, hMax, INCH.rMin, INCH.rMax), labelsScale));
   if (cm.complexes.length === 0) {
     const w = 4.6;
     const h = 1.2;
@@ -125,7 +128,7 @@ function calloutOverview(s: Slide, p: PlannedSlide & { kind: "tile" }) {
     s.addText(`기준 ${cm.sourceLine}`, { x: r.x + 0.3, y: r.y + 0.7, w: w - 0.6, h: 0.35, valign: "top", fontFace: FONT, fontSize: 10.5, color: MUTED, margin: 0, fit: "shrink" });
     return;
   }
-  calloutLegend(s, cm, E, L.legendBottom, L.info.x - 2 * E);
+  calloutLegend(s, cm, E, L.legendBottom, L.info.x - 2 * E, style, frame?.legend);
 }
 
 /** 개요 장 오른쪽 정보 판의 핵심 값: 콜아웃 모델이 정한 단지·호실·확인 세대 통계 */
@@ -149,15 +152,21 @@ function calloutStatItem(s: Slide, cm: CalloutModel): ReportItem {
 /** 설명표 장: 번호 점 + 무교차 지시선 + 좌우 표 */
 function calloutPage(s: Slide, p: PlannedSlide & { kind: "tile" }) {
   const { model: cm, page } = p.callout!;
-  const items = pageItems(cm.complexes, page);
+  const frame = p.page?.kind === "tile" ? p.page.frame : undefined;
+  const pageItemsAll = pageItems(cm.complexes, page);
+  const hiddenLabelKeys = new Set(frame?.hiddenLabelKeys ?? []);
+  const items = pageItemsAll.filter((c) => !hiddenLabelKeys.has(`callout-${c.id}`));
+  const hiddenItems = pageItemsAll.filter((c) => hiddenLabelKeys.has(`callout-${c.id}`));
   const f = slideCalloutFrame(rowsFor(items));
   const proj = projector(p, cm, f.siteX, f.fill);
   const hMax = Math.max(0, ...cm.complexes.map((c) => c.households ?? 0));
   const at = new Map(cm.complexes.map((c) => [c.id, proj(c)]));
-  cm.complexes.filter((c) => !items.includes(c)).forEach((c) => {
+  cm.complexes.filter((c) => !pageItemsAll.includes(c)).forEach((c) => {
     const [x, y] = at.get(c.id)!;
     s.addShape("ellipse", { x: x - 0.045, y: y - 0.045, w: 0.09, h: 0.09, fill: { color: hex(dotColor(c)), transparency: 40 }, line: { color: "FFFFFF", width: 0.5 } });
   });
+  const labelsScale = fontSizeForStyle(p.style ?? {}, "labels") / 10;
+  hiddenItems.forEach((c) => numberDot(s, c, at.get(c.id)!, dotRadius(c.households, hMax, INCH.rMin, INCH.rMax), labelsScale));
   const { placed } = layoutCallouts(f, items.map((c) => ({ id: c.id, rank: c.rank, x: at.get(c.id)![0], y: at.get(c.id)![1] })));
   const byId = new Map(items.map((c) => [c.id, c]));
   for (const pl of placed) {
@@ -167,9 +176,9 @@ function calloutPage(s: Slide, p: PlannedSlide & { kind: "tile" }) {
     seg(s, pl.dot, pl.knee, INK, 1, 0, cTag(c, "leader-1"));
     seg(s, pl.knee, pl.edge, INK, 1, 0, cTag(c, "leader-2"));
   }
-  for (const pl of placed) numberDot(s, byId.get(pl.id)!, pl.dot, dotRadius(byId.get(pl.id)!.households, hMax, INCH.rMin, INCH.rMax));
-  for (const pl of placed) calloutCard(s, byId.get(pl.id)!, pl, f, cm.analysisYear);
-  calloutLegend(s, cm, f.left.x1 + 0.35, L.legendBottom, f.right.x0 - f.left.x1 - 0.7);
+  for (const pl of placed) numberDot(s, byId.get(pl.id)!, pl.dot, dotRadius(byId.get(pl.id)!.households, hMax, INCH.rMin, INCH.rMax), labelsScale);
+  for (const pl of placed) calloutCard(s, byId.get(pl.id)!, pl, f, cm.analysisYear, labelsScale);
+  calloutLegend(s, cm, f.left.x1 + 0.35, L.legendBottom, f.right.x0 - f.left.x1 - 0.7, p.style ?? {}, frame?.legend);
 }
 
 function renderCallout({ slide, planned, part }: TileReportRenderContext): ReportItem | void {

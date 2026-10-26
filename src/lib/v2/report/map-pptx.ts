@@ -1,7 +1,7 @@
 import PptxGenJS from "pptxgenjs";
 import { buildingStyleForRaster, isBuildingLayer, layerStyle, legendItems, legendItemsForModel, legendLabelOf, type MapModel } from "../ui/map-layers";
 import { isSiteParcelLayer } from "../ui/site-parcel";
-import { SLIDE, slideCalloutAvoidance, slideGeometry, slideLayout, slideLegend, slidePanelRects, slideReserved, slideSiteX, terrainSectionLayout, type SlideFormat } from "../ui/overlay-layout";
+import { calloutLegendEntries, SLIDE, slideCalloutAvoidance, slideGeometry, slideLayout, slideLegend, slidePanelRects, slideReserved, slideSiteX, terrainSectionLayout, type SlideFormat } from "../ui/overlay-layout";
 import { SLIDE_OVERVIEW_FILL, slideCalloutFrame } from "../ui/callout-layout";
 import { buildMapScene, locatorBox, mapLabelEntries, northArrowBox, RAIL_EXIT_COLOR, RAIL_EXIT_DOT_RADIUS, RAIL_EXIT_DOT_STROKE, scaleBarBox, scaleChromeScaleForBox, type MapScene, type MapSceneBox } from "../ui/map-scene";
 import { badgeTextColor } from "../ui/map-labels";
@@ -496,14 +496,8 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
   const calloutOverview = !!plan.callout && plan.callout.page === 0;
   const calloutDetail = !!plan.callout && plan.callout.page > 0 ? slideCalloutFrame(4) : null;
   const layout = slideLayout(format);
-  const calloutEntries = calloutOverview
-    ? [
-        { text: plan.callout!.model.legend.title },
-        ...plan.callout!.model.legend.items.map((item) => ({ text: item.label, color: item.color, hollow: item.hollow === true })),
-        { text: plan.callout!.model.legend.sizeLabel },
-      ]
-    : [];
-  const calloutAlignment = calloutDetail ? null : slideCalloutAvoidance(panels, calloutEntries, layout, format);
+  const calloutEntries = calloutOverview ? calloutLegendEntries(plan.callout!.model, reportFrame?.legend) : [];
+  const calloutAlignment = calloutDetail ? null : slideCalloutAvoidance(panels, calloutEntries, layout, format, fontSizeForStyle(style, "legend") / DEFAULT_REPORT_FONT_SIZES.legend);
   const calloutLegend = calloutAlignment?.calloutLegend ?? null;
   const geometry = slideGeometry(format);
   const summaryX = panels.summary?.x ?? geometry.w;
@@ -998,14 +992,9 @@ export function editableMapAvoid(plan: PlannedSlide & { kind: "tile" }, model: M
   const panels = slidePanelRects(style, hasSummary, slideLegend(model, !plan.muted).rect);
   const terrainShown = plan.view.code === "D17" && !!plan.view.terrainSections && !!plan.terrainSection;
   const terrainLayout = terrainShown ? terrainSectionLayout(panels) : null;
-  const calloutEntries = plan.callout?.page === 0
-    ? [
-        { text: plan.callout.model.legend.title },
-        ...plan.callout.model.legend.items.map((item) => ({ text: item.label, color: item.color, hollow: item.hollow === true })),
-        { text: plan.callout.model.legend.sizeLabel },
-      ]
-    : [];
-  const calloutAlignment = slideCalloutAvoidance(panels, calloutEntries);
+  const frame = plan.page?.kind === "tile" ? plan.page.frame : undefined;
+  const calloutEntries = plan.callout?.page === 0 ? calloutLegendEntries(plan.callout.model, frame?.legend) : [];
+  const calloutAlignment = slideCalloutAvoidance(panels, calloutEntries, undefined, "wide", fontSizeForStyle(style, "legend") / DEFAULT_REPORT_FONT_SIZES.legend);
   const calloutLegend = calloutAlignment.calloutLegend;
   const calloutDetail = plan.callout?.page ? slideCalloutFrame(4) : null;
   const summaryX = panels.summary?.x ?? SLIDE.w;

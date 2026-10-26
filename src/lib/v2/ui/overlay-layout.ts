@@ -7,6 +7,7 @@
  */
 import { isBuildingLayer, legendItemsForModel, type MapLegendLayerItem, type MapModel } from "./map-layers";
 import type { PagePanelKey, PageStyle } from "./board-state";
+import type { CalloutModel } from "./tile-view";
 
 export type Box = { x0: number; y0: number; x1: number; y1: number };
 
@@ -343,9 +344,11 @@ export function slideCalloutLegendLayout(
   x: number,
   bottom: number,
   maxW: number,
+  fontScale = 1,
 ): SlideCalloutLegendLayout | null {
   if (entries.length === 0 || maxW <= 0) return null;
-  const textIn = (value: string, pt: number) => ([...value].reduce((width, ch) => width + (ch.charCodeAt(0) > 0x2e80 ? 1 : 0.56), 0) * pt) / 72;
+  const scale = Number.isFinite(fontScale) && fontScale > 0 ? fontScale : 1;
+  const textIn = (value: string, pt: number) => ([...value].reduce((width, ch) => width + (ch.charCodeAt(0) > 0x2e80 ? 1 : 0.56), 0) * pt * scale) / 72;
   const rows: SlideCalloutLegendRow[][] = [[]];
   let cx = 0;
   for (const entry of entries) {
@@ -374,11 +377,12 @@ export function slideCalloutAvoidance(
   entries: readonly SlideCalloutLegendEntry[] = [],
   layout = slideLayout(),
   format: SlideFormat = "wide",
+  fontScale = 1,
 ): SlideCalloutAvoidance {
   const g = slideGeometry(format);
   const summaryX = panels.summary?.x ?? g.w;
   const calloutLegend = entries.length > 0
-    ? slideCalloutLegendLayout(entries, g.edge, layout.legendBottom, Math.max(0, summaryX - 2 * g.edge))?.rect ?? null
+    ? slideCalloutLegendLayout(entries, g.edge, layout.legendBottom, Math.max(0, summaryX - 2 * g.edge), fontScale)?.rect ?? null
     : null;
   const gap = g.edge * 0.5;
   const lowerOverlayTop = Math.min(panels.legend?.y ?? g.h, calloutLegend?.y ?? g.h);
@@ -392,7 +396,9 @@ export function slideCalloutAvoidance(
 type SlideLegendItem = Omit<MapLegendLayerItem, "highlight"> & { site?: boolean };
 export type SlideLegendOptions = { order?: readonly string[]; hidden?: readonly string[]; visibleOnly?: boolean; placement?: "below" | "right" | "hidden" };
 
-function legendMatches(item: Pick<MapLegendLayerItem, "layer" | "label">, value: string): boolean {
+export type CalloutLegendOptions = Pick<SlideLegendOptions, "order" | "hidden" | "visibleOnly" | "placement">;
+
+export function legendMatches(item: Pick<MapLegendLayerItem, "layer" | "label">, value: string): boolean {
   const needle = value.trim().toLowerCase();
   if (!needle) return false;
   const layer = item.layer.toLowerCase();
@@ -402,6 +408,22 @@ function legendMatches(item: Pick<MapLegendLayerItem, "layer" | "label">, value:
     || label.startsWith(`${needle}(`)
     || label.startsWith(`${needle} ·`)
     || (needle === "건물" && isBuildingLayer(item.layer));
+}
+
+/** A05/A06 설명선 범례를 지도 범례와 같은 숨김·순서·배치 계약으로 만든다. */
+export function calloutLegendEntries(model: CalloutModel, options: CalloutLegendOptions = {}): SlideCalloutLegendEntry[] {
+  if (options.placement === "hidden") return [];
+  let items = model.legend.items.map((item) => ({ text: item.label, color: item.color, hollow: item.hollow === true }));
+  const matches = (item: SlideCalloutLegendEntry, value: string): boolean => legendMatches({ layer: item.text, label: item.text }, value);
+  if (options.hidden?.length) items = items.filter((item) => !options.hidden!.some((hidden) => matches(item, hidden)));
+  if (options.order?.length) {
+    const order = options.order;
+    items = items
+      .map((item, index) => ({ item, index, rank: order.findIndex((value) => matches(item, value)) }))
+      .sort((a, b) => (a.rank < 0 ? Number.MAX_SAFE_INTEGER : a.rank) - (b.rank < 0 ? Number.MAX_SAFE_INTEGER : b.rank) || a.index - b.index)
+      .map(({ item }) => item);
+  }
+  return [{ text: model.legend.title }, ...items, { text: model.legend.sizeLabel }];
 }
 
 /** 지도 모델 → 범례 항목·문구·자리 (슬라이드 그리기와 지도 이미지의 라벨 회피가 같은 값을 쓴다) */

@@ -16,7 +16,7 @@ import { S01_MASS_LABEL } from "../tile/s01/cut";
 import type { RoseSeason } from "../tile-result";
 import type { Scene } from "../scene";
 import { renderMass3dPng } from "../ui/mass-3d-runtime";
-import { SLIDE, slideCalloutAvoidance, slideLayout, slidePanelRects, slideReserved, slideSiteX, slideLegend, terrainSectionLayout } from "../ui/overlay-layout";
+import { calloutLegendEntries, SLIDE, slideCalloutAvoidance, slideLayout, slidePanelRects, slideReserved, slideSiteX, slideLegend, terrainSectionLayout } from "../ui/overlay-layout";
 import { BASEMAP_STACK, metersPerPixel, slideViewport, tilesFor, tileUrl, type BasemapChoice, type Viewport } from "../ui/map-projection";
 import { inflateRaster, paintRaster } from "../ui/raster-image";
 import { RASTER_STYLES } from "../ui/map-layers";
@@ -28,6 +28,7 @@ import { nativeMapStatus } from "./map-pptx";
 import type { PageStyle } from "../ui/board-state";
 import { mapFrameScaleOptions, scaleOptionsForFrame, zoomForScale, type ReportScaleOptions } from "../ui/report-scale";
 import { DEFAULT_REPORT_FONT_SIZES, type MapFrameState } from "./report-doc";
+import { fontSizeForStyle } from "./pptx-kit";
 import { northArrowBox, scaleBarBox } from "../ui/map-scene";
 import { mapLayoutUnitForFrame } from "./report-geometry";
 
@@ -312,14 +313,8 @@ function extraFor(p: PlannedSlide, model: MapModel): Extra {
   const rightInset = hasSummary ? Math.max(0, VIEW_W - (panels.summary?.x ?? SLIDE.w) * PX_PER_INCH + SLIDE.edge * PX_PER_INCH * 0.5) : SLIDE.edge * PX_PER_INCH;
   const calloutDetail = p.callout && p.callout.page > 0 ? slideCalloutFrame(4) : null;
   const calloutOverview = p.callout?.page === 0;
-  const calloutEntries = calloutOverview
-    ? [
-        { text: p.callout!.model.legend.title },
-        ...p.callout!.model.legend.items.map((item) => ({ text: item.label, color: item.color, hollow: item.hollow === true })),
-        { text: p.callout!.model.legend.sizeLabel },
-      ]
-    : [];
-  const calloutAlignment = slideCalloutAvoidance(panels, calloutEntries);
+  const calloutEntries = calloutOverview ? calloutLegendEntries(p.callout!.model, frame?.legend) : [];
+  const calloutAlignment = slideCalloutAvoidance(panels, calloutEntries, undefined, "wide", fontSizeForStyle(baseStyle, "legend") / DEFAULT_REPORT_FONT_SIZES.legend);
   const calloutTop = calloutAlignment ? calloutAlignment.calloutTop * PX_PER_INCH : undefined;
   const northTop = (calloutTop ?? (panels.title.y + panels.title.h) * PX_PER_INCH + SLIDE.edge * PX_PER_INCH * 0.5) + 13 * Math.min(1.5, Math.max(1, VIEW_H / 360));
   const northAvoid = northArrowBox(VIEW_W, VIEW_H, rightInset, northTop);
