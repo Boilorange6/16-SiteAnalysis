@@ -37,8 +37,9 @@
 - App shell: `100dvh`, 데스크톱은 고정 폭 사이드바 + 유동 지도, 모바일은 지도 위에 여닫는 시트.
 - Scroll ownership: `body`는 스크롤하지 않는다. 데스크톱/모바일 모두 패널 본문 한 곳만 `overflow-y-auto`; 지도와 헤더는 고정한다. 모든 flex 스크롤 조상은 `min-height:0`을 가진다.
 - Breakpoints: mobile `<640`, tablet `768`, desktop `1024`, wide `1280`.
+- 지원 폭 (2026-10-22 결정): PC + 태블릿 가로모드, 최소 1024px. 모바일·세로모드는 만들지 않으며 기존 모바일 CSS는 유지·QA 대상이 아니다.
 - Metric grid: 최소 2열, 여유 폭에서 4열. 상세 행은 좁은 폭에서 한 열로 자연스럽게 흐른다.
-- 200% zoom과 390px 폭에서 주요 콘텐츠의 수평 스크롤을 만들지 않는다.
+- 200% zoom과 1024px 폭에서 주요 콘텐츠의 수평 스크롤을 만들지 않는다.
 
 ## 5. Components
 
@@ -113,7 +114,7 @@
 ### Personas and constraints
 
 - **입지 분석가**: 수십 개 사업에서 세대수·면적·단계·경계 신뢰도를 빠르게 비교하고 출처 기준일을 확인한다.
-- **키보드/200% 확대/동작 축소 사용자**: 탭 순서만으로 패널, retry, 지도 marker/popup을 사용할 수 있고 390px 또는 200% zoom에서 핵심 정보가 잘리지 않아야 한다.
+- **키보드/200% 확대/동작 축소 사용자**: 탭 순서만으로 패널, retry, 지도 marker/popup을 사용할 수 있고 1024px 또는 200% zoom에서 핵심 정보가 잘리지 않아야 한다.
 - WCAG 2.2 AA: body contrast 4.5:1, large text/UI 3:1, visible focus, keyboard reachability, meaningful status text, reduced-motion support.
 - 법적 고지 `법적 효력 없는 참고자료`는 정비사업 패널과 popup에서 명확히 읽혀야 한다.
 
