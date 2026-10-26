@@ -485,6 +485,37 @@
   color: #555b66;
 }
 
+.statusDone,
+.statusHold,
+.statusPending {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 7px;
+  border-radius: 5px;
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.statusDone {
+  border: 1px solid #4f9965;
+  background: #edf8f0;
+  color: #246238;
+}
+
+.statusHold {
+  border: 1px dashed #9aa0aa;
+  background: #f6f7f9;
+  color: #555b66;
+}
+
+.statusPending {
+  border: 1px solid var(--blue);
+  background: var(--blue-soft);
+  color: #1f4fa3;
+}
+
 .linkTag {
   border: 1px solid var(--blue);
   background: var(--blue-soft);
@@ -514,6 +545,10 @@
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
+  min-width: 0;
+}
+
+.tileGridItem {
   min-width: 0;
 }
 

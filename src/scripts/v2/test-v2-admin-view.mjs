@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-const { groupSources, filterTiles, sourceLinkForTile, tilesForSource } = await import("../../lib/v2/admin/admin-view.ts");
+const { groupSources, filterTiles, sourceLinkForTile, tilesForSource, pinFromClick, requestContext } = await import("../../lib/v2/admin/admin-view.ts");
 
 const source = (overrides = {}) => ({
   sourceId: "zoning_urban",
@@ -85,5 +85,18 @@ assert.deepEqual([...tilesForSource(usedRow, [
   tile({ code: "A02", declaredSources: ["parcel"], actualSources: ["building"] }),
   tile({ code: "A03", declaredSources: ["parcel"], actualSources: ["parcel"] }),
 ])], ["A01", "A02"]);
+
+assert.deepEqual(pinFromClick({ left: 100, top: 50, width: 400, height: 300 }, 300, 200), { x: 0.5, y: 0.5 });
+assert.equal(pinFromClick({ left: 100, top: 50, width: 400, height: 300 }, 90, 40), null);
+const context = requestContext(tile({ resultStatus: "complete" }), {
+  generatedAt: "2026-10-26T08:00:00.000Z",
+  manifest: { version: "v1", createdAt: null, files: [] },
+  analysis: { id: "analysis-1", address: "서울 중구", radiusM: 1000, analysisDate: "2026-10-26" },
+  sources: [],
+  tiles,
+});
+assert.equal(context.resultStatus, "complete");
+assert.equal(context.analysisDate, "2026-10-26");
+assert.deepEqual(Object.keys(context).filter((key) => ["declaredSources", "actualSources", "check", "files", "cacheVersion", "analysisId"].includes(key)).sort(), ["actualSources", "analysisId", "cacheVersion", "check", "declaredSources", "files"]);
 
 console.log("✓ admin view logic");

@@ -107,7 +107,9 @@ export function requestContext(tile: AdminTile, overview: AdminOverview): Record
     check: tile.check,
     files: tile.files,
     cacheVersion: tile.cacheVersion,
+    resultStatus: tile.resultStatus,
     analysisId: overview.analysis?.id ?? null,
+    analysisDate: overview.analysis?.analysisDate ?? null,
     analysis: overview.analysis,
   };
 }

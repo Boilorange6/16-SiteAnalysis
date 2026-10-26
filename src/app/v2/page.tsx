@@ -36,6 +36,7 @@ import { DEFAULT_PRESET_ID, PRESET_IDS, TILE_PRESETS, type PresetId } from "@/li
 import { getRovingTargetIndex, type RovingGridItem } from "@/lib/v2/ui/roving-grid";
 import { topoReducer, type TopoState } from "@/lib/v2/ui/topo-state";
 import { prepareTopoZip, TOPO_ERROR_COPY, TopoClientError, uploadTopo, type TopoErrorCopyCode } from "@/lib/v2/ui/topo-upload";
+import { useAuth } from "@/providers/auth-provider";
 
 const UNDO_LABEL = { order: "옮김", size: "크기 바꿈", columns: "열 수 바꿈", remove: "삭제됨", removeCopy: "복제 삭제됨", duplicate: "복제됨", add: "추가됨", preset: "프리셋 적용" } as const;
 const UNDO_TOAST_MS = 5000;
@@ -516,6 +517,7 @@ function AddTileCell({ items, onAdd }: { items: readonly AddTileItem[]; onAdd: (
 
 /** 타일 보드. 결과가 바뀌면 부모가 key를 바꿔 새로 만든다. */
 function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSummary, refreshing = false, refreshError, onRefresh, demo, busy, controls, onRerun, onCancel, canceling = false, currentProject, initialProjectBoard, onProjectSaved, onProjectDeleted, onOpenProject, onAuthExpired, onWindUploaded, requestedPreset, initialPreset, onPresetChange, topoState, topoUsed = false, onTopoPick, onTopoNudge, onTopoRemove }: BoardProps) {
+  const { user } = useAuth();
   const [overrides, setOverrides] = useState<Record<string, TileResult>>({});
   const [board, dispatch] = useReducer(boardReducer, baseResults, (results) => initBoard(results, initialPreset));
   const requestedPresetRef = useRef(requestedPreset);
@@ -1021,6 +1023,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
         <header className={styles.topbar}>
           <span className={`${styles.display} ${styles.brand}`}>사이트 분석</span>
           <a className={styles.pill} href="/site/v2/guide">가이드</a>
+          {user?.role === "admin" && <a className={styles.pill} href="/site/v2/admin">관리</a>}
           <ProjectMenu
             analysisId={analysisId}
             currentProjectId={currentProject?.projectId ?? null}

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { authFetch } from "@/lib/auth-fetch";
-import type { AdminOverview, AdminTile } from "@/lib/v2/admin/overview";
+import type { AdminOverview } from "@/lib/v2/admin/overview";
 import type { TileRequest } from "@/lib/v2/admin/requests";
 import {
   filterTiles,
@@ -14,6 +14,8 @@ import {
 import type { TileResult } from "@/lib/v2/tile-result";
 import SourceList from "@/components/v2/admin/source-list";
 import TileGrid from "@/components/v2/admin/tile-grid";
+import TileDrawer from "@/components/v2/admin/tile-drawer";
+import CompareDialog from "@/components/v2/admin/compare-dialog";
 import styles from "./admin.module.css";
 
 type LoadState = "loading" | "ready" | "forbidden" | "error";
@@ -88,7 +90,11 @@ export default function AdminPage() {
   const [filter, setFilter] = useState<TileFilter>("all");
   const [selectedSourceKey, setSelectedSourceKey] = useState<string | null>(null);
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
+  const [compareRequestId, setCompareRequestId] = useState<number | null>(null);
+  const [drawerImageSrc, setDrawerImageSrc] = useState<string | null>(null);
+  const [reopeningId, setReopeningId] = useState<number | null>(null);
   const selectedTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const compareTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   const loadData = useCallback(async (requestedAnalysisId: string | null) => {
     setLoadState("loading");
@@ -155,6 +161,8 @@ export default function AdminPage() {
   const sourceRows = useMemo(() => groupSources(overview?.sources ?? []), [overview]);
   const selectedSource = sourceRows.find((row) => row.key === selectedSourceKey) ?? null;
   const selectedTile = overview?.tiles.find((tile) => tile.code === selectedCode) ?? null;
+  const selectedResult = results.find((result) => result.tileCode === selectedCode);
+  const compareRequest = requests.find((request) => request.id === compareRequestId) ?? null;
   const pendingByTile = useMemo(() => pendingRequestCounts(requests), [requests]);
   const sourceTileCodes = useMemo(
     () => selectedSource && overview ? tilesForSource(selectedSource, overview.tiles) : null,
@@ -184,6 +192,56 @@ export default function AdminPage() {
     setSelectedSourceKey((current) => current === row.key ? null : row.key);
   };
 
+  const updateRequest = useCallback((request: TileRequest) => {
+    setRequests((current) => current.some((item) => item.id === request.id)
+      ? current.map((item) => item.id === request.id ? request : item)
+      : [request, ...current]);
+  }, []);
+
+  const closeCompare = useCallback(() => {
+    setCompareRequestId(null);
+    window.requestAnimationFrame(() => compareTriggerRef.current?.focus());
+  }, []);
+
+  const closeDrawer = useCallback(() => {
+    setCompareRequestId(null);
+    setSelectedCode(null);
+    setDrawerImageSrc(null);
+    window.requestAnimationFrame(() => selectedTriggerRef.current?.focus());
+  }, []);
+
+  const reopenFromCompare = useCallback(async (request: TileRequest, note: string) => {
+    setReopeningId(request.id);
+    try {
+      const response = await authFetch(`/site/api/v2/admin/requests/${request.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reopen", note }),
+      });
+      const body = await response.json().catch(() => ({})) as { request?: TileRequest; error?: string };
+      if (!response.ok || !body.request) throw new Error(body.error ?? "요청을 다시 열지 못했습니다");
+      updateRequest(body.request);
+      closeCompare();
+    } finally {
+      setReopeningId(null);
+    }
+  }, [closeCompare, updateRequest]);
+
+  useEffect(() => {
+    const onEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (compareRequestId !== null) {
+        event.preventDefault();
+        closeCompare();
+      } else if (selectedCode !== null) {
+        event.preventDefault();
+        closeDrawer();
+      }
+    };
+    document.addEventListener("keydown", onEscape);
+    return () => document.removeEventListener("keydown", onEscape);
+  }, [closeCompare, closeDrawer, compareRequestId, selectedCode]);
+
   return (
     <div className={styles.root} data-admin-root>
       <a className={styles.skipLink} href="#admin-content">본문으로 건너뛰기</a>
@@ -205,7 +263,7 @@ export default function AdminPage() {
           )}
         </header>
 
-        <main id="admin-content">
+        <main id="admin-content" inert={selectedCode !== null ? true : undefined}>
           {loadState === "loading" && <p className={styles.loadingState} role="status">관리 데이터를 불러오는 중…</p>}
           {loadState === "forbidden" && (
             <section className={`${styles.inlineCard} ${styles.inlineCardError}`} role="alert" data-admin-state="forbidden">
@@ -299,7 +357,7 @@ export default function AdminPage() {
               </div>
 
               <div className={styles.contentGrid}>
-                <SourceList rows={sourceRows} tiles={overview.tiles} selectedKey={selectedSourceKey} selectedTile={selectedTile} onSelect={toggleSource} />
+                <SourceList rows={sourceRows} selectedKey={selectedSourceKey} selectedTile={selectedTile} onSelect={toggleSource} />
                 <TileGrid
                   tiles={visibleTiles}
                   results={results}
@@ -308,6 +366,8 @@ export default function AdminPage() {
                   pendingByTile={pendingByTile}
                   onSelect={(tile, trigger) => {
                     selectedTriggerRef.current = trigger;
+                    setDrawerImageSrc(null);
+                    setCompareRequestId(null);
                     setSelectedCode(tile.code);
                   }}
                 />
@@ -317,6 +377,34 @@ export default function AdminPage() {
           )}
         </main>
       </div>
+      {selectedTile && overview && (
+        <TileDrawer
+          key={selectedTile.code}
+          tile={selectedTile}
+          result={selectedResult}
+          overview={overview}
+          requests={requests}
+          compareOpen={compareRequestId !== null}
+          onImageReady={setDrawerImageSrc}
+          onClose={closeDrawer}
+          onRequestCreated={updateRequest}
+          onRequestUpdated={updateRequest}
+          onOpenCompare={(request, trigger) => {
+            compareTriggerRef.current = trigger;
+            setCompareRequestId(request.id);
+          }}
+        />
+      )}
+      {compareRequest && selectedTile && (
+        <CompareDialog
+          request={compareRequest}
+          tile={selectedTile}
+          currentImageSrc={drawerImageSrc}
+          onClose={closeCompare}
+          onReopen={reopenFromCompare}
+          reopening={reopeningId === compareRequest.id}
+        />
+      )}
     </div>
   );
 }

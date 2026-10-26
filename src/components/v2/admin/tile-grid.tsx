@@ -76,10 +76,10 @@ function TileThumbnail({ tile, result }: { tile: AdminTile; result: TileResult |
     return () => { cancelled = true; };
   }, [result, tile.actualSources, tile.code, tile.resultStatus, visible]);
 
-  const statusLabel = tile.actualSources === null
-    ? "확인 불가"
-    : tile.code === "S01"
-      ? "3D는 보드에서 확인"
+  const statusLabel = tile.code === "S01"
+    ? "3D는 보드에서 확인"
+    : tile.actualSources === null
+      ? "확인 불가"
       : tile.resultStatus
         ? RESULT_LABELS[tile.resultStatus] ?? tile.resultStatus
         : failed
@@ -127,30 +127,30 @@ export default function TileGrid({ tiles, results, selectedCode, sourceTileCodes
               ? RESULT_LABELS[tile.resultStatus] ?? tile.resultStatus
               : null;
           return (
-            <button
-              key={tile.code}
-              type="button"
-              className={`${styles.tileCard} ${selectedCode === tile.code ? styles.tileCardSelected : ""} ${dimmed ? styles.tileCardDimmed : ""}`}
-              aria-label={`${tile.code} ${tile.title} 상세 열기`}
-              data-admin-tile={tile.code}
-              data-admin-status={statusText ?? "준비됨"}
-              onClick={(event) => onSelect(tile, event.currentTarget)}
-              role="listitem"
-            >
-              <TileThumbnail tile={tile} result={resultByCode.get(tile.code)} />
-              <span className={styles.tileTitleLine}>
-                <span className={styles.tileCode}>{tile.code}</span>
-                <span className={styles.tileTitle}>{tile.title}</span>
-              </span>
-              <span className={styles.tileBadges}>
-                <span className={styles.formText}>{tile.forms.map((form) => FORM_LABELS[form] ?? form).join(" · ")}</span>
-                <span className={styles.kindText}>{kindLabel(tile.kind)}</span>
-                {tile.check.status === "mismatch" && <span className={styles.warningTag}>원천 불일치</span>}
-                {tile.check.status === "unknown" && <span className={styles.statusTag}>확인 불가</span>}
-                {statusText && statusText !== "확인 불가" && <span className={styles.statusTag}>{statusText}</span>}
-                {pending > 0 && <span className={styles.requestTag}>요청 {pending}</span>}
-              </span>
-            </button>
+            <div key={tile.code} role="listitem" className={styles.tileGridItem}>
+              <button
+                type="button"
+                className={`${styles.tileCard} ${selectedCode === tile.code ? styles.tileCardSelected : ""} ${dimmed ? styles.tileCardDimmed : ""}`}
+                aria-label={`${tile.code} ${tile.title} 상세 열기`}
+                data-admin-tile={tile.code}
+                data-admin-status={statusText ?? "준비됨"}
+                onClick={(event) => onSelect(tile, event.currentTarget)}
+              >
+                <TileThumbnail tile={tile} result={resultByCode.get(tile.code)} />
+                <span className={styles.tileTitleLine}>
+                  <span className={styles.tileCode}>{tile.code}</span>
+                  <span className={styles.tileTitle}>{tile.title}</span>
+                </span>
+                <span className={styles.tileBadges}>
+                  <span className={styles.formText}>{tile.forms.map((form) => FORM_LABELS[form] ?? form).join(" · ")}</span>
+                  <span className={styles.kindText}>{kindLabel(tile.kind)}</span>
+                  {tile.check.status === "mismatch" && <span className={styles.warningTag}>원천 불일치</span>}
+                  {tile.check.status === "unknown" && <span className={styles.statusTag}>확인 불가</span>}
+                  {statusText && statusText !== "확인 불가" && <span className={styles.statusTag}>{statusText}</span>}
+                  {pending > 0 && <span className={styles.requestTag}>요청 {pending}</span>}
+                </span>
+              </button>
+            </div>
           );
         })}
         {tiles.length === 0 && <p className={styles.emptyGrid}>이 조건에 맞는 타일이 없습니다.</p>}

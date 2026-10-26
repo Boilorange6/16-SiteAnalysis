@@ -7,7 +7,6 @@ import styles from "@/app/v2/admin/admin.module.css";
 
 type SourceListProps = {
   rows: SourceRow[];
-  tiles: AdminTile[];
   selectedKey: string | null;
   selectedTile: AdminTile | null;
   onSelect: (row: SourceRow) => void;
@@ -30,7 +29,7 @@ function linkLabel(link: ReturnType<typeof sourceLinkForTile>): string | null {
   return null;
 }
 
-export default function SourceList({ rows, tiles, selectedKey, selectedTile, onSelect }: SourceListProps) {
+export default function SourceList({ rows, selectedKey, selectedTile, onSelect }: SourceListProps) {
   return (
     <section className={styles.sourcePanel} aria-labelledby="admin-sources-title" data-admin-source-list>
       <div className={styles.panelHeading}>
