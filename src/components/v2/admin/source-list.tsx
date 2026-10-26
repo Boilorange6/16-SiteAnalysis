@@ -16,6 +16,14 @@ function dateLabel(value: string | null): string {
   return value ? value.slice(0, 10) : "기준일 미기록";
 }
 
+function licenseLabel(code: string): string {
+  if (/^UNRESTRICTED$/i.test(code)) return "이용 제한 없음";
+  if (/^attribution$/i.test(code)) return "출처 표시";
+  const kogl = /^KOGL-(\d)$/i.exec(code);
+  if (kogl) return `공공누리 ${kogl[1]}유형`;
+  return code;
+}
+
 function warningLabel(warn: SourceRow["warn"]): string | null {
   if (warn === "stale") return "오래됨";
   if (warn === "missing") return "미기록";
@@ -33,10 +41,7 @@ export default function SourceList({ rows, selectedKey, selectedTile, onSelect }
   return (
     <section className={styles.sourcePanel} aria-labelledby="admin-sources-title" data-admin-source-list>
       <div className={styles.panelHeading}>
-        <div>
-          <p className={styles.eyebrow}>PROVENANCE</p>
-          <h2 id="admin-sources-title">원천 목록</h2>
-        </div>
+        <h2 id="admin-sources-title">원천 목록</h2>
         <span className={styles.panelCount}>{rows.length}줄</span>
       </div>
       <p className={styles.panelHint}>
@@ -58,7 +63,7 @@ export default function SourceList({ rows, selectedKey, selectedTile, onSelect }
             >
               <span className={styles.sourceRowCopy}>
                 <strong>{row.label}</strong>
-                <span>{dateLabel(row.asOf)} · {row.license}</span>
+                <span>{dateLabel(row.asOf)} · {licenseLabel(row.license)}</span>
               </span>
               <span className={styles.sourceRowMeta}>
                 {link && <span className={`${styles.linkTag} ${link === "선언 누락" || link === "쓰지 않는데 선언" ? styles.linkTagWarning : ""}`}>{link}</span>}

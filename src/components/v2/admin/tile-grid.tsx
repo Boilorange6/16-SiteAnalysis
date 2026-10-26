@@ -17,6 +17,7 @@ const FORM_LABELS: Record<string, string> = {
 };
 
 const RESULT_LABELS: Record<string, string> = {
+  partial: "일부 계산",
   pending: "계산 대기",
   running: "계산 중",
   no_data: "빈 결과",
@@ -24,6 +25,8 @@ const RESULT_LABELS: Record<string, string> = {
   cancelled: "계산 취소",
   not_provided: "제공 안 됨",
 };
+
+const NO_IMAGE_STATUSES = new Set(["pending", "running", "no_data", "failed", "cancelled", "not_provided"]);
 
 type TileGridProps = {
   tiles: AdminTile[];
@@ -62,7 +65,7 @@ function TileThumbnail({ tile, result }: { tile: AdminTile; result: TileResult |
 
   useEffect(() => {
     if (!visible || !result || tile.code === "S01" || tile.actualSources === null) return;
-    if (tile.resultStatus && ["pending", "running", "no_data", "failed", "cancelled", "not_provided"].includes(tile.resultStatus)) return;
+    if (tile.resultStatus && NO_IMAGE_STATUSES.has(tile.resultStatus)) return;
     let cancelled = false;
     setFailed(false);
     void (async () => {
@@ -80,8 +83,8 @@ function TileThumbnail({ tile, result }: { tile: AdminTile; result: TileResult |
     ? "3D는 보드에서 확인"
     : tile.actualSources === null
       ? "확인 불가"
-      : tile.resultStatus
-        ? RESULT_LABELS[tile.resultStatus] ?? tile.resultStatus
+      : tile.resultStatus && NO_IMAGE_STATUSES.has(tile.resultStatus)
+        ? RESULT_LABELS[tile.resultStatus]
         : failed
           ? "그림을 불러오지 못했습니다"
           : src
@@ -111,10 +114,7 @@ export default function TileGrid({ tiles, results, selectedCode, sourceTileCodes
   return (
     <section className={styles.tileSection} aria-labelledby="admin-tiles-title">
       <div className={styles.tileSectionHeading}>
-        <div>
-          <p className={styles.eyebrow}>TILE MAP</p>
-          <h2 id="admin-tiles-title">타일 다이어그램</h2>
-        </div>
+        <h2 id="admin-tiles-title">타일 다이어그램</h2>
         <span className={styles.tileSectionHint}>타일을 누르면 상세 서랍이 열립니다.</span>
       </div>
       <div className={styles.tileGrid} data-admin-grid role="list" aria-label="관리 타일 격자">
@@ -124,7 +124,7 @@ export default function TileGrid({ tiles, results, selectedCode, sourceTileCodes
           const statusText = tile.actualSources === null
             ? "확인 불가"
             : tile.resultStatus
-              ? RESULT_LABELS[tile.resultStatus] ?? tile.resultStatus
+              ? RESULT_LABELS[tile.resultStatus] ?? null
               : null;
           return (
             <div key={tile.code} role="listitem" className={styles.tileGridItem}>

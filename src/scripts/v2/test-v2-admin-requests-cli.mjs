@@ -37,6 +37,8 @@ assert.match(result.out, /#1 \[대기\]/);
 assert.match(result.out, /메모: 단면 그래프 아래 단차표 글자가 작다/);
 assert.match(result.out, /그림:/);
 assert.match(result.out, /핀: 1\(0\.58, 0\.42\)/);
+const kst = new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(one.createdAt));
+assert.ok(result.out.includes(`· ${kst}`), `목록 시간은 한국 시간이어야 합니다: ${kst}`);
 
 result = runTileRequestsCli(["done", String(one.id)], db);
 assert.equal(result.code, 1);

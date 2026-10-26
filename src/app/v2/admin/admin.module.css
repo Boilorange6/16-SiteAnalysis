@@ -1,4 +1,7 @@
-.root {
+/* 서랍·비교 창은 body로 portal되므로 .root 밖에서도 같은 토큰을 받는다. */
+.root,
+.drawer,
+.compareOverlay {
   --bg: #eef0f3;
   --ink: #15171c;
   --muted: #676c76;
@@ -8,17 +11,22 @@
   --blue-soft: #eef3fd;
   --warning: #8a4300;
   --warning-bg: #fff1e0;
-  min-height: 100dvh;
-  background: var(--bg);
   color: var(--ink);
   font-family: var(--font-noto-kr), "Noto Sans KR", "Malgun Gothic", sans-serif;
   font-size: 14px;
   line-height: 1.5;
 }
 
+.root {
+  min-height: 100dvh;
+  background: var(--bg);
+}
+
 .root *,
 .root *::before,
-.root *::after {
+.root *::after,
+.drawer *,
+.compareOverlay * {
   box-sizing: border-box;
 }
 
@@ -372,15 +380,6 @@
   line-height: 1.2;
 }
 
-.eyebrow {
-  margin: 0;
-  color: var(--muted);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  line-height: 1.3;
-}
-
 .panelCount,
 .tileSectionHint {
   color: var(--muted);
@@ -719,6 +718,10 @@
   border-radius: 16px;
   background: #fff;
   box-shadow: 0 6px 20px rgba(21, 23, 28, 0.16);
+}
+
+.drawer > * {
+  flex-shrink: 0;
 }
 
 .drawerHeading,
@@ -1086,6 +1089,10 @@
 @media (max-width: 1150px) {
   .contentGrid {
     grid-template-columns: 250px minmax(0, 1fr);
+  }
+
+  .tileGrid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .summaryPanel {
