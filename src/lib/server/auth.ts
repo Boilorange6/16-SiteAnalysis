@@ -46,6 +46,17 @@ export function isUser(result: User | NextResponse): result is User {
   return "id" in result;
 }
 
+export async function requireAdmin(
+  req: NextRequest,
+): Promise<User | NextResponse> {
+  const result = await requireAuth(req);
+  if (!isUser(result)) return result;
+  if (result.role !== "admin") {
+    return NextResponse.json({ error: "관리자 권한이 필요합니다" }, { status: 403 });
+  }
+  return result;
+}
+
 // ─── Cookie helpers (M-1) ─────────────────────────────────────────────────────
 
 const COOKIE_BASE = {

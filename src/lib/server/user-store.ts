@@ -85,6 +85,11 @@ export function getUserById(id: number): User | null {
   return row ?? null;
 }
 
+export function setUserRole(username: string, role: "user" | "admin"): boolean {
+  const result = getDb().prepare("UPDATE users SET role = ? WHERE username = ?").run(role, username);
+  return result.changes > 0;
+}
+
 // ─── Session management (C-1) ─────────────────────────────────────────────────
 
 const REFRESH_TTL_SECONDS = 14 * 24 * 60 * 60; // 14 days
