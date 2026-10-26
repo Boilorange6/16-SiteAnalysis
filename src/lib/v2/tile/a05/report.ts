@@ -1,6 +1,7 @@
 import { GROUP_TAG_PREFIX } from "../../../pptx-shape-group";
 import { INCH, SLIDE_OVERVIEW_FILL, cardName, cardRows, dotColor, dotRadius, inkOn, isHollowComplexMarker, layoutCallouts, overlapChip, pageItems, rowsFor, slideCalloutFrame, type CalloutFrame, type Complex, type Placed, type Pt } from "../../ui/callout-layout";
-import { framedViewport, makeProjector } from "../../ui/map-projection";
+import { makeProjector, slideViewport } from "../../ui/map-projection";
+import { scaleOptionsForFrame, zoomForScale } from "../../ui/report-scale";
 import { slideCalloutLegendLayout, slideSiteX } from "../../ui/overlay-layout";
 import type { CalloutModel } from "../../ui/tile-view";
 import { unitTypeSummaryParts } from "../../unit-types";
@@ -14,8 +15,16 @@ const AMBER = "9A5B00";
 const K = SLIDE.w / 960;
 const cTag = (c: Complex, part: string) => `${GROUP_TAG_PREFIX}callout-${c.id}|${`콜아웃 ${c.rank} ${cardName(c)}`.replace(/\|/g, "/")}|${part}`;
 
-function projector(model: CalloutModel, siteX: number, fill: number): (c: Complex) => Pt {
-  const pr = makeProjector(framedViewport(model.center, model.radiusM, 960, 540, siteX, fill));
+/** 배경 지도(map-pptx·미리보기)와 같은 뷰: 사용자가 옮기거나 확대한 보고서 프레임(고정 축척 포함)을 따른다 */
+function projector(p: PlannedSlide & { kind: "tile" }, model: CalloutModel, siteX: number, fill: number): (c: Complex) => Pt {
+  const dims = { width: 960, height: 540, siteX, siteY: 0.5, fill };
+  const frame = p.page?.kind === "tile" ? p.page.frame : undefined;
+  const view = !frame
+    ? p.style
+    : frame.scaleDenominator !== null && Number.isFinite(frame.scaleDenominator) && frame.scaleDenominator > 0
+      ? { zoomDelta: zoomForScale(frame.scaleDenominator, model, scaleOptionsForFrame(SLIDE.w * 25.4, dims)), offsetM: frame.offsetM }
+      : { zoomDelta: frame.zoomDelta, offsetM: frame.offsetM };
+  const pr = makeProjector(slideViewport(model, view, dims));
   return (c) => {
     const [x, y] = pr(c.lng, c.lat);
     return [x * K, y * K];
@@ -103,7 +112,8 @@ function calloutLegend(s: Slide, model: CalloutModel, x: number, bottom: number,
 /** 개요 장: 번호 점 전체 + 왼쪽 아래 핵심 값 카드 + 범례 (오른쪽 정보 판은 공용 renderer가 그린다) */
 function calloutOverview(s: Slide, p: PlannedSlide & { kind: "tile" }) {
   const cm = p.callout!.model;
-  const proj = projector(cm, slideSiteX(), SLIDE_OVERVIEW_FILL);
+  const style = p.style ?? {};
+  const proj = projector(p, cm, slideSiteX(style, style.summary !== false), SLIDE_OVERVIEW_FILL);
   const hMax = Math.max(0, ...cm.complexes.map((c) => c.households ?? 0));
   cm.complexes.forEach((c) => numberDot(s, c, proj(c), dotRadius(c.households, hMax, INCH.rMin, INCH.rMax)));
   if (cm.complexes.length === 0) {
@@ -141,7 +151,7 @@ function calloutPage(s: Slide, p: PlannedSlide & { kind: "tile" }) {
   const { model: cm, page } = p.callout!;
   const items = pageItems(cm.complexes, page);
   const f = slideCalloutFrame(rowsFor(items));
-  const proj = projector(cm, f.siteX, f.fill);
+  const proj = projector(p, cm, f.siteX, f.fill);
   const hMax = Math.max(0, ...cm.complexes.map((c) => c.households ?? 0));
   const at = new Map(cm.complexes.map((c) => [c.id, proj(c)]));
   cm.complexes.filter((c) => !items.includes(c)).forEach((c) => {
