@@ -23,6 +23,7 @@
     "build:rail-public-data": "tsx src/scripts/build-planned-rail-public-data.mjs",
     "test:v2": "node src/scripts/v2/run-tests.mjs",
     "set-user-role": "tsx src/scripts/v2/set-user-role.mjs",
+    "tile-requests": "tsx src/scripts/v2/tile-requests.mjs",
     "rtms:fetch": "tsx src/scripts/v2/rtms-fetch.mjs",
     "vworld:fetch": "tsx src/scripts/v2/vworld-fetch.mjs",
     "vworld:fetch-large": "tsx src/scripts/v2/vworld-fetch-large.mjs",
