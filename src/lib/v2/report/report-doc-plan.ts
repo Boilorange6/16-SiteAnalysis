@@ -18,7 +18,10 @@ import type { MapModel } from "../ui/map-layers";
 import { catalogEntry, TILE_CODES } from "../ui/tile-catalog";
 import type { SourceDetailRow, SourceMeta } from "../ui/source-details";
 import { sourceDetailsFor, UNKNOWN_AS_OF } from "../ui/source-details";
-import type { SummaryView, TileView } from "../ui/tile-view";
+import { toTileView, type SummaryView, type TileView } from "../ui/tile-view";
+import type { Scene } from "../scene";
+import type { MapPolygon, TileResult } from "../tile-result";
+import type { A05Filter } from "../engine/a05-filter";
 import { sheetCapacity, sheetView } from "../ui/sheet";
 
 export type ReportDocPlanContext = {
@@ -28,9 +31,14 @@ export type ReportDocPlanContext = {
   /** pagesForTile 호출자가 이미 계산한 장수 컨텍스트를 재사용할 수 있다. */
   complexCounts?: Record<string, number>;
   views?: ReadonlyMap<string, TileView>;
+  results?: ReadonlyMap<string, TileResult>;
+  scene?: Scene | null;
+  analysisSiteParcel?: readonly MapPolygon[] | null;
+  resultFor?: (tileId: string) => TileResult | undefined;
   sourceLineFor?: (view: TileView) => string;
   settingsFor?: (tileId: string) => TileReportSettings;
 };
+type CalloutPage = Extract<ReportPage, { kind: "tile" }> & { part: Extract<TilePart, { type: "callout" }> };
 
 const hasResult = (view: TileView): boolean => view.status === "complete" || view.status === "partial";
 
@@ -154,6 +162,42 @@ function pageForTileSlide(id: string, view: TileView, settings: TileReportSettin
   };
 }
 
+function calloutSlideFor(view: TileView, settings: TileReportSettings, ctx: ReportDocPlanContext): Extract<ReportSlide, { kind: "tile" }> | null {
+  const slide = tileSlides(view.tileId, view, settings, planContext(ctx, ctx.views, ctx.settingsFor)).find((candidate) => candidate.kind === "tile" && candidate.callout?.page === 0);
+  return slide?.kind === "tile" ? slide : null;
+}
+
+/** 설명선 장을 새로 만들 때 개요·빈 장 모두 같은 지도 프레임 기본값을 쓴다. */
+export function calloutPageFor(
+  doc: ReportDoc,
+  view: TileView,
+  settings: TileReportSettings,
+  ctx: ReportDocPlanContext,
+  page: number,
+  shownKeys?: readonly string[],
+  filter?: A05Filter | null,
+): Extract<ReportPage, { kind: "tile" }> {
+  const slide = calloutSlideFor(view, settings, ctx) ?? {
+    kind: "tile" as const,
+    view,
+    body: { kind: "result" as const, face: "single" as const },
+    faceLabel: null,
+    map: { ...view.backdrop, tileCode: view.code },
+    muted: false,
+    callout: { model: view.callout!, page: 0, pages: 1, filterLine: view.filterLine },
+  };
+  const base = pageForTileSlide(newPageId(doc), view, settings, { ...slide, callout: { ...slide.callout!, page } }, 0);
+  return {
+    ...base,
+    part: {
+      type: "callout",
+      page,
+      ...(shownKeys !== undefined ? { shownKeys: [...shownKeys] } : {}),
+      ...(filter !== undefined ? { filter } : {}),
+    },
+  };
+}
+
 function cloneMapFrame(frame: MapFrameState | undefined): MapFrameState {
   const source = frame ?? defaultFrame();
   return {
@@ -213,6 +257,11 @@ export function pagesForTile(
   settings: TileReportSettings,
   ctx: ReportDocPlanContext,
 ): ReportPage[] {
+  if (view.callout && isTileResultView(view)) {
+    const overview = calloutPageFor(doc, view, settings, ctx, 0);
+    const blank = calloutPageFor({ ...doc, pages: [...doc.pages, overview] }, view, settings, ctx, 1, [], settings.a05Filter ?? null);
+    return [overview, blank];
+  }
   const slides = tileSlides(tileId, view, settings, planContext(ctx, ctx.views, ctx.settingsFor));
   const pages: ReportPage[] = [];
   let sheetIndex = 0;
@@ -489,6 +538,37 @@ function plannedWithMeta(slide: ReportSlide, page: ReportPage, key: PageKey, foo
   return { ...slide, no: 0, total: 0, footer, key, style, page, format, notes: page.notes };
 }
 
+function calloutViewForPage(page: CalloutPage, view: TileView, ctx: ReportDocPlanContext): TileView {
+  if (!Object.prototype.hasOwnProperty.call(page.part, "filter")) return view;
+  const result = ctx.resultFor?.(page.tileId) ?? ctx.results?.get(page.tileId);
+  if (!result || !view.callout) return view;
+  const filtered = toTileView(result, ctx.scene, ctx.analysisSiteParcel, page.part.filter ?? null);
+  return { ...filtered, tileId: page.tileId };
+}
+
+function calloutSlideForPage(doc: ReportDoc, page: CalloutPage, view: TileView, ctx: ReportDocPlanContext): ReportSlide | null {
+  if (page.part.type !== "callout") return null;
+  const pageView = calloutViewForPage(page, view, ctx);
+  if (!pageView.callout) return null;
+  const pages = Math.max(1, doc.pages.filter((candidate) => candidate.kind === "tile" && candidate.tileId === page.tileId && candidate.part.type === "callout").length);
+  return {
+    kind: "tile",
+    view: pageView,
+    body: { kind: "result", face: "single" },
+    faceLabel: null,
+    map: { ...pageView.backdrop, tileCode: pageView.code },
+    muted: false,
+    pinnedKeys: [...page.frame.pinnedKeys],
+    callout: {
+      model: pageView.callout,
+      page: page.part.page,
+      pages,
+      filterLine: pageView.filterLine,
+      ...(page.part.shownKeys !== undefined ? { shownKeys: [...page.part.shownKeys] } : {}),
+    },
+  };
+}
+
 /** 독립 보고서 문서를 PPT 렌더러가 소비하는 슬라이드로 계획한다. */
 export function planReportDoc(doc: ReportDoc, views: ReadonlyMap<string, TileView>, ctx: ReportDocPlanContext): PlannedSlide[] {
   const sourceMeta = ctx.sourceMeta ?? new Map<string, SourceMeta>();
@@ -534,7 +614,9 @@ export function planReportDoc(doc: ReportDoc, views: ReadonlyMap<string, TileVie
     if (page.kind === "tile") {
       const view = views.get(page.tileId);
       const slide = view
-        ? slideForPart(page, tileSlides(page.tileId, view, page.settings, viewContext))
+        ? page.part.type === "callout"
+          ? calloutSlideForPage(doc, page as CalloutPage, view, ctx)
+          : slideForPart(page, tileSlides(page.tileId, view, page.settings, viewContext))
         : null;
       const selected = markMissing(slide ?? missingSlide(page, ctx.summary));
       const footerView = view ?? missingView(page.tileId, ctx.summary);

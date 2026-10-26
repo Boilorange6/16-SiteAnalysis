@@ -52,6 +52,7 @@ const list = C.rankSupply(
 assert.deepEqual(list.map((c) => c.name), ["곧A", "곧B", "중복", "먼 미래", "지난 최근", "지난 오래", "일정 없음"], "A05 층은 제외");
 assert.deepEqual(list.map((c) => c.rank), [1, 2, 3, 4, 5, 6, 7]);
 assert.deepEqual(list.map((c) => c.supply.timing), ["m0_12", "m0_12", "m13_24", "later", "past", "past", "unscheduled"]);
+assert.deepEqual(C.sortComplexes(list, "supply").map((c) => c.name), list.map((c) => c.name), "A06 입주 시기 기준은 rankSupply 순서를 사용");
 assert.ok(list.every((c) => c.supply.plannedMonth === null || /^\d{4}-\d{2}$/.test(c.supply.plannedMonth)), "일자를 만들지 않는다");
 assert.deepEqual(C.rankSupply(list.map(() => sup({})), "2026-09-30").map((c) => c.id), ["c1", "c2", "c3", "c4", "c5", "c6", "c7"]);
 

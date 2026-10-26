@@ -106,6 +106,16 @@ assert.deepEqual(formatted.pages.map((item) => item.frame), docWithPages.pages.m
 assert.equal(docWithPages.format, "wide", "format reducer는 입력을 바꾸지 않는다");
 
 const rich = reportDocReducer(withNote, { type: "text", id: "p1", title: "새 제목", summary: "새 요약" });
+const calloutSourceKeys = ["apt|127.000000|37.000000|가"];
+const calloutPage = page("cp1", { tileId: "t-A05", part: { type: "callout", page: 1, shownKeys: calloutSourceKeys, filter: { year: { min: 2000, max: null } } } });
+const calloutAdded = reportDocReducer(EMPTY_REPORT_DOC, { type: "add", pages: [calloutPage], index: 0 });
+calloutSourceKeys.push("mutated-after-add");
+assert.deepEqual(calloutAdded.pages[0].part.shownKeys, ["apt|127.000000|37.000000|가"], "callout shownKeys는 깊게 복사된다");
+const eleven = reportDocReducer(calloutAdded, { type: "calloutShown", id: "cp1", keys: Array.from({ length: 11 }, (_, index) => `key-${index}`) });
+assert.equal(eleven.pages[0].part.shownKeys.length, 10, "shownKeys는 장당 10개로 제한한다");
+const filtered = reportDocReducer(eleven, { type: "calloutFilter", id: "cp1", filter: { households: { min: 500, max: null } }, keys: ["second", "first"] });
+assert.deepEqual(filtered.pages[0].part.shownKeys, ["second", "first"], "필터 변경은 전달된 순서와 키를 보존한다");
+assert.deepEqual(filtered.pages[0].part.filter, { households: { min: 500, max: null } }, "필터 변경은 정규화한 filter를 저장한다");
 let history = { past: [], present: rich, future: [] };
 history = historyApply(history, { type: "remove", id: "p1" });
 assert.equal(history.present.pages.some((item) => item.id === "p1"), false);

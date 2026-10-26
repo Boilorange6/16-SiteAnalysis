@@ -19,6 +19,14 @@ const feat = (o) => ({ layer: "apt", lng: 127, lat: 37, ...o });
   assert.deepEqual(list.map((c) => c.rank), [1, 2, 3, 4, 5]);
   assert.equal(list[3].households, 50, "households가 없으면 weight");
   assert.deepEqual(C.rankComplexes([feat({ name: "x" }), feat({ name: "y" })]).map((c) => c.id), ["c1", "c2"]);
+  const sortable = C.rankComplexes([
+    feat({ name: "연식", households: 100, approvalYear: 1990, floorsMax: 12, distanceM: 100 }),
+    feat({ name: "최신", households: 50, approvalYear: 2020, floorsMax: 30, distanceM: 200 }),
+    feat({ name: "미상", households: 900, approvalYear: null, floorsMax: null, distanceM: 50 }),
+  ]);
+  assert.deepEqual(C.sortComplexes(sortable, "year").map((c) => c.name), ["최신", "연식", "미상"], "준공연대는 최신 먼저·미상 뒤");
+  assert.deepEqual(C.sortComplexes(sortable, "households").map((c) => c.name), ["미상", "연식", "최신"], "세대수는 큰 값 먼저");
+  assert.deepEqual(C.sortComplexes(sortable, "floors").map((c) => c.name), ["최신", "연식", "미상"], "최고층수는 큰 값 먼저·미상 뒤");
 }
 
 // ── 점: 색 = 준공 연대(D04 팔레트), 크기 = √세대수 ──
@@ -88,7 +96,7 @@ const feat = (o) => ({ layer: "apt", lng: 127, lat: 37, ...o });
   const scaledLegendLayout = O.slideCalloutLegendLayout([{ text: "범례" }], 0, 1, 4, 1.4);
   assert.ok(scaledLegendLayout.rect.w > baseLegendLayout.rect.w, "범례 글자 배율이 폭 계산에도 반영");
 
-  const capture = (style = {}, framePatch = {}) => {
+  const capture = (style = {}, framePatch = {}, calloutPatch = {}) => {
     const shapes = [];
     const texts = [];
     const slide = {
@@ -102,7 +110,7 @@ const feat = (o) => ({ layer: "apt", lng: 127, lat: 37, ...o });
       planned: {
         kind: "tile",
         style,
-        callout: { model, page: 1, pages: C.calloutReportPages("all", model.complexes.length) },
+        callout: { model, page: 1, pages: C.calloutReportPages("all", model.complexes.length), ...calloutPatch },
         page: { kind: "tile", frame },
       },
     });
@@ -121,11 +129,22 @@ const feat = (o) => ({ layer: "apt", lng: 127, lat: 37, ...o });
   assert.equal(baseCardNumber.options.fontSize, 8, "기본 카드 번호 글자 크기는 기존 8pt");
   assert.ok(scaledCardNumber.options.fontSize > baseCardNumber.options.fontSize, "labels 배율이 카드 글자에 반영");
   assert.ok(scaledDotNumber.options.fontSize > baseDotNumber.options.fontSize, "labels 배율이 번호 점 글자에 반영");
-  const hiddenId = model.complexes[0].id;
-  const hiddenCard = capture({}, { hiddenLabelKeys: [`callout-${hiddenId}`] });
-  assert.equal(hiddenCard.shapes.some((item) => item.options.objectName?.includes(`callout-${hiddenId}|`) && item.options.objectName?.endsWith("|card")), false, "숨긴 콜아웃 카드 없음");
-  assert.equal(hiddenCard.shapes.some((item) => item.options.objectName?.includes(`callout-${hiddenId}|`) && item.options.objectName?.includes("|leader-")), false, "숨긴 콜아웃 지시선 없음");
-  assert.ok(hiddenCard.shapes.some((item) => item.options.objectName?.includes(`callout-${hiddenId}|`) && item.options.objectName?.endsWith("|dot")), "숨긴 콜아웃 점은 유지");
+  const shownKeys = [model.complexes[2].key, model.complexes[0].key];
+  const selected = capture({}, {}, { shownKeys });
+  const selectedCards = selected.shapes.filter((item) => item.options.objectName?.endsWith("|card"));
+  assert.equal(selectedCards.length, 2, "shownKeys만 카드로 그린다");
+  assert.ok(selectedCards[0].options.objectName.includes(encodeURIComponent(shownKeys[0])), "shownKeys 배열 순서가 첫 카드 순서가 된다");
+  assert.deepEqual(selected.texts.filter((item) => item.options.objectName?.endsWith("|card-no")).map((item) => item.value), ["1", "2"], "shownKeys 순서대로 카드 번호를 1부터 다시 매긴다");
+  const mini = selected.shapes.filter((item) => item.options.objectName?.endsWith("|mini"));
+  assert.equal(mini.length, model.complexes.length - shownKeys.length, "나머지는 작은 점으로 유지한다");
+  assert.ok(mini.every((item) => item.options.objectName.includes("callout-key:")), "작은 점에도 안정 키 태그가 있다");
+  const blank = capture({}, {}, { shownKeys: [] });
+  assert.equal(blank.shapes.some((item) => item.options.objectName?.endsWith("|card")), false, "shownKeys=[]는 카드 없는 빈 장");
+  assert.equal(blank.shapes.filter((item) => item.options.objectName?.endsWith("|mini")).length, model.complexes.length, "빈 장은 모든 단지를 작은 점으로 둔다");
+  const overview = [];
+  const overviewSlide = { addShape: (kind, options) => overview.push({ kind, options }), addText: (value, options) => overview.push({ value, options }) };
+  a05ReportModule.report.render({ slide: overviewSlide, part: "overview", planned: { kind: "tile", style: {}, callout: { model, page: 0, pages: 2 } } });
+  assert.equal(overview.some((item) => item.options?.objectName?.endsWith("|dot-no")), false, "개요 점에는 번호를 쓰지 않는다");
   const hiddenLegendRender = capture({}, { legend: { placement: "hidden" } });
   assert.equal(hiddenLegendRender.shapes.some((item) => item.options.objectName?.includes("panel-callout-legend")), false, "범례 placement hidden은 PPT 도형도 숨김");
 }

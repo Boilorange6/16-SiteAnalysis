@@ -629,6 +629,8 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
   });
 
   const analysisSiteParcel = useMemo(() => (siteSummary.siteParcel === undefined ? siteParcelFromResults(results) : siteSummary.siteParcel), [siteSummary.siteParcel, results]);
+  const reportResults = useMemo(() => new Map(results.map((result) => [result.tileId, result] as const)), [results]);
+  const reportResultFor = useCallback((tileId: string) => reportResults.get(tileId) ?? reportResults.get(sourceTileId(board, tileId)), [board, reportResults]);
   const sourceViews = useMemo(() => new Map(results.map((r) => {
     const view = toTileView(r, scene, analysisSiteParcel, board.a05Filter[r.tileId] ?? null);
     return [r.tileId, view] as const;
@@ -689,7 +691,8 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
   const sheetableIds = useMemo(() => board.order.filter((id) => views.has(id) && views.get(id)!.code !== "SHEET"), [board.order, views]);
   const summary = useMemo(() => toSummaryView(siteSummary, results), [siteSummary, results]);
   const analysisDate = results[0]?.conditions.analysisDate ?? "기준일 미확인";
-  const reportDocPageCount = useMemo(() => printedPageCount(board.reportDoc, views, { summary, analysisDate, views }), [analysisDate, board.reportDoc, summary, views]);
+  const reportPlanContext = useMemo(() => ({ summary, analysisDate, views, results: reportResults, scene, analysisSiteParcel, resultFor: reportResultFor }), [analysisDate, analysisSiteParcel, reportResultFor, reportResults, scene, summary, views]);
+  const reportDocPageCount = useMemo(() => printedPageCount(board.reportDoc, views, reportPlanContext), [board.reportDoc, reportPlanContext, views]);
   const total = board.order.length;
   const notProvidedIds = shown.filter((id) => views.get(id)?.status === "not_provided");
   const visibleShown = shown.filter((id) => views.get(id)?.status !== "not_provided");
@@ -790,7 +793,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
 
   const openReportPresentation = () => {
     if (demo || actionBusy || board.reportDoc.pages.length === 0) return;
-    setPresentationPlan(planReportDoc(board.reportDoc, views, { summary, analysisDate, views }));
+    setPresentationPlan(planReportDoc(board.reportDoc, views, reportPlanContext));
   };
 
   const makeDxf = async (origin: "site" | "utmk" = "site") => {
@@ -1189,7 +1192,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
           </>}
         </header>
 
-        {boardMode === "report" && <ReportMode board={board} dispatch={dispatch} views={views} summary={summary} analysisDate={analysisDate} basemap={basemap} dirty={boardDirty} demo={demo} busy={actionBusy} onPresentation={openReportPresentation} />}
+        {boardMode === "report" && <ReportMode board={board} dispatch={dispatch} views={views} summary={summary} analysisDate={analysisDate} basemap={basemap} dirty={boardDirty} demo={demo} busy={actionBusy} onPresentation={openReportPresentation} results={reportResults} scene={scene} analysisSiteParcel={analysisSiteParcel} resultFor={reportResultFor} />}
 
         {boardMode === "tile" && <>
         {!demo && <AnalysisProgress jobs={jobs} onCancel={onCancel} canceling={canceling} />}

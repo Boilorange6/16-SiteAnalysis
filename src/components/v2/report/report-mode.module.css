@@ -297,6 +297,19 @@
 .numberGrid input { box-sizing: border-box; width: 100%; min-width: 0; min-height: 44px; padding: 6px 7px; color: var(--report-ink); background: #fff; border: 1px solid var(--report-line); border-radius: 5px; font: inherit; font-size: 12px; }
 .inlineActions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; min-width: 0; }
 .inlineActions .secondaryButton { width: 100%; min-width: 0; min-height: 44px; padding: 6px 5px; font-size: 12px; }
+.calloutAutoOptions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 8px; }
+.calloutLabelHeader { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; color: var(--report-muted); font-size: 12px; }
+.calloutLabelHeader strong { color: var(--report-ink); font-weight: 700; }
+.calloutLabelList { display: grid; gap: 4px; max-height: 320px; margin-top: 4px; overflow-x: hidden; overflow-y: auto; }
+.calloutLabelRow { display: flex; align-items: center; justify-content: space-between; gap: 4px; min-width: 0; min-height: 44px; }
+.calloutLabelCheck { display: flex; align-items: center; flex: 1 1 auto; gap: 8px; min-width: 0; min-height: 44px; color: var(--report-ink); font-size: 12px; cursor: pointer; }
+.calloutLabelCheck input { width: 17px; height: 17px; flex: 0 0 auto; accent-color: var(--report-accent); }
+.calloutLabelDot { width: 12px; height: 12px; flex: 0 0 12px; border: 1px solid; border-radius: 50%; }
+.calloutLabelText { display: grid; min-width: 0; gap: 1px; }
+.calloutLabelName, .calloutLabelMeta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.calloutLabelName { font-weight: 600; }
+.calloutLabelMeta { color: var(--report-muted); font-size: 11px; }
+.calloutLabelOrder { display: flex; flex: 0 0 auto; gap: 2px; }
 .radioList, .layerList { display: grid; gap: 6px; }
 .radioList label, .layerList label, .switchRow { display: flex; align-items: center; gap: 8px; min-height: 44px; color: var(--report-ink); font-size: 12px; font-weight: 400; }
 .radioList input, .layerList input, .switchRow input { width: 17px; height: 17px; accent-color: var(--report-accent); }

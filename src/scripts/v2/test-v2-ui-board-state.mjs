@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 
 const { GODEOK_RESULTS } = await import("../../lib/v2/ui/fixtures/godeok.ts");
-const { initBoard, boardReducer, reportPages, serializeBoardState, restoreBoardState, migrateSnapshot, TILE_CODE_RENAMES } = await import("../../lib/v2/ui/board-state.ts");
+const { initBoard, boardReducer, reportPages, serializeBoardState, restoreBoardState, restoreReportDoc, migrateSnapshot, TILE_CODE_RENAMES } = await import("../../lib/v2/ui/board-state.ts");
 const { TILE_CODES, TILE_PRESETS, PRESET_IDS, DEFAULT_PRESET_ID } = await import("../../lib/v2/ui/tile-catalog.ts");
 const { withLegacyTileState, withLegacyTileStates } = await import("./legacy-report-fixture.mjs");
 
@@ -479,6 +479,27 @@ assert.deepEqual(reportPages(s), { tiles: 9, pages: 12 }); // 포함·면 설정
   assert.deepEqual(restored.labels["t-D04"], [{ key: "bldg_2000s|b-2", on: true }], "라벨 중복 제거 및 저장 왕복");
   assert.equal(restored.labels["deleted-tile"], undefined, "현재 결과에 없는 타일 라벨 정리");
   assert.deepEqual(restoreBoardState(GODEOK_RESULTS, JSON.stringify(snapshot)).labels, snapshot.labels, "labels 저장→불러오기 왕복");
+}
+
+// 설명표 장 선택 상태: 저장 복원은 문자열 키만 최대 10개로 남기고 A05 filter를 보존한다.
+{
+  const restored = restoreReportDoc({
+    v: 1,
+    format: "wide",
+    pages: [{
+      id: "report-callout",
+      kind: "tile",
+      layout: "map-summary",
+      panels: {},
+      textBoxes: [],
+      notes: "",
+      tileId: "t-A05",
+      part: { type: "callout", page: 1, shownKeys: ["a", 3, "b", "c", "d", "e", "f", "g", "h", "i", "j", "k"], filter: { year: { min: 2000, max: null } } },
+      settings: { face: "front", callout: "top10" },
+    }],
+  }, new Set(["t-A05"]));
+  assert.deepEqual(restored.pages[0].part.shownKeys, ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"], "shownKeys 저장 복원은 문자열 10개까지");
+  assert.deepEqual(restored.pages[0].part.filter, { year: { min: 2000, max: null } }, "callout filter 저장 복원");
 }
 
 console.log("v2 ui board-state tests passed");

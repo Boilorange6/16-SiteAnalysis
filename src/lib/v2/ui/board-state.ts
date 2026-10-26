@@ -1018,7 +1018,16 @@ function reportPart(value: unknown): TilePart | null {
   if (!isRecord(value) || typeof value.type !== "string") return null;
   if (value.type === "single" || value.type === "cutSingle") return { type: value.type };
   if (value.type === "face" && (value.face === "front" || value.face === "back")) return { type: "face", face: value.face };
-  if (value.type === "callout" && Number.isInteger(value.page) && (value.page as number) >= 0) return { type: "callout", page: value.page as number };
+  if (value.type === "callout" && Number.isInteger(value.page) && (value.page as number) >= 0) {
+    const hasShownKeys = Object.prototype.hasOwnProperty.call(value, "shownKeys");
+    const hasFilter = Object.prototype.hasOwnProperty.call(value, "filter");
+    return {
+      type: "callout",
+      page: value.page as number,
+      ...(hasShownKeys ? { shownKeys: unique(stringsOf(value.shownKeys)).slice(0, 10) } : {}),
+      ...(hasFilter ? { filter: isRecord(value.filter) ? normalizeA05Filter(value.filter as A05Filter) : null } : {}),
+    };
+  }
   if (value.type === "cutSheet" && Number.isInteger(value.index) && (value.index as number) >= 0) return { type: "cutSheet", index: value.index as number };
   return null;
 }

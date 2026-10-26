@@ -1,4 +1,5 @@
 import type { TileReportSettings } from "./report-plan";
+import { normalizeA05Filter, type A05Filter } from "../engine/a05-filter";
 import { clonePagePanels as clonePanelRects, type PagePanels } from "./report-geometry";
 export type { PagePanelKey, PagePanelRect, PagePanels } from "./report-geometry";
 
@@ -154,7 +155,7 @@ export type ReportPageBase = {
 export type TilePart =
   | { type: "single" }
   | { type: "face"; face: "front" | "back" }
-  | { type: "callout"; page: number }
+  | { type: "callout"; page: number; shownKeys?: string[]; filter?: A05Filter | null }
   | { type: "cutSheet"; index: number }
   | { type: "cutSingle" };
 export type ReportPage = ReportPageBase & (
@@ -189,6 +190,8 @@ export type ReportDocAction =
   | { type: "resetFontSizes" }
   | { type: "theme"; fontScale: ReportFontScale }
   | { type: "tileCallout"; id: string; pages: ReportPage[] }
+  | { type: "calloutShown"; id: string; keys: string[] }
+  | { type: "calloutFilter"; id: string; filter: A05Filter | null; keys?: string[] }
   | { type: "replaceAll"; pages: ReportPage[] };
 
 export const EMPTY_REPORT_DOC: ReportDoc = { v: 1, format: "wide", pages: [] };
@@ -250,7 +253,23 @@ function cloneSettings(settings: TileReportSettings): TileReportSettings {
 }
 
 function clonePart(part: TilePart): TilePart {
-  return { ...part };
+  if (part.type !== "callout") return { ...part };
+  return {
+    ...part,
+    ...(part.shownKeys !== undefined ? { shownKeys: [...part.shownKeys] } : {}),
+    ...(part.filter !== undefined ? { filter: normalizeA05Filter(part.filter) } : {}),
+  };
+}
+
+function normalizeCalloutKeys(keys: readonly string[]): string[] {
+  return [...new Set(keys.filter((key): key is string => typeof key === "string"))].slice(0, 10);
+}
+
+function updateCalloutPart(doc: ReportDoc, id: string, update: (part: Extract<TilePart, { type: "callout" }>) => Extract<TilePart, { type: "callout" }>): ReportDoc {
+  return updatePage(doc, id, (page) => {
+    if (page.kind !== "tile" || page.part.type !== "callout") return page;
+    return { ...clonePage(page), part: update(page.part) };
+  });
 }
 
 function cloneBase(page: ReportPage): ReportPageBase {
@@ -480,8 +499,13 @@ export function replaceTileCalloutPages(doc: ReportDoc, anchorId: string, replac
   const tileId = anchor.tileId;
   if (replacementPages.length === 0 || replacementPages.some((page) => !isCalloutPageFor(page, tileId))) return doc;
 
+  const replacesOverview = replacementPages.some((page) => page.kind === "tile" && page.part.type === "callout" && page.part.page === 0);
   let start = anchorIndex;
-  while (start > 0 && isCalloutPageFor(doc.pages[start - 1], tileId)) start -= 1;
+  while (start > 0 && isCalloutPageFor(doc.pages[start - 1], tileId)) {
+    const previousPart = calloutPartOf(doc.pages[start - 1]);
+    if (!replacesOverview && previousPart?.page === 0) break;
+    start -= 1;
+  }
   let end = anchorIndex + 1;
   while (end < doc.pages.length && isCalloutPageFor(doc.pages[end], tileId)) end += 1;
   const previousByPage = new Map<number, Extract<ReportPage, { kind: "tile" }>>();
@@ -589,6 +613,14 @@ export function reportDocReducer(doc: ReportDoc, action: ReportDocAction): Repor
       return { ...doc, fontSizes: reportFontSizesFromLegacyScale(action.fontScale) };
     case "tileCallout":
       return replaceTileCalloutPages(doc, action.id, action.pages);
+    case "calloutShown":
+      return updateCalloutPart(doc, action.id, (part) => ({ ...part, shownKeys: normalizeCalloutKeys(action.keys) }));
+    case "calloutFilter":
+      return updateCalloutPart(doc, action.id, (part) => ({
+        ...part,
+        filter: normalizeA05Filter(action.filter),
+        ...(action.keys !== undefined ? { shownKeys: normalizeCalloutKeys(action.keys) } : {}),
+      }));
     case "replaceAll":
       return { ...doc, pages: clonePages(action.pages) };
   }

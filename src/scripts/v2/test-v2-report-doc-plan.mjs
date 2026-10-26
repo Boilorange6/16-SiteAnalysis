@@ -6,7 +6,7 @@ const { initBoard, restoreReportDoc } = await import("../../lib/v2/ui/board-stat
 const { toSummaryView, toTileView } = await import("../../lib/v2/ui/tile-view.ts");
 const { buildReportPlan, REPORT_SOURCE_ROWS_PER_SLIDE, tileReportSettingsFromBoard, tileSlides } = await import("../../lib/v2/report/report-plan.ts");
 const { EMPTY_REPORT_DOC, defaultFrame, historyApply, historyUndo, mergeReportFontSizes, reportDocReducer } = await import("../../lib/v2/report/report-doc.ts");
-const { importLegacyReport, pagesForTile, planReportDoc, printedPageCount, recommendedPages } = await import("../../lib/v2/report/report-doc-plan.ts");
+const { calloutPageFor, importLegacyReport, pagesForTile, planReportDoc, printedPageCount, recommendedPages } = await import("../../lib/v2/report/report-doc-plan.ts");
 const { pageStripItems, pageStripLabel } = await import("../../lib/v2/report/report-page-strip.ts");
 const { sheetView } = await import("../../lib/v2/ui/sheet.ts");
 const { withLegacyStyle } = await import("./legacy-report-fixture.mjs");
@@ -14,8 +14,10 @@ const { withLegacyStyle } = await import("./legacy-report-fixture.mjs");
 const summary = toSummaryView(GODEOK_SUMMARY, GODEOK_RESULTS);
 const board = initBoard(GODEOK_RESULTS);
 const views = new Map(GODEOK_RESULTS.map((result) => [result.tileId, toTileView(result)]));
+const results = new Map(GODEOK_RESULTS.map((result) => [result.tileId, result]));
 const context = { summary, analysisDate: "2026-09-30" };
 const tileContext = { ...context, views };
+const reportContext = { ...tileContext, results, scene: null, analysisSiteParcel: null };
 
 const legacy = importLegacyReport(EMPTY_REPORT_DOC, board, views, context);
 const oldPlan = buildReportPlan({ summary, views, board, analysisDate: context.analysisDate });
@@ -76,8 +78,11 @@ assert.deepEqual(fontTile?.style.fontSizes, mergeReportFontSizes(fontDoc.fontSiz
 const a05View = views.get("t-A05");
 assert.ok(a05View, "A05 view");
 const a05Pages = pagesForTile(EMPTY_REPORT_DOC, "t-A05", a05View, { ...tileReportSettingsFromBoard(board, "t-A05"), callout: "top10" }, tileContext);
-assert.equal(a05Pages.length, tileSlides("t-A05", a05View, { ...tileReportSettingsFromBoard(board, "t-A05"), callout: "top10" }, { summary, complexCounts: { "t-A05": a05View.callout.complexes.length }, views }).length, "타일 펼치기 장수");
-assert.equal(a05Pages.length, 2, "A05 top10은 개요와 설명표");
+assert.equal(a05Pages.length, 2, "A05 추천 구성은 개요와 빈 설명표");
+assert.equal(a05Pages[0].part.shownKeys, undefined, "개요는 옛 pageItems 규칙과 호환");
+assert.deepEqual(a05Pages[1].part.shownKeys, [], "초기 설명표는 빈 장");
+const initialA05Plan = planReportDoc({ ...EMPTY_REPORT_DOC, pages: a05Pages }, views, tileContext);
+assert.deepEqual(initialA05Plan.find((slide) => slide.page?.id === a05Pages[1].id)?.callout.shownKeys, [], "빈 설명표 계획은 shownKeys=[]를 전달");
 
 // 설명표 장수 변경은 연속 callout 구간만 새 계획으로 바꾸고 같은 page 번호의 편집을 보존한다.
 const editedTop10Pages = a05Pages.map((page, index) => page.kind === "tile" ? {
@@ -90,19 +95,45 @@ const editedTop10Pages = a05Pages.map((page, index) => page.kind === "tile" ? {
 } : page);
 const editedTop10Doc = { ...EMPTY_REPORT_DOC, pages: editedTop10Pages };
 const a05AllSettings = { ...tileReportSettingsFromBoard(board, "t-A05"), callout: "all" };
-const a05AllPages = pagesForTile(editedTop10Doc, "t-A05", a05View, a05AllSettings, tileContext);
-const allHistory = historyApply({ past: [], present: editedTop10Doc, future: [] }, { type: "tileCallout", id: editedTop10Pages[1].id, pages: a05AllPages });
+const filteredYear = { year: { min: 2000, max: null } };
+const retainedKey = a05View.callout.complexes.find((complex) => complex.approvalYear !== null && complex.approvalYear >= 2000)?.key;
+const filteredOutKey = a05View.callout.complexes.find((complex) => complex.approvalYear === null || complex.approvalYear < 2000)?.key;
+assert.ok(retainedKey && filteredOutKey, "A05 필터 격리용 유지·제외 단지");
+const filteredPage = calloutPageFor({ ...EMPTY_REPORT_DOC, pages: a05Pages }, a05View, a05AllSettings, reportContext, 1, [retainedKey, filteredOutKey], filteredYear);
+const filteredOverview = calloutPageFor({ ...EMPTY_REPORT_DOC, pages: [filteredPage] }, a05View, a05AllSettings, reportContext, 0);
+const filteredPlan = planReportDoc({ ...EMPTY_REPORT_DOC, pages: [filteredOverview, filteredPage] }, views, reportContext);
+const filteredSlide = filteredPlan.find((slide) => slide.page?.id === filteredPage.id);
+const unfilteredSlide = filteredPlan.find((slide) => slide.page?.id === filteredOverview.id);
+const expectedFilteredView = toTileView(results.get("t-A05"), null, null, filteredYear);
+assert.equal(filteredSlide?.callout?.model.complexes.length, expectedFilteredView.callout.complexes.length, "장 필터는 해당 설명표 장의 모델만 다시 계산한다");
+assert.equal(unfilteredSlide?.callout?.model.complexes.length, a05View.callout.complexes.length, "장 필터는 개요 장을 바꾸지 않는다");
+const isolatedFilterDoc = reportDocReducer({ ...EMPTY_REPORT_DOC, pages: [filteredPage, a05Pages[0]] }, { type: "calloutFilter", id: filteredPage.id, filter: filteredYear, keys: [retainedKey] });
+assert.deepEqual(isolatedFilterDoc.pages[0].part.shownKeys, [retainedKey], "필터 밖 키는 해당 장 shownKeys에서 제거한다");
+assert.equal(isolatedFilterDoc.pages[1].part.type, "callout");
+assert.equal(isolatedFilterDoc.pages[1].part.shownKeys, undefined, "다른 설명표 장의 shownKeys는 건드리지 않는다");
+assert.equal(a05View.callout.complexes.length, 25, "자동 생성 fixture는 25개 단지");
+const generatedGroups = Array.from({ length: Math.ceil(a05View.callout.complexes.length / 10) }, (_, index) => a05View.callout.complexes.slice(index * 10, (index + 1) * 10).map((complex) => complex.key));
+assert.equal(generatedGroups.length, 3, "25개 단지는 자동 생성 시 3장");
+const generatedPages = [];
+let generatedDoc = editedTop10Doc;
+for (const [index, keys] of generatedGroups.entries()) {
+  const generated = calloutPageFor(generatedDoc, a05View, a05AllSettings, tileContext, index + 1, keys, null);
+  generatedPages.push(generated);
+  generatedDoc = { ...generatedDoc, pages: [...generatedDoc.pages, generated] };
+}
+const allHistory = historyApply({ past: [], present: editedTop10Doc, future: [] }, { type: "tileCallout", id: editedTop10Pages[1].id, pages: generatedPages });
 const allCalloutPages = allHistory.present.pages.filter((page) => page.kind === "tile" && page.tileId === "t-A05" && page.part.type === "callout");
-assert.equal(allCalloutPages.length, 1 + Math.ceil(a05View.callout.complexes.length / 10), "top10(2장) → all은 1+ceil(n/10)장");
-assert.notEqual(allCalloutPages[0].id, editedTop10Pages[0].id, "교체된 장 id는 새로 만든다");
-assert.deepEqual(allCalloutPages[0].frame.offsetM, [1, -2], "같은 page 0의 frame 보존");
+assert.equal(allCalloutPages.length, 1 + generatedGroups.length, "자동 생성은 개요를 보존하고 설명표를 ceil(n/10)장으로 교체");
+assert.equal(allCalloutPages[0].id, editedTop10Pages[0].id, "개요 장은 교체하지 않는다");
+assert.deepEqual(allCalloutPages[0].frame.offsetM, [1, -2], "개요 frame 보존");
+assert.notEqual(allCalloutPages[1].id, editedTop10Pages[1].id, "교체된 설명표 장 id는 새로 만든다");
 assert.deepEqual(allCalloutPages[1].frame.offsetM, [2, -3], "같은 page 1의 frame 보존");
-assert.equal(allCalloutPages[0].notes, "기존 메모 0", "같은 page의 메모 보존");
+assert.equal(allCalloutPages[0].notes, "기존 메모 0", "개요 메모 보존");
 assert.equal(allCalloutPages[1].textBoxes[0].text, "기존 글상자 1", "같은 page의 글상자 보존");
 assert.equal(allCalloutPages[1].fontSizes.labels, 14, "같은 page의 글자 크기 보존");
 assert.equal(historyUndo(allHistory).present.pages[0].id, editedTop10Pages[0].id, "tileCallout은 history undo 대상");
 
-const a05OverviewPages = pagesForTile(allHistory.present, "t-A05", a05View, { ...a05AllSettings, callout: "overview" }, tileContext);
+const a05OverviewPages = [calloutPageFor(allHistory.present, a05View, a05AllSettings, tileContext, 0)];
 const overviewDoc = reportDocReducer(allHistory.present, { type: "tileCallout", id: allCalloutPages.at(-1).id, pages: a05OverviewPages });
 assert.equal(overviewDoc.pages.filter((page) => page.kind === "tile" && page.tileId === "t-A05" && page.part.type === "callout").length, 1, "all → overview는 1장");
 assert.equal(overviewDoc.pages.find((page) => page.kind === "tile" && page.tileId === "t-A05" && page.part.type === "callout")?.part.page, 0, "overview 교체는 0번 장");

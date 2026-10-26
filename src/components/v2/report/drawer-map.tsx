@@ -2,11 +2,27 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { type MapFrameState, type ReportPage } from "@/lib/v2/report/report-doc";
-import { CALLOUT_MODES, calloutReportPages, type CalloutMode } from "@/lib/v2/ui/callout-layout";
+import { cardName, dotColor, fmtInt, fmtMonth, isHollowComplexMarker, type CalloutSort, type Complex } from "@/lib/v2/ui/callout-layout";
+import { A05FilterPanel } from "@/lib/v2/tile/a05/Panel";
+import type { A05Filter } from "@/lib/v2/engine/a05-filter";
 import { formatScaleDenominator, parseScaleInput, SCALE_PRESETS, scaleForFrame, siteAnchoredZoomPatch, siteFitPatch, zoomForScale, type ReportScaleOptions } from "@/lib/v2/ui/report-scale";
 import { legendItemsForModel } from "@/lib/v2/ui/map-layers";
 import type { TileView } from "@/lib/v2/ui/tile-view";
 import styles from "./report-mode.module.css";
+
+export type CalloutDrawerConfig = {
+  pageId: string;
+  pageNumber: number;
+  model: NonNullable<TileView["callout"]>;
+  view: TileView;
+  shownKeys: string[];
+  filter: A05Filter | null;
+  onShownKeys: (keys: string[]) => void;
+  onFilter: (filter: A05Filter | null) => void;
+  onAutoGenerate: (by: CalloutSort) => void;
+  onAddBlank: () => void;
+  onMessage: (message: string) => void;
+};
 
 type DrawerMapProps = {
   page: Extract<ReportPage, { kind: "tile" | "compare" }>;
@@ -17,7 +33,7 @@ type DrawerMapProps = {
   sameExtent?: boolean;
   onSameExtent?: (value: boolean) => void;
   onFrame: (patch: Partial<MapFrameState>) => void;
-  callout?: { mode: CalloutMode; onChange: (mode: CalloutMode) => void };
+  callout?: CalloutDrawerConfig;
 };
 
 const BASEMAPS: Array<{ value: MapFrameState["basemap"]; label: string }> = [
@@ -46,6 +62,82 @@ function hasMapData(view: TileView | null): boolean {
 
 function labelRuleSummary(rule: MapFrameState["labelRule"]): string {
   return LABEL_RULES.find((item) => item.value === rule)?.label ?? "없음";
+}
+
+function calloutMeta(complex: Complex): string {
+  const unit = complex.type === "오피스텔" ? "호" : "세대";
+  const households = complex.households === null ? "세대수 확인필요" : `${fmtInt(complex.households)}${unit}`;
+  if (complex.supply) return `${households} · ${complex.supply.plannedMonth ? fmtMonth(complex.supply.plannedMonth) : "입주 시기 확인필요"}`;
+  const year = complex.approvalYear === null ? "준공 확인필요" : `${complex.approvalYear}년`;
+  const floors = complex.floorsMax === null ? "최고층 확인필요" : `최고 ${fmtInt(complex.floorsMax)}층`;
+  return `${households} · ${year} · ${floors}`;
+}
+
+function CalloutSettings({ config }: { config: CalloutDrawerConfig }) {
+  const [autoOpen, setAutoOpen] = useState(false);
+  const [sortBy, setSortBy] = useState<CalloutSort>(config.model.kind === "supply" ? "supply" : "year");
+  const shown = new Set(config.shownKeys);
+  const order = useMemo(() => {
+    const position = new Map(config.shownKeys.map((key, index) => [key, index]));
+    return [...config.model.complexes].sort((a, b) => (position.get(a.key) ?? Number.MAX_SAFE_INTEGER) - (position.get(b.key) ?? Number.MAX_SAFE_INTEGER));
+  }, [config.model.complexes, config.shownKeys]);
+  const sortOptions: Array<{ value: CalloutSort; label: string }> = config.model.kind === "supply"
+    ? [{ value: "supply", label: "입주 시기" }, { value: "households", label: "세대수" }]
+    : [{ value: "year", label: "준공연대" }, { value: "households", label: "세대수" }, { value: "floors", label: "최고층수" }];
+
+  useEffect(() => {
+    if (!sortOptions.some((option) => option.value === sortBy)) setSortBy(sortOptions[0].value);
+  }, [sortBy, sortOptions]);
+
+  const toggle = (complex: Complex) => {
+    if (shown.has(complex.key)) {
+      config.onShownKeys(config.shownKeys.filter((key) => key !== complex.key));
+      return;
+    }
+    if (config.shownKeys.length >= 10) {
+      config.onMessage("한 장에 10개까지입니다. 다른 라벨을 끄거나 새 장에서 켜세요");
+      return;
+    }
+    config.onShownKeys([...config.shownKeys, complex.key]);
+  };
+  const move = (key: string, direction: -1 | 1) => {
+    const index = config.shownKeys.indexOf(key);
+    const nextIndex = index + direction;
+    if (index < 0 || nextIndex < 0 || nextIndex >= config.shownKeys.length) return;
+    const next = [...config.shownKeys];
+    [next[index], next[nextIndex]] = [next[nextIndex]!, next[index]!];
+    config.onShownKeys(next);
+  };
+
+  return <section className={styles.mapSection} aria-labelledby={`map-callout-pages-heading-${config.pageId}`}>
+    <h3 id={`map-callout-pages-heading-${config.pageId}`} className={styles.mapSectionTitle}>설명표 장</h3>
+    <div className={styles.inlineActions}>
+      <button type="button" className={styles.secondaryButton} onClick={() => setAutoOpen((open) => !open)} aria-expanded={autoOpen} aria-label="라벨 자동 생성">라벨 자동 생성</button>
+      <button type="button" className={styles.secondaryButton} onClick={config.onAddBlank} aria-label="빈 설명 장 추가">빈 설명 장 추가</button>
+    </div>
+    {autoOpen && <div className={styles.calloutAutoOptions} role="group" aria-label="자동 생성 기준">
+      {sortOptions.map((option) => <button key={option.value} type="button" className={sortBy === option.value ? styles.legendPlacementActive : styles.legendPlacementButton} aria-pressed={sortBy === option.value} onClick={() => { setSortBy(option.value); setAutoOpen(false); config.onAutoGenerate(option.value); }}>{option.label}</button>)}
+    </div>}
+    <div className={styles.calloutLabelHeader}><span>라벨 목록</span><strong>켠 라벨 {config.shownKeys.length}/10</strong></div>
+    <div className={styles.calloutLabelList} role="list" aria-label="설명선 라벨 목록">
+      {order.map((complex) => {
+        const enabled = shown.has(complex.key);
+        const index = config.shownKeys.indexOf(complex.key);
+        const name = cardName(complex);
+        const hollow = isHollowComplexMarker(complex);
+        return <div key={complex.key} className={styles.calloutLabelRow} role="listitem">
+          <label className={styles.calloutLabelCheck}>
+            <input type="checkbox" checked={enabled} onChange={() => toggle(complex)} aria-label={`${name} 설명선 ${enabled ? "끄기" : "켜기"}`} />
+            <span className={styles.calloutLabelDot} style={{ background: hollow ? "#fff" : dotColor(complex), borderColor: dotColor(complex) }} aria-hidden="true" />
+            <span className={styles.calloutLabelText}><span className={styles.calloutLabelName}>{name}</span><span className={styles.calloutLabelMeta}>{calloutMeta(complex)}</span></span>
+          </label>
+          {enabled && <span className={styles.calloutLabelOrder}><button type="button" className={styles.tinyButton} disabled={index <= 0} onClick={() => move(complex.key, -1)} aria-label={`${name} 라벨 위로`}>↑</button><button type="button" className={styles.tinyButton} disabled={index < 0 || index >= config.shownKeys.length - 1} onClick={() => move(complex.key, 1)} aria-label={`${name} 라벨 아래로`}>↓</button></span>}
+        </div>;
+      })}
+      {order.length === 0 && <p className={styles.helper}>이 장에서 확인된 단지가 없습니다.</p>}
+    </div>
+    {config.model.kind === "stock" && <A05FilterPanel view={config.view} filter={config.filter} counts={config.view.a05Counts} onChange={config.onFilter} titleId={`callout-filter-${config.pageId}`} />}
+  </section>;
 }
 
 export default function DrawerMap({ page, frame, view, cell, scaleOptions, sameExtent = false, onSameExtent, onFrame, callout }: DrawerMapProps) {
@@ -189,13 +281,7 @@ export default function DrawerMap({ page, frame, view, cell, scaleOptions, sameE
           </div>
         </section>
 
-        {callout && view?.callout && <section className={styles.mapSection} aria-labelledby="map-callout-pages-heading">
-          <h3 id="map-callout-pages-heading" className={styles.mapSectionTitle}>설명표 장</h3>
-          <div className={styles.legendPlacement} role="group" aria-label="보고서 설명표 페이지 수">
-            {CALLOUT_MODES.map((item) => <button key={item.id} type="button" className={callout.mode === item.id ? styles.legendPlacementActive : styles.legendPlacementButton} aria-pressed={callout.mode === item.id} onClick={() => callout.onChange(item.id)}>{item.label}</button>)}
-          </div>
-          <p className={styles.helper}>보고서 {calloutReportPages(callout.mode, view.callout.complexes.length)}장 (개요 포함)</p>
-        </section>}
+        {callout && view?.callout && <CalloutSettings config={callout} />}
 
         <details className={styles.mapDetails}>
           <summary className={styles.mapSummary}><span className={styles.mapSummaryText}>레이어 · {layerSummary}</span></summary>

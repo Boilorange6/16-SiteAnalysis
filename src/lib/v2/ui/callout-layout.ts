@@ -13,6 +13,8 @@ import { SLIDE } from "./overlay-layout";
 
 export type Complex = {
   id: string;
+  /** 분석 결과가 다시 순위 매겨져도 같은 단지를 가리키는 저장 키 */
+  key: string;
   /** 세대수 순위(1부터). 표의 번호와 점의 번호가 같다 */
   rank: number;
   layer: string;
@@ -41,6 +43,17 @@ export const MISSING = "확인필요";
 
 const n0 = (v: number | null | undefined) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 export const fmtInt = (n: number) => n.toLocaleString("en-US");
+export const complexKey = (layer: string, lng: number, lat: number, name: string | null | undefined) => `${layer}|${lng.toFixed(6)}|${lat.toFixed(6)}|${name ?? ""}`;
+export const calloutKeyTag = (key: string) => `callout-key:${encodeURIComponent(key)}`;
+export function calloutKeyFromTag(value: string): string | null {
+  const match = /^callout-key:(.+)$/.exec(value);
+  if (!match) return null;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return null;
+  }
+}
 
 /** 세대수 내림차순(미상은 뒤) → 가까운 순 → 이름 → 좌표. 같은 입력이면 순위·id가 항상 같다 */
 export function rankComplexes(features: MapFeature[]): Complex[] {
@@ -66,7 +79,7 @@ export function rankComplexes(features: MapFeature[]): Complex[] {
       a.lng - b.lng ||
       a.lat - b.lat,
   );
-  return list.map((c, i) => ({ ...c, id: `c${i + 1}`, rank: i + 1 }));
+  return list.map((c, i) => ({ ...c, id: `c${i + 1}`, key: complexKey(c.layer, c.lng, c.lat, c.name), rank: i + 1 }));
 }
 
 // ── A06: 입주(예정) 시기 버킷·정렬 ──
@@ -130,7 +143,27 @@ export function rankSupply(features: MapFeature[], analysisDate: string): Comple
       a.lng - b.lng ||
       a.lat - b.lat;
   });
-  return list.map((c, i) => ({ ...c, id: `c${i + 1}`, rank: i + 1 }));
+  return list.map((c, i) => ({ ...c, id: `c${i + 1}`, key: complexKey(c.layer, c.lng, c.lat, c.name), rank: i + 1 }));
+}
+
+export type CalloutSort = "year" | "households" | "floors" | "supply";
+
+/** 자동 설명선 생성용 정렬. 미상은 뒤로 보내고 동률은 기존 공간 순서를 유지한다. */
+export function sortComplexes(list: readonly Complex[], by: CalloutSort): Complex[] {
+  const tie = (a: Complex, b: Complex) =>
+    (a.distanceM === null ? 1e12 : a.distanceM) - (b.distanceM === null ? 1e12 : b.distanceM) ||
+    (a.name ?? "￿").localeCompare(b.name ?? "￿", "en") ||
+    a.lng - b.lng ||
+    a.lat - b.lat;
+  const value = (c: Complex): number | null => by === "year" ? c.approvalYear : by === "households" ? c.households : c.floorsMax;
+  return [...list].sort((a, b) => {
+    if (by === "supply") return a.rank - b.rank || tie(a, b);
+    const av = value(a);
+    const bv = value(b);
+    if (av === null && bv !== null) return 1;
+    if (av !== null && bv === null) return -1;
+    return av === null || bv === null ? tie(a, b) : bv - av || tie(a, b);
+  });
 }
 
 /** A06 카드 행: 입주(예정) 시기 / 세대수 / 원천 / 직선거리. 일정이 없으면 "일정 확인필요" */

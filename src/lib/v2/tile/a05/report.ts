@@ -1,5 +1,5 @@
 import { GROUP_TAG_PREFIX } from "../../../pptx-shape-group";
-import { INCH, SLIDE_OVERVIEW_FILL, cardName, cardRows, dotColor, dotRadius, inkOn, isHollowComplexMarker, layoutCallouts, overlapChip, pageItems, rowsFor, slideCalloutFrame, type CalloutFrame, type Complex, type Placed, type Pt } from "../../ui/callout-layout";
+import { INCH, SLIDE_OVERVIEW_FILL, calloutKeyTag, cardName, cardRows, dotColor, dotRadius, inkOn, isHollowComplexMarker, layoutCallouts, overlapChip, pageItems, rowsFor, slideCalloutFrame, type CalloutFrame, type Complex, type Placed, type Pt } from "../../ui/callout-layout";
 import { makeProjector, slideViewport } from "../../ui/map-projection";
 import { scaleOptionsForFrame, zoomForScale } from "../../ui/report-scale";
 import { calloutLegendEntries, slideCalloutLegendLayout, slideSiteX, type CalloutLegendOptions } from "../../ui/overlay-layout";
@@ -13,7 +13,7 @@ import type { TileReportModule } from "../types";
 // The A05 and A06 callout pages are one ownership unit, matching their shared screen Stage.
 const AMBER = "9A5B00";
 const K = SLIDE.w / 960;
-const cTag = (c: Complex, part: string) => `${GROUP_TAG_PREFIX}callout-${c.id}|${`콜아웃 ${c.rank} ${cardName(c)}`.replace(/\|/g, "/")}|${part}`;
+const cTag = (c: Complex, part: string) => `${GROUP_TAG_PREFIX}${calloutKeyTag(c.key)}|${`콜아웃 ${c.rank} ${cardName(c)}`.replace(/\|/g, "/")}|${part}`;
 
 /** 배경 지도(map-pptx·미리보기)와 같은 뷰: 사용자가 옮기거나 확대한 보고서 프레임(고정 축척 포함)을 따른다 */
 function projector(p: PlannedSlide & { kind: "tile" }, model: CalloutModel, siteX: number, fill: number): (c: Complex) => Pt {
@@ -31,12 +31,12 @@ function projector(p: PlannedSlide & { kind: "tile" }, model: CalloutModel, site
   };
 }
 
-function numberDot(s: Slide, c: Complex, at: Pt, r: number, labelsScale = 1) {
+function numberDot(s: Slide, c: Complex, at: Pt, r: number, labelsScale = 1, numbered = true) {
   const color = dotColor(c);
   const hollow = isHollowComplexMarker(c);
   s.addShape("ellipse", { x: at[0] - r - 0.025, y: at[1] - r - 0.025, w: 2 * r + 0.05, h: 2 * r + 0.05, fill: { color: "FFFFFF", transparency: 8 }, line: { color: "FFFFFF", width: 0, transparency: 100 }, objectName: cTag(c, "dot-halo") });
   s.addShape("ellipse", { x: at[0] - r, y: at[1] - r, w: 2 * r, h: 2 * r, fill: { color: hollow ? "FFFFFF" : hex(color), transparency: hollow ? 100 : 0 }, line: { color: hex(color), width: 0.7, transparency: 0 }, objectName: cTag(c, "dot") });
-  s.addText(String(c.rank), { x: at[0] - r, y: at[1] - r, w: 2 * r, h: 2 * r, align: "center", valign: "middle", fontFace: FONT, fontSize: (r >= 0.17 ? 9 : 8) * labelsScale, bold: true, color: hex(hollow ? color : inkOn(color)), margin: 0, objectName: cTag(c, "dot-no") });
+  if (numbered) s.addText(String(c.rank), { x: at[0] - r, y: at[1] - r, w: 2 * r, h: 2 * r, align: "center", valign: "middle", fontFace: FONT, fontSize: (r >= 0.17 ? 9 : 8) * labelsScale, bold: true, color: hex(hollow ? color : inkOn(color)), margin: 0, objectName: cTag(c, "dot-no") });
 }
 
 function unitTypeLines(value: string, fontSize: number, width: number): string[] {
@@ -118,7 +118,7 @@ function calloutOverview(s: Slide, p: PlannedSlide & { kind: "tile" }) {
   const labelsScale = fontSizeForStyle(style, "labels") / 10;
   const proj = projector(p, cm, slideSiteX(style, style.summary !== false), SLIDE_OVERVIEW_FILL);
   const hMax = Math.max(0, ...cm.complexes.map((c) => c.households ?? 0));
-  cm.complexes.forEach((c) => numberDot(s, c, proj(c), dotRadius(c.households, hMax, INCH.rMin, INCH.rMax), labelsScale));
+  cm.complexes.forEach((c) => numberDot(s, c, proj(c), dotRadius(c.households, hMax, INCH.rMin, INCH.rMax), labelsScale, false));
   if (cm.complexes.length === 0) {
     const w = 4.6;
     const h = 1.2;
@@ -153,22 +153,26 @@ function calloutStatItem(s: Slide, cm: CalloutModel): ReportItem {
 function calloutPage(s: Slide, p: PlannedSlide & { kind: "tile" }) {
   const { model: cm, page } = p.callout!;
   const frame = p.page?.kind === "tile" ? p.page.frame : undefined;
-  const pageItemsAll = pageItems(cm.complexes, page);
-  const hiddenLabelKeys = new Set(frame?.hiddenLabelKeys ?? []);
-  const items = pageItemsAll.filter((c) => !hiddenLabelKeys.has(`callout-${c.id}`));
-  const hiddenItems = pageItemsAll.filter((c) => hiddenLabelKeys.has(`callout-${c.id}`));
+  const legacyItems = pageItems(cm.complexes, page);
+  const requestedKeys = p.callout?.shownKeys;
+  const keys = requestedKeys === undefined ? legacyItems.map((c) => c.key) : requestedKeys;
+  const byKey = new Map(cm.complexes.map((c) => [c.key, c]));
+  const items = keys.flatMap((key) => {
+    const complex = byKey.get(key);
+    return complex ? [complex] : [];
+  }).slice(0, 10).map((complex, index) => ({ ...complex, rank: index + 1 }));
+  const shownKeys = new Set(items.map((c) => c.key));
   const f = slideCalloutFrame(rowsFor(items));
   const proj = projector(p, cm, f.siteX, f.fill);
   const hMax = Math.max(0, ...cm.complexes.map((c) => c.households ?? 0));
-  const at = new Map(cm.complexes.map((c) => [c.id, proj(c)]));
-  cm.complexes.filter((c) => !pageItemsAll.includes(c)).forEach((c) => {
-    const [x, y] = at.get(c.id)!;
-    s.addShape("ellipse", { x: x - 0.045, y: y - 0.045, w: 0.09, h: 0.09, fill: { color: hex(dotColor(c)), transparency: 40 }, line: { color: "FFFFFF", width: 0.5 } });
+  const at = new Map(cm.complexes.map((c) => [c.key, proj(c)]));
+  cm.complexes.filter((c) => !shownKeys.has(c.key)).forEach((c) => {
+    const [x, y] = at.get(c.key)!;
+    s.addShape("ellipse", { x: x - 0.045, y: y - 0.045, w: 0.09, h: 0.09, fill: { color: hex(dotColor(c)), transparency: 40 }, line: { color: "FFFFFF", width: 0.5 }, objectName: cTag(c, "mini") });
   });
   const labelsScale = fontSizeForStyle(p.style ?? {}, "labels") / 10;
-  hiddenItems.forEach((c) => numberDot(s, c, at.get(c.id)!, dotRadius(c.households, hMax, INCH.rMin, INCH.rMax), labelsScale));
-  const { placed } = layoutCallouts(f, items.map((c) => ({ id: c.id, rank: c.rank, x: at.get(c.id)![0], y: at.get(c.id)![1] })));
-  const byId = new Map(items.map((c) => [c.id, c]));
+  const { placed } = layoutCallouts(f, items.map((c) => ({ id: c.key, rank: c.rank, x: at.get(c.key)![0], y: at.get(c.key)![1] })));
+  const byId = new Map(items.map((c) => [c.key, c]));
   for (const pl of placed) {
     const c = byId.get(pl.id)!;
     seg(s, pl.dot, pl.knee, "FFFFFF", 3.4, 8, cTag(c, "leader-halo-1"));

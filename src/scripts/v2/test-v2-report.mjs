@@ -192,12 +192,12 @@ assert.ok(plan.filter((p) => p.kind === "tile" && p.body.kind === "state").every
   const groups = [...page1.matchAll(/<p:grpSp><p:nvGrpSpPr><p:cNvPr id="\d+" name="(콜아웃 [^"]*)"/g)].map((m) => m[1]);
   assert.equal(groups.length, 10, "설명표 장 = 단지 10곳이 각각 그룹");
   assert.ok(groups.some((g) => g.includes("고덕그라시움")) && groups[0].startsWith("콜아웃 "));
-  assert.match(text(page1), /세대수 상위 1–10 \/ 전체 25단지/);
+  assert.match(text(page1), /라벨 10개 \/ 전체 25단지/);
   assert.match(text(xmls[1]), /개요 · 전체 25단지/);
   assert.match(text(xmls[1]), /확인 세대\(아파트\)/);
   // 마지막 설명표 장(21–25)에는 값이 없는 단지의 "확인필요"가 나온다
   const last = text(xmls[4]);
-  assert.match(last, /세대수 상위 21–25 \/ 전체 25단지/);
+  assert.match(last, /라벨 5개 \/ 전체 25단지/);
   assert.ok(text(xmls.slice(1, 5).join("")).includes("확인필요"));
   for (const x of xmls.slice(1, 5)) assert.match(text(x), /출처/);
   // 빈 상태: 단지 0 → 개요 1장만, 상태 판 문구
