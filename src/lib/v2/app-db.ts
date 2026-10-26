@@ -104,6 +104,24 @@ export function initV2AppSchema(db: Db): void {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS tile_request (
+      request_id INTEGER PRIMARY KEY,
+      tile_code TEXT NOT NULL,
+      analysis_id TEXT,
+      memo TEXT NOT NULL,
+      pins_json TEXT NOT NULL,
+      context_json TEXT NOT NULL,
+      image_path TEXT,
+      status TEXT NOT NULL CHECK (status IN ('대기','진행','완료','보류')),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      resolved_commit TEXT,
+      resolved_note TEXT,
+      resolved_at TEXT,
+      reopen_note TEXT,
+      user_id TEXT
+    );
   `);
   const analysisColumns = db.prepare("PRAGMA table_info(analysis_run)").all() as Array<{ name: string }>;
   if (!analysisColumns.some((column) => column.name === "user_id")) {
