@@ -9,7 +9,9 @@ import ReportMode from "@/components/v2/report/report-mode";
 import { useTileDrag } from "@/components/v2/use-tile-drag";
 import { BASEMAPS, BasemapContext, SetBasemapContext } from "@/components/v2/map-box";
 import { BaseThemeContext } from "@/components/v2/base-theme-context";
-import { withMapColors } from "@/lib/v2/ui/map-colors";
+import { resolveMapColors, withMapColors } from "@/lib/v2/ui/map-colors";
+import { MapColorBoardPopover } from "@/components/v2/map-colors/map-color-popover";
+import type { MapColorChoice } from "@/lib/v2/report/report-doc";
 import { baseUsable, mapBaseFromScene } from "@/lib/v2/ui/basemap";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import styles from "@/components/v2/board.module.css";
@@ -592,8 +594,24 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
   const [highlightedTileId, setHighlightedTileId] = useState<string | null>(null);
   const vectorAvailable = useMemo(() => (scene?.origin ? baseUsable(mapBaseFromScene(scene)) : false), [scene]);
   const [basemap, setBasemap] = useState<BasemapChoice>("vector");
+  // 지도 색 팝오버: 열림 여부, 줄 위에 올려 둔 미리 보기(저장하지 않음), 연 버튼.
+  const [mapColorOpen, setMapColorOpen] = useState(false);
+  const [previewColors, setPreviewColors] = useState<MapColorChoice | null>(null);
+  const mapColorTriggerRef = useRef<HTMLButtonElement>(null);
+  const mapColorValue = useMemo(() => resolveMapColors(board, {}), [board]);
+  const applyMapColor = useCallback((patch: MapColorChoice) => {
+    if (patch.base !== undefined) dispatch({ type: "baseTheme", ref: patch.base });
+    if (patch.palette !== undefined) dispatch({ type: "palette", ref: patch.palette });
+    if (patch.hide !== undefined) dispatch({ type: "baseHide", layers: patch.hide });
+  }, [dispatch]);
   // 기본 지도 자료가 없으면 그려지는 것은 일반지도이므로 선택 표시도 그쪽에 둔다.
   const shownBasemap: BasemapChoice = basemap === "vector" && !vectorAvailable ? "white" : basemap; // 보드 상태(서버에 저장하지 않음). 화면과 PPT가 같이 따른다. 기본은 분석 장면으로 그린 기본 지도(자료가 없는 옛 분석은 일반지도로 돌아간다)
+  // 기본 지도가 아니게 되거나 보고서로 넘어가면 지도 색 팝오버와 미리 보기를 접는다.
+  useEffect(() => {
+    if (boardMode === "tile" && shownBasemap === "vector") return;
+    setMapColorOpen(false);
+    setPreviewColors(null);
+  }, [boardMode, shownBasemap]);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (boardMode === "report") params.set("mode", "report");
@@ -673,10 +691,12 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
       if (tileViews.length > 0) next.set(id, sheetView(id, tileViews, spec.grid));
     }
     // 보드가 고른 팔레트·끈 바탕 레이어를 모든 view의 지도 모델과 설명선에 붙인다(바탕 테마는 BaseThemeContext).
-    if (!board.palette && !board.baseHide) return next;
-    const colors = { palette: board.palette, hide: board.baseHide };
+    // 지도 색 팝오버에서 줄 위에 올려 둔 팔레트는 저장하지 않고 잠시 덮는다.
+    const palette = previewColors?.palette ?? board.palette;
+    if (!palette && !board.baseHide) return next;
+    const colors = { palette, hide: board.baseHide };
     return new Map([...next].map(([id, view]) => [id, withPalette(view, colors)] as const));
-  }, [baseViews, board.baseHide, board.cameras, board.palette, board.sheets, board.stacks]);
+  }, [baseViews, board.baseHide, board.cameras, board.palette, board.sheets, board.stacks, previewColors?.palette]);
   const addTileItems = useMemo<AddTileItem[]>(() => {
     const resultIds = new Set(results.map((result) => result.tileId));
     const boardCounts = new Map<string, number>();
@@ -1006,7 +1026,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
   return (
     <BasemapContext.Provider value={basemap}>
     <SetBasemapContext.Provider value={setBasemap}>
-    <BaseThemeContext.Provider value={board.baseTheme}>
+    <BaseThemeContext.Provider value={previewColors?.base ?? board.baseTheme}>
     <main className={styles.root}>
       <div
         className={`${styles.page} ${boardMode === "report" ? styles.reportPage : ""}`}
@@ -1096,12 +1116,25 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
                 <span className={styles.segGroup}>
                   <span className={styles.segLabel}>배경지도</span>
                   <span className={styles.seg} role="group" aria-label="배경지도">
-                    {BASEMAPS.map((b) => (
-                      <button key={b.id} type="button" aria-pressed={shownBasemap === b.id} disabled={b.id === "vector" && !vectorAvailable} title={b.id === "vector" && !vectorAvailable ? "이 분석에는 기본 지도 자료가 없습니다" : undefined} onClick={() => setBasemap(b.id)}>
-                        {b.label}
-                      </button>
-                    ))}
+                    {BASEMAPS.map((b) => {
+                      // 이미 눌린 기본 지도를 다시 누르면 지도 색 팝오버를 연다. 눌리지 않았으면 지금처럼 바탕만 바꾼다.
+                      const mapColorTrigger = b.id === "vector" && shownBasemap === "vector";
+                      return (
+                        <button key={b.id} ref={b.id === "vector" ? mapColorTriggerRef : undefined} type="button" aria-pressed={shownBasemap === b.id} disabled={b.id === "vector" && !vectorAvailable} title={b.id === "vector" && !vectorAvailable ? "이 분석에는 기본 지도 자료가 없습니다" : undefined} aria-label={mapColorTrigger ? b.label : undefined} aria-haspopup={mapColorTrigger ? "dialog" : undefined} aria-expanded={mapColorTrigger ? mapColorOpen : undefined} onClick={() => (mapColorTrigger ? setMapColorOpen((open) => !open) : setBasemap(b.id))}>
+                          {mapColorTrigger ? "기본 지도 ▾" : b.label}
+                        </button>
+                      );
+                    })}
                   </span>
+                  {mapColorOpen && shownBasemap === "vector" && (
+                    <MapColorBoardPopover
+                      triggerRef={mapColorTriggerRef}
+                      value={mapColorValue}
+                      onPreview={setPreviewColors}
+                      onApply={applyMapColor}
+                      onClose={() => setMapColorOpen(false)}
+                    />
+                  )}
                 </span>
                 {demo ? (
                   <button type="button" className={`${styles.pill} ${styles.pillDark}`} disabled title="실제 분석 후 사용">

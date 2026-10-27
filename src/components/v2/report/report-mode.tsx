@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { createPortal } from "react-dom";
 import type { Dispatch, RefObject } from "react";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
-import { clampTextBox, defaultFrame, DEFAULT_REPORT_FONT_SIZES, EMPTY_REPORT_DOC, newPageId, REPORT_FONT_SIZE_KEYS, REPORT_FONT_SIZE_LIMITS, reportDocReducer, textBoxDefaults, TEXT_BOX_DEFAULTS, type FontSizeKey, type MapFrameState, type PageElementKey, type PagePanels, type ReportDoc, type ReportDocAction, type ReportFontSizeOverrides, type ReportFontSizes, type ReportFormat, type ReportPage, type TextBox, type TextBoxKind, type TilePart } from "@/lib/v2/report/report-doc";
+import { clampTextBox, defaultFrame, DEFAULT_REPORT_FONT_SIZES, EMPTY_REPORT_DOC, newPageId, REPORT_FONT_SIZE_KEYS, REPORT_FONT_SIZE_LIMITS, reportDocReducer, textBoxDefaults, TEXT_BOX_DEFAULTS, type FontSizeKey, type MapColorChoice, type MapFrameState, type PageElementKey, type PagePanels, type ReportDoc, type ReportDocAction, type ReportFontSizeOverrides, type ReportFontSizes, type ReportFormat, type ReportPage, type TextBox, type TextBoxKind, type TilePart } from "@/lib/v2/report/report-doc";
 import { mapFrameScaleOptions, scaleForFrame, scaleOptionsForFrame, siteAnchoredZoomPatch, siteFitPatch, zoomForScale } from "@/lib/v2/ui/report-scale";
 import { SLIDE_OVERVIEW_FILL, calloutKeyFromTag, calloutPageItems, sortComplexes, type CalloutSort, type Complex } from "@/lib/v2/ui/callout-layout";
 import { layoutRects, legendMatches, slideGeometry, slideLayout, slideLegend, slidePanelRects, slideSiteX, slideSize, terrainSectionLayout } from "@/lib/v2/ui/overlay-layout";
@@ -33,6 +33,8 @@ import NotesField from "./notes-field";
 import ExportPanel from "./export-panel";
 import TextBoxPopover from "./text-box-popover";
 import SidePanelHeader from "./side-panel-header";
+import MapColorPopover from "../map-colors/map-color-popover";
+import { resolveMapColors } from "@/lib/v2/ui/map-colors";
 import styles from "./report-mode.module.css";
 import legacySurfaceStyles from "../report-surface.module.css";
 import localSurfaceStyles from "./slide-surface.module.css";
@@ -42,7 +44,7 @@ type SheetCellEditing = { pageId: string; cell: number };
 type RailKey = ReportRailKey;
 const surfaceClassMap = { ...legacySurfaceStyles, ...localSurfaceStyles };
 
-type RailIconName = "pages" | "tiles" | "textbox" | "font" | "layout" | "notes";
+type RailIconName = "pages" | "tiles" | "textbox" | "font" | "layout" | "notes" | "palette";
 type CalloutPage = Extract<ReportPage, { kind: "tile" }> & { part: Extract<TilePart, { type: "callout" }> };
 type CalloutSlide = Extract<PlannedSlide, { kind: "tile" }> & { callout: NonNullable<Extract<PlannedSlide, { kind: "tile" }>["callout"]> };
 
@@ -55,6 +57,7 @@ function RailIcon({ name }: { name: RailIconName }) {
       {name === "font" && <><path d="m2.8 16.5 3.7-11h2l3.7 11M4.2 12h6.6" /><path d="m12.2 16.5 2.8-8.5h1.6l2.8 8.5M13.2 13h5.6" /></>}
       {name === "layout" && <><rect x="3" y="3" width="14" height="14" rx="1" /><path d="M3 8h14M11 8v9" /></>}
       {name === "notes" && <><path d="M5 3.5h7l3 3V16.5H5z" /><path d="M12 3.5v3h3M7.5 10h5M7.5 13h4" /></>}
+      {name === "palette" && <><path d="M10 3a7 7 0 1 0 0 14c.9 0 1.4-.6 1.4-1.3 0-.4-.2-.7-.4-.9-.2-.3-.4-.5-.4-.9 0-.8.6-1.3 1.4-1.3H13a4 4 0 0 0 4-4c0-3.1-3.1-5.6-7-5.6Z" /><circle cx="6.3" cy="9" r=".8" /><circle cx="8.4" cy="6" r=".8" /><circle cx="12.4" cy="6" r=".8" /></>}
     </svg>
   );
 }
@@ -354,7 +357,11 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   const [exportOpen, setExportOpen] = useState(false);
   const [exportPageScope, setExportPageScope] = useState<ExportPageScope | null>(null);
   const [exportPageIds, setExportPageIds] = useState<Set<string>>(new Set());
-  const [activePopover, setActivePopover] = useState<"layout" | "notes" | "font" | "textbox" | null>(null);
+  const [activePopover, setActivePopover] = useState<"layout" | "notes" | "font" | "textbox" | "mapColor" | null>(null);
+  const [mapColorScope, setMapColorScope] = useState<"document" | "page">("document");
+  // 팝오버에서 줄 위에 올려 둔 색. 저장하지 않고 계획(plan)에만 덮는다.
+  const [mapColorPreview, setMapColorPreview] = useState<{ scope: "document" | "page"; id?: string; choice: MapColorChoice } | null>(null);
+  const mapColorsAtRef = useRef(0);
   const [sidePanelOpacity, setSidePanelOpacity] = useState(100);
   const [textBoxPlacement, setTextBoxPlacement] = useState<{ kind: TextBoxKind; x: number; y: number } | null>(null);
   const [textBoxEditingId, setTextBoxEditingId] = useState<string | null>(null);
@@ -369,6 +376,8 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   const notesTriggerRef = useRef<HTMLButtonElement>(null);
   const fontSizeTriggerRef = useRef<HTMLButtonElement>(null);
   const textBoxTriggerRef = useRef<HTMLButtonElement>(null);
+  const mapColorTriggerRef = useRef<HTMLButtonElement>(null);
+  const mapColorPopoverRef = useRef<HTMLDivElement>(null);
   const layoutPopoverRef = useRef<HTMLDivElement>(null);
   const notesPopoverRef = useRef<HTMLDivElement>(null);
   const fontSizePopoverRef = useRef<HTMLDivElement>(null);
@@ -388,6 +397,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   const notesPopoverOpen = activePopover === "notes";
   const fontSizePopoverOpen = activePopover === "font";
   const textBoxPopoverOpen = activePopover === "textbox";
+  const mapColorPopoverOpen = activePopover === "mapColor";
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -447,7 +457,12 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   }, [history.present.pages, selectedId]);
 
   const planContext = useMemo(() => ({ summary, analysisDate, views, results, scene, analysisSiteParcel, resultFor }), [analysisDate, analysisSiteParcel, resultFor, results, scene, summary, views]);
-  const plan = useMemo(() => planReportDoc(history.present, views, planContext), [history.present, planContext, views]);
+  // 미리 보기는 계획에만 덮는다. 문서·되돌리기 기록·보드는 그대로다.
+  const planDoc = useMemo(
+    () => mapColorPreview ? reportDocReducer(history.present, { type: "mapColors", scope: mapColorPreview.scope, id: mapColorPreview.id, patch: mapColorPreview.choice }) : history.present,
+    [history.present, mapColorPreview],
+  );
+  const plan = useMemo(() => planReportDoc(planDoc, views, planContext), [planDoc, planContext, views]);
   const stripItems = useMemo<PageStripItem[]>(() => pageStripItems(history.present.pages, plan), [history.present.pages, plan]);
   const selectStripItem = useCallback((id: string, slideKey: string) => {
     setSelectedId(id);
@@ -560,6 +575,23 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     setActivePopover("textbox");
   }, [activePopover, closePopover]);
 
+  const toggleMapColorPopover = useCallback((opener?: HTMLElement | null) => {
+    if (activePopover === "mapColor") {
+      closePopover(true);
+      return;
+    }
+    popoverOpenerRef.current = opener ?? mapColorTriggerRef.current;
+    setRail(null);
+    setTextBoxPlacement(null);
+    setTextBoxEditingId(null);
+    setActivePopover("mapColor");
+  }, [activePopover, closePopover]);
+
+  // 창이 닫히면 미리 보기도 걷는다.
+  useEffect(() => {
+    if (activePopover !== "mapColor") setMapColorPreview(null);
+  }, [activePopover]);
+
   const closeFontContext = useCallback((restoreFocus = true) => {
     const opener = fontContextOpenerRef.current;
     setFontContext(null);
@@ -614,10 +646,12 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
         || notesPopoverRef.current?.contains(event.target)
         || fontSizePopoverRef.current?.contains(event.target)
         || textBoxPopoverRef.current?.contains(event.target)
+        || mapColorPopoverRef.current?.contains(event.target)
         || layoutTriggerRef.current?.contains(event.target)
         || notesTriggerRef.current?.contains(event.target)
         || fontSizeTriggerRef.current?.contains(event.target)
         || textBoxTriggerRef.current?.contains(event.target)
+        || mapColorTriggerRef.current?.contains(event.target)
       )) return;
       if (fontContext) closeFontContext(true);
       if (drawerOpen) closeDrawer(true);
@@ -628,6 +662,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   }, [activePopover, closeDrawer, closeFontContext, closePopover, drawerOpen, fontContext]);
 
   const commitDoc = useCallback((next: ReportDoc, message?: string) => {
+    mapColorsAtRef.current = 0;
     setHistory((current) => {
       if (current.present === next) return current;
       return { past: [...current.past.slice(-99), current.present], present: next, future: [] };
@@ -644,6 +679,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   const undo = useCallback(() => {
     const previous = history.past[history.past.length - 1];
     if (!previous) return;
+    mapColorsAtRef.current = 0;
     setHistory({ past: history.past.slice(0, -1), present: previous, future: [history.present, ...history.future] });
     dispatch({ type: "reportDoc", doc: previous });
   }, [dispatch, history]);
@@ -651,6 +687,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   const redo = useCallback(() => {
     const next = history.future[0];
     if (!next) return;
+    mapColorsAtRef.current = 0;
     setHistory({ past: [...history.past, history.present], present: next, future: history.future.slice(1) });
     dispatch({ type: "reportDoc", doc: next });
   }, [dispatch, history]);
@@ -1316,6 +1353,30 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   const layoutHasSummary = selectedSlide?.kind === "tile"
     ? selectedSlide.style.summary !== false && !(selectedSlide.callout && selectedSlide.callout.page > 0)
     : false;
+  // 지도 색: 「이 쪽만」은 지도가 있는 쪽에서만 쓴다. 지도 없는 쪽으로 옮겨 가면 보고서 전체로 돌아간다.
+  const mapColorTarget: "document" | "page" = mapColorScope === "page" && layoutHasMap && !!selectedPage ? "page" : "document";
+  const mapColorValue = resolveMapColors(board, history.present, mapColorTarget === "page" ? selectedPage : undefined);
+  const applyMapColors = useCallback((patch: MapColorChoice) => {
+    const next = reportDocReducer(history.present, { type: "mapColors", scope: mapColorTarget, id: selectedPage?.id, patch });
+    if (next === history.present) return;
+    // 색 고르개를 끄는 동안 이어지는 입력은 되돌리기 한 단계로 묶는다.
+    const now = Date.now();
+    if (now - mapColorsAtRef.current < 600 && history.past.length > 0) {
+      setHistory((current) => ({ ...current, present: next }));
+      dispatch({ type: "reportDoc", doc: next });
+    } else {
+      commitDoc(next);
+    }
+    mapColorsAtRef.current = now;
+  }, [commitDoc, dispatch, history.past.length, history.present, mapColorTarget, selectedPage?.id]);
+  const previewMapColors = useCallback((choice: MapColorChoice | null) => {
+    setMapColorPreview(choice ? { scope: mapColorTarget, id: selectedPage?.id, choice } : null);
+  }, [mapColorTarget, selectedPage?.id]);
+  const clearPageMapColors = useCallback(() => {
+    if (!selectedPage) return;
+    apply({ type: "mapColors", scope: "page", id: selectedPage.id, patch: null });
+    setMapColorScope("document");
+  }, [apply, selectedPage]);
   const deletedLayoutItems = useMemo<DeletedLayoutItem[]>(() => {
     if (!selectedPage || !selectedId) return [];
     const items: DeletedLayoutItem[] = [];
@@ -1775,6 +1836,10 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
             <div className={styles.railPopoverRoot}>
               <button ref={notesTriggerRef} type="button" className={`${styles.railButton} ${notesPopoverOpen ? styles.railButtonActive : ""}`} aria-haspopup="dialog" aria-pressed={notesPopoverOpen} aria-expanded={notesPopoverOpen} aria-controls={notesPopoverOpen ? "report-notes-popover" : undefined} aria-label={selectedPage?.notes.trim() ? "발표 메모 있음" : "발표 메모"} data-has-notes={selectedPage?.notes.trim() ? "true" : "false"} onClick={(event) => toggleNotesPopover(event.currentTarget)} disabled={!selectedPage}><span aria-hidden="true"><RailIcon name="notes" /></span><span className={styles.railTooltip} role="tooltip">메모</span>{selectedPage?.notes.trim() && <span className={styles.noteDot} aria-hidden="true" />}</button>
               {notesPopoverOpen && selectedPage && <div ref={notesPopoverRef} id="report-notes-popover" className={`${styles.floatCard} ${styles.sidePanelCard} ${styles.anchoredCard} ${styles.railPopover} ${styles.notesPopover}`} style={{ ...anchoredCardStyle, ...sidePanelStyle }} role="dialog" aria-label="발표 메모"><div className={styles.popoverBody}><SidePanelHeader title="발표 메모" context={`${selectedPageNumber ?? 1}쪽`} opacity={sidePanelOpacity} onOpacityChange={changeSidePanelOpacity} onClose={() => closePopover(true)} closeLabel="메모 창 닫기" /><NotesField compact pageId={selectedPage.id} value={selectedPage.notes} onChange={(notes) => apply({ type: "notes", id: selectedPage.id, notes })} /><div className={styles.notesMeta}><span aria-hidden="true">✓</span><span>저장됨</span></div></div></div>}
+            </div>
+            <div className={styles.railPopoverRoot}>
+              <button ref={mapColorTriggerRef} type="button" className={`${styles.railButton} ${mapColorPopoverOpen ? styles.railButtonActive : ""}`} aria-haspopup="dialog" aria-pressed={mapColorPopoverOpen} aria-expanded={mapColorPopoverOpen} aria-controls={mapColorPopoverOpen ? "report-map-color-popover" : undefined} aria-label="지도 색" onClick={(event) => toggleMapColorPopover(event.currentTarget)} disabled={!selectedPage}><span aria-hidden="true"><RailIcon name="palette" /></span><span className={styles.railTooltip} role="tooltip">지도 색</span></button>
+              {mapColorPopoverOpen && selectedPage && <div ref={mapColorPopoverRef} id="report-map-color-popover" className={`${styles.floatCard} ${styles.sidePanelCard} ${styles.anchoredCard} ${styles.railPopover} ${styles.mapColorPopover}`} style={{ ...anchoredCardStyle, ...sidePanelStyle }} role="dialog" aria-label="지도 색"><div className={styles.popoverBody}><SidePanelHeader title="지도 색" opacity={sidePanelOpacity} onOpacityChange={changeSidePanelOpacity} onClose={() => closePopover(true)} closeLabel="지도 색 창 닫기" /><MapColorPopover value={mapColorValue} scope={{ value: mapColorTarget, pageAvailable: layoutHasMap, pageOverridden: !!selectedPage.mapColors, onChange: setMapColorScope, onClearPage: clearPageMapColors }} onPreview={previewMapColors} onApply={applyMapColors} onClose={() => closePopover(true)} makerSide="right" /></div></div>}
             </div>
             {textBoxPopoverOpen && <div ref={textBoxPopoverRef} id="report-textbox-popover" className={`${styles.floatCard} ${styles.sidePanelCard} ${styles.anchoredCard} ${styles.railPopover} ${styles.textBoxPopover}`} style={{ ...anchoredCardStyle, ...sidePanelStyle }} role="dialog" aria-label="글상자 종류"><TextBoxPopover opacity={sidePanelOpacity} onOpacityChange={changeSidePanelOpacity} onChoose={chooseTextBoxKind} onClose={() => closePopover(true)} /></div>}
           </nav>

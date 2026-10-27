@@ -627,6 +627,8 @@
   .railPopover, .notesPopover, .fontSizePopover, .textBoxPopover { width: 288px; }
   /* 서랍 카드와 같은 x(도구 막대 오른쪽 +16)에 맞춘다. 글상자 창만 버튼 묶음이 아니라 막대 기준이다. */
   .railPopover { left: calc(100% + 21px); }
+  /* 지도 색 창은 키가 커서 막대 맨 아래 단추 가운데에 맞추면 화면 아래로 넘친다. 단추 아래 끝에 맞추고 꼬리만 단추 높이에 둔다. */
+  .mapColorPopover { top: auto; bottom: -6px; translate: none; --tail-y: calc(100% - 28px); }
   .textBoxPopover { left: calc(100% + 17px); }
   .drawerFooter { position: sticky; bottom: -12px; z-index: 3; display: grid; gap: 6px; margin-top: auto; padding: 10px 0 0; background: #fff; border-top: 1px solid #d9dce2; }
   .secondaryAction { display: flex; align-items: center; justify-content: center; box-sizing: border-box; gap: 7px; width: 100%; height: 36px; min-width: 0; min-height: 36px; padding: 0 12px; color: #15171c; background: #fff; border: 1px solid #d9dce2; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; line-height: 1.15; }

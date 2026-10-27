@@ -1,0 +1,207 @@
+/* 지도 색 팝오버(C안)와 색 만들기 카드. 보드(고정 위치 호스트)와 보고서(.railPopover 안)가 같이 쓴다.
+   치수는 docs/design/v2-design-language.md §9-11: 288 · 행 34 · 색 칸 13×16 · 간격 12 · 미리보기 150 ms. */
+.host {
+  position: fixed;
+  z-index: 70;
+  box-sizing: border-box;
+  width: 288px;
+  padding: 12px;
+  color: #15171c;
+  background: #fff;
+  border: 1px solid #e1e4e9;
+  border-radius: 12px;
+  box-shadow: 0 2px 4px rgba(21, 23, 28, 0.08), 0 16px 40px rgba(21, 23, 28, 0.18);
+  font-size: 13px;
+  animation: hostIn 140ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.hostTail {
+  position: absolute;
+  top: -8px;
+  width: 13px;
+  height: 13px;
+  background: #fff;
+  border-top: 1px solid #e1e4e9;
+  border-left: 1px solid #e1e4e9;
+  transform: rotate(45deg);
+}
+@keyframes hostIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* .pop은 위치 기준이 아니다: 만들기 카드는 바깥 창(.host·.railPopover) 가장자리에서 12 px 띄운다. */
+.pop { display: grid; gap: 8px; min-width: 0; color: #15171c; font-size: 13px; }
+.note { margin: 0; color: #5b616c; font-size: 12px; }
+
+/* 바탕|다이어그램, 보고서 전체|이 쪽만 */
+.seg { display: flex; gap: 2px; padding: 3px; background: #f1f2f4; border-radius: 10px; }
+.seg button {
+  flex: 1;
+  min-height: 32px;
+  padding: 6px;
+  color: #374151;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.seg button:hover:not([aria-pressed="true"]):not([aria-disabled="true"]) { background: #e6e8ec; }
+.seg button[aria-pressed="true"] { color: #fff; background: #16181d; font-weight: 700; }
+.seg button[aria-disabled="true"] { color: #9097a3; cursor: not-allowed; }
+
+/* 목록 */
+.list { display: grid; gap: 2px; max-height: min(420px, calc(100vh - 340px)); min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.groupLabel { padding: 2px 8px 0; color: #5b616c; font-size: 11px; font-weight: 700; }
+.divider { height: 1px; margin: 4px 8px; background: #e1e4e9; }
+.skeleton { height: 34px; border-radius: 8px; background: #eceef1; }
+.rowWrap { position: relative; }
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  width: 100%;
+  height: 34px;
+  padding: 0 8px;
+  color: #15171c;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+.row:hover { background: #f1f2f4; }
+.row[aria-pressed="true"] { font-weight: 700; }
+.ck { display: grid; flex: none; place-items: center; width: 16px; }
+.nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sw { display: flex; flex: none; overflow: hidden; border-radius: 4px; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08); }
+.sw i { width: 13px; height: 16px; }
+.trash {
+  position: absolute;
+  top: 5px;
+  right: 4px;
+  display: none;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: #9a3b2f;
+  background: #fff;
+  border: 1px solid #e1e4e9;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.trash:hover { background: #fdf0ee; }
+.rowWrap:hover .trash, .rowWrap:focus-within .trash { display: grid; }
+.confirm { display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 4px 0 8px; background: #fdf0ee; border-radius: 8px; font-size: 12.5px; }
+.confirm span { flex: 1; font-weight: 700; }
+.confirm button { min-height: 26px; padding: 0 10px; color: #15171c; background: #fff; border: 1px solid #d9dce2; border-radius: 7px; cursor: pointer; font: inherit; font-size: 12px; }
+.confirm button[data-danger] { color: #fff; background: #b42318; border-color: #b42318; font-weight: 700; }
+.error { margin: 0; color: #b42318; font-size: 12px; }
+
+/* 아래 버튼 */
+.secondary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 36px;
+  color: #15171c;
+  background: #fff;
+  border: 1px solid #d9dce2;
+  border-radius: 10px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+}
+.secondary:hover { background: #f3f5f8; border-color: #aeb4bf; }
+.secondary[aria-expanded="true"] { background: #f1f2f4; border-color: #16181d; }
+
+/* 만들기 카드: 팝오버 옆. 세로 위치는 팝오버 위쪽에 맞추고 화면 밖으로 나가면 코드가 위로 올린다. */
+.makerSlot { position: absolute; top: 0; z-index: 1; width: 288px; }
+.makerSlot[data-side="left"] { right: calc(100% + 12px); }
+.makerSlot[data-side="right"] { left: calc(100% + 12px); }
+.maker {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: 288px;
+  max-height: calc(100vh - 16px);
+  color: #15171c;
+  background: rgba(255, 255, 255, var(--side-panel-alpha, 1));
+  border: 1px solid #e1e4e9;
+  border-radius: 12px;
+  box-shadow: 0 2px 4px rgba(21, 23, 28, 0.08), 0 16px 40px rgba(21, 23, 28, 0.18);
+  font-size: 13px;
+}
+.makerHead { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 4px 6px 0 12px; }
+.makerHead h3 { flex: 1; margin: 0; font-size: 14px; font-weight: 700; }
+.iconBtn { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; color: #4a5160; background: transparent; border: 0; border-radius: 7px; cursor: pointer; }
+.iconBtn:hover { color: #15171c; background: #f3f5f8; }
+.makerBody { display: grid; gap: 8px; min-height: 0; padding: 4px 10px 10px; overflow: auto; overscroll-behavior: contain; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.chips button { min-height: 28px; padding: 3px 10px; color: #374151; background: #fff; border: 1px solid #d9dce2; border-radius: 999px; cursor: pointer; font: inherit; font-size: 12px; }
+.chips button:hover:not([aria-pressed="true"]) { background: #f3f5f8; }
+.chips button[aria-pressed="true"] { color: #fff; background: #16181d; border-color: #16181d; }
+
+.rows { display: flex; flex-direction: column; overflow: hidden; border-radius: 10px; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08); }
+.crow { position: relative; display: grid; align-items: center; gap: 2px; height: 32px; padding: 0 3px 0 6px; font-size: 12px; background: #fff; }
+.crow[data-eyes] { grid-template-columns: 26px 36px minmax(0, 1fr) repeat(5, 26px); }
+.crow:not([data-eyes]) { grid-template-columns: 36px minmax(0, 1fr) repeat(5, 26px); }
+.crow[data-seq] { grid-template-columns: 36px minmax(0, 1fr) repeat(4, 26px); }
+.crow > * { position: relative; }
+.crowFill { position: absolute !important; inset: 0; }
+.cn { white-space: nowrap; }
+.hx { min-width: 0; font-family: "IBM Plex Mono", ui-monospace, "Cascadia Mono", monospace; font-size: 11px; letter-spacing: 0.02em; white-space: nowrap; }
+.seqSw { display: flex; }
+.seqSw i { width: 13px; height: 16px; }
+.crow button {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  opacity: 0.75;
+}
+.crow button:hover { background: rgba(127, 127, 127, 0.18); opacity: 1; }
+.crow button[aria-pressed="true"] { opacity: 1; }
+.crow button:focus-visible { opacity: 1; }
+.pick { position: relative; display: grid; }
+.pick input { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; opacity: 0; pointer-events: none; }
+
+.warn { display: grid; gap: 2px; font-size: 12px; }
+.bad { color: #b42318; }
+.ok { color: #3f6f45; }
+
+.ga { display: flex; align-items: center; gap: 6px; }
+.go { flex: 1; min-height: 36px; color: #fff; background: #16181d; border: 0; border-radius: 10px; cursor: pointer; font: inherit; font-size: 13px; font-weight: 700; }
+.go:hover { background: #2a2d34; }
+.sq { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; color: #374151; background: #fff; border: 1px solid #d9dce2; border-radius: 10px; cursor: pointer; }
+.sq:hover:not(:disabled) { background: #f3f5f8; }
+.sq:disabled { cursor: default; opacity: 0.35; }
+.save { min-height: 32px; color: #15171c; background: #fff; border: 1px solid #d9dce2; border-radius: 10px; cursor: pointer; font: inherit; font-size: 12.5px; }
+.save:hover:not(:disabled) { background: #f3f5f8; }
+.save:disabled { cursor: default; opacity: 0.6; }
+
+.pop button:focus-visible, .maker button:focus-visible, .maker input:focus-visible {
+  outline: 2px solid #2f6fdb;
+  outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .host { animation: none; }
+}
