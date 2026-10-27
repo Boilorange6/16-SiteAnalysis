@@ -213,6 +213,11 @@ const build = (model, options = {}) => buildMapScene({ model, width: 800, height
     assert.ok(!overlaps(l.box, p.box), `${l.text} 가 주제 라벨 상자와 겹침`);
     assert.ok(!overlaps(l.box, p.leader), `${l.text} 가 설명선 상자와 겹침`);
   }
+  // 환승역처럼 같은 이름 역 점이 가까이 여러 개면 라벨은 한 번만("도곡 ○ 도곡" 방지)
+  const twin = makeScene();
+  twin.context.stations.push({ name: "대치", x: -138, y: -192, color: "#F5A200" });
+  const twinLabels = build({ ...modelOf("A04"), base: mapBaseFromScene(twin) }).base.labels;
+  assert.equal(twinLabels.filter((l) => l.text === "대치").length, 1, "같은 이름 가까운 역은 라벨 하나");
   // 역·철도 바탕이 빠지면 역 라벨도 없다
   assert.ok(!build(modelOf("A01")).base.labels.some((l) => l.kind === "station"));
   assert.ok(!build(modelOf("D13")).base.labels.some((l) => l.kind === "road"));

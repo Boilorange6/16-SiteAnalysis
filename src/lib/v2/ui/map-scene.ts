@@ -1126,6 +1126,8 @@ function baseLabels(projection: BaseProjection, theme: BaseTheme, width: number,
   const boxAround = (cx: number, cy: number, w: number, h: number): MapSceneBox => ({ x0: cx - w / 2, y0: cy - h / 2, x1: cx + w / 2, y1: cy + h / 2 });
 
   projection.stations.forEach(({ name, p }, index) => {
+    // 환승역은 노선마다 역 점이 따로 있다: 가까운 같은 이름 역에 이미 라벨이 있으면 다시 쓰지 않는다.
+    if (placed.some((l) => l.text === name && Math.hypot(l.x - p[0], l.y - p[1]) < fontSize * 8)) return;
     const w = mapTextWidth(name, fontSize);
     const gap = theme.station.radiusPx + 3;
     const label = { key: `base-station-${index}`, kind: "station" as const, text: name, angle: 0 };
