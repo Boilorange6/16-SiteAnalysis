@@ -17,6 +17,7 @@ import { clampReportFontSizes, EMPTY_REPORT_DOC, defaultFrame, mergeReportFontSi
 import { normalizePagePanels, clonePagePanels, type PagePanelKey, type PagePanelRect, type PagePanels } from "../report/report-geometry";
 export type { PagePanelKey, PagePanelRect, PagePanels } from "../report/report-geometry";
 import type { TileReportSettings } from "../report/report-plan";
+import { isBaseThemeId, type BaseThemeId } from "./map-theme";
 
 export type TileSize = 1 | 2 | 4;
 export type GridColumns = 2 | 3 | 4 | 5 | 6;
@@ -192,6 +193,8 @@ export type BoardState = {
   report: ReportState;
   /** 보드와 독립된 보고서 모드의 페이지 문서. 옛 report는 불러오기용으로만 보존한다. */
   reportDoc: ReportDoc;
+  /** 벡터 바탕지도 테마. 없으면 기본(warm). */
+  baseTheme?: BaseThemeId;
   /** 빼 둔 타일(더할 수 있는 타일). index는 빼기 전 위치 */
   removed: { id: string; index: number }[];
   undoStack: UndoEntry[];
@@ -230,6 +233,7 @@ export type BoardAction =
   | { type: "mapLabels"; id: string; show: boolean }
   | { type: "layer"; id: string; layer: string }
   | { type: "terrainSection"; id: string; section: TerrainSectionId }
+  | { type: "baseTheme"; id: BaseThemeId }
   | { type: "reportDoc"; doc: ReportDoc };
 
 /** 카드의 현재 면 (편집 중에는 화면이 항상 요약면을 쓴다) */
@@ -818,6 +822,8 @@ export function boardReducer(s: BoardState, a: BoardAction): BoardState {
     case "terrainSection":
       if (a.section !== "A" && a.section !== "B") return s;
       return { ...s, terrainSection: { ...s.terrainSection, [a.id]: a.section } };
+    case "baseTheme":
+      return isBaseThemeId(a.id) ? { ...s, baseTheme: a.id } : s;
   }
 }
 
@@ -853,6 +859,8 @@ export type BoardStateSnapshot = {
   report?: ReportState;
   /** v4 보고서 모드 문서. v3 이하 저장본에는 없다. */
   reportDoc?: ReportDoc;
+  /** 벡터 바탕지도 테마. 이전 저장본에는 없고 기본(warm)으로 읽는다. */
+  baseTheme?: BaseThemeId;
   removed: { id: string; index: number }[];
 };
 
@@ -887,6 +895,7 @@ export function serializeBoardState(s: BoardState): BoardStateSnapshot {
     instances: { ...s.instances },
     report: cloneReport(s.report),
     reportDoc: cloneReportDoc(s.reportDoc),
+    ...(s.baseTheme ? { baseTheme: s.baseTheme } : {}),
     removed: s.removed.map((item) => ({ ...item })),
   };
 }
@@ -1558,6 +1567,7 @@ export function restoreBoardState(results: TileResult[], raw: unknown, fallbackP
     instances: savedInstances,
     report,
     reportDoc,
+    ...(isBaseThemeId(saved.baseTheme) ? { baseTheme: saved.baseTheme } : {}),
     removed,
     undoStack: [],
   };
