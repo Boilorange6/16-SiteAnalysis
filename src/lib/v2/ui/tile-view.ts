@@ -178,6 +178,7 @@ function mapOf(r: TileResult, analysisSiteParcel?: readonly MapPolygon[] | null)
     total: r.presentation.featuresTotal ?? features.length,
     notes,
     ...(r.presentation.legend.length > 0 ? { legend: r.presentation.legend } : {}),
+    ...(r.presentation.valueAxis ? { valueAxis: r.presentation.valueAxis } : {}),
     ...(rasterOptions.length > 0 ? { rasterOptions } : {}),
     ...(defaultRaster ? { defaultRaster, rasters } : {}),
   };

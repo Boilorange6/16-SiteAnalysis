@@ -42,6 +42,18 @@ try {
   assert.equal(unknownYearBuilding.sublabel, null, "승인연도 미상 건물에는 sublabel을 붙이지 않는다");
   assert.equal(unknownYearBuilding.labelPriority, 1);
 
+  // 그래프용 값: 사용승인 연도, 미상만 null
+  assert.deepEqual(tile.presentation.valueAxis, { label: "사용승인 연도", unit: "년", countUnit: "동" });
+  assert.deepEqual(toTileView(tile).map.valueAxis, tile.presentation.valueAxis);
+  assert.equal(datedBuilding.value, 1979);
+  assert.equal(unknownYearBuilding.value, null);
+  for (const polygon of tile.presentation.polygons) {
+    assert.ok(Object.hasOwn(polygon, "value"), `${polygon.layer} value 키 존재`);
+    if (polygon.layer === "bldg_unknown") assert.equal(polygon.value, null);
+    else assert.ok(Number.isInteger(polygon.value) && polygon.value >= 1900 && polygon.value <= 2100, `${polygon.layer} 연도 ${polygon.value}`);
+  }
+  assert.ok(tile.presentation.polygons.some((polygon) => polygon.layer === "bldg_unknown"), "미상 면이 있어야 null 경로를 검증");
+
   // UI 헤더는 반올림된 퍼센트 합이 아니라 세부 metric의 count 합으로 다시 계산한다.
   const rounded = structuredClone(tile);
   for (const [index, id] of ["share_pre1980", "share_1980s", "share_1990s"].entries()) {
@@ -81,6 +93,7 @@ try {
   assert.equal(fallback.presentation.features[0].layer, "bldg_2000s");
   assert.equal(fallback.presentation.features[0].name, "b_unknown");
   assert.equal(fallback.presentation.features[0].sublabel, "2005년");
+  assert.equal(fallback.presentation.features[0].value, 2005, "대표점 fallback도 같은 연도 값을 싣는다");
   assert.equal(fallback.presentation.features[0].labelPriority, 1);
 } finally {
   fallbackCtx.close();

@@ -86,7 +86,19 @@ try {
     ["low_assumed_1f_est", 2],
     ["low_gt12", 2],
   ].sort());
-  assert.equal(toTileView(d05Tile).chart.length, 15, "D05 카드 차트에 층수·고층·저층 지표를 함께 보존");
+  // 그래프용 값: 확인된 지상 층수만 숫자, 미상·1층 가정은 null(생략이 아님)
+  assert.deepEqual(d05Tile.presentation.valueAxis, { label: "지상 층수", unit: "층", countUnit: "동" });
+  assert.deepEqual(toTileView(d05Tile).map.valueAxis, d05Tile.presentation.valueAxis);
+  const floorPolygons = d05Tile.presentation.polygons.filter((polygon) => polygon.layer.startsWith("floors_"));
+  assert.equal(floorPolygons.length, 6);
+  for (const polygon of floorPolygons) {
+    assert.ok(Object.hasOwn(polygon, "value"), `${polygon.layer} value 키 존재`);
+    if (polygon.layer === "floors_unknown" || polygon.layer === "floors_assumed_1f_est") assert.equal(polygon.value, null, `${polygon.layer}는 값 없음`);
+    else assert.ok(Number.isFinite(polygon.value) && polygon.value >= 1, `${polygon.layer} 층수 값`);
+  }
+  assert.equal(towerBase.value, 30, "b_tower 30층");
+  assert.equal(floorPolygons.filter((polygon) => polygon.value === null).length, 2);
+  assert.equal(toTileView(d05Tile).chart.length, 15,"D05 카드 차트에 층수·고층·저층 지표를 함께 보존");
   assert.equal(toTileView(d05Tile).chart.some((item) => item.label.includes("미터")), false);
 
   assert.equal(metric(d05Tile, "tall_buildings").value, 1);

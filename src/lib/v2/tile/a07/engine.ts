@@ -244,6 +244,7 @@ export function a07(ctx: EngineContext): TileResult {
       lng: Math.round(p.at[0] * 1e6) / 1e6,
       lat: Math.round(p.at[1] * 1e6) / 1e6,
       weight: Math.round(p.m), // 점 크기 = ㎡당 중앙값(값이 클수록 크게, A08과 같은 규칙)
+      value: Math.round(p.m), // 그래프 값: weight와 같은 수
       name: names.get(p.pnu) ?? null,
       sublabel: [
         `㎡당 중앙값 ${fmt(Math.round(p.m))}만원`,
@@ -277,6 +278,7 @@ export function a07(ctx: EngineContext): TileResult {
     map,
     polygons: district.polygons,
     polygonCap: 3000,
+    valueAxis: { label: "㎡당 가격", unit: "만원", countUnit: "단지" },
     legend: [
       ...tradeLegend(all),
       ...district.legend,

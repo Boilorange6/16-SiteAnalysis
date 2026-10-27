@@ -25,7 +25,7 @@ const TILE_CACHE_REVISION: Readonly<Record<string, string>> = {
   A04: "w3-merge-r1+w2b-r1+clip-r1",
   A05: "w2b-r1+composition-r1",
   A06: "w2b-r1+composition-r1",
-  A07: "w3-merge-r1+w2b-r1+w2-trade-modes-r1+price-size-r1",
+  A07: "w3-merge-r1+w2b-r1+w2-trade-modes-r1+price-size-r1+chart-value-r1",
   A08: "w2b-r1+w2-trade-modes-r1+w6-building-modes-r1",
   A09: "w3-merge-r1+w2b-r1+clip-r1",
   A10: "w3-merge-r1+w2b-r1",
@@ -33,8 +33,8 @@ const TILE_CACHE_REVISION: Readonly<Record<string, string>> = {
   A12: "w3-merge-r1+w2b-r1+clip-r1+provenance-r1",
   D02: "w2b-r1+w4-names-r1+clip-r1",
   D03: "w2b-r1+w4-names-r1+clip-r1",
-  D04: "w2b-r1+w4-names-r1+clip-r1",
-  D05: "height3-r1+w3-merge-r1+w2b-r1+w4-names-r1+d05-nearest-cap-r1+clip-r1",
+  D04: "w2b-r1+w4-names-r1+clip-r1+chart-value-r1",
+  D05: "height3-r1+w3-merge-r1+w2b-r1+w4-names-r1+d05-nearest-cap-r1+clip-r1+chart-value-r1",
   D10: "w2b-r1+clip-r1+composition-r1",
   D11: "w2b-r1+clip-r1",
   D12: "w2b-r1+clip-r1",
@@ -289,6 +289,8 @@ export interface TileDraft {
   legend?: TileResult["presentation"]["legend"];
   /** D17 수치지형도 단면. topo가 없는 결과에는 생략한다. */
   terrainSections?: NonNullable<TileResult["presentation"]["terrainSections"]>;
+  /** 지물 `value`의 뜻(그래프 축). 값을 싣는 타일만 둔다. */
+  valueAxis?: TileResult["presentation"]["valueAxis"];
 }
 
 function warnOverlappingFeatureGeometry(code: string, features: MapFeature[], polygons: MapPolygon[]): void {
@@ -327,6 +329,7 @@ export function makeTile(ctx: EngineContext, d: TileDraft): TileResult {
       ...(cappedPoly && cappedPoly.total > 0 ? { polygons: cappedPoly.polygons, polygonsTotal: d.polygonTotal ?? cappedPoly.total } : {}),
       ...(cappedLine && cappedLine.total > 0 ? { lines: cappedLine.lines, linesTotal: cappedLine.total } : {}),
       ...(d.terrainSections ? { terrainSections: d.terrainSections } : {}),
+      ...(d.valueAxis ? { valueAxis: d.valueAxis } : {}),
     },
     provenance: { manifestHash: ctx.manifestHash, sources: d.sources },
     limitations: d.limitations,

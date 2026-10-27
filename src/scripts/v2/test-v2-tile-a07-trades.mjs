@@ -123,6 +123,12 @@ const clean = (tile) => {
   assert.equal(unnamed?.name, null);
   assert.match(unnamed?.sublabel ?? "", new RegExp(`^㎡당 중앙값 ${Math.round(pointC.m).toLocaleString("en-US")}만원 · 최근 `));
   assert.equal(unnamed?.labelPriority, 0, "A07 이름이 없으면 대체 문구 없이 priority 0이다");
+  // 그래프용 값: 모든 거래 점에서 value === weight (㎡당 중앙값, 만원)
+  assert.deepEqual(a.presentation.valueAxis, { label: "㎡당 가격", unit: "만원", countUnit: "단지" });
+  const tradePoints = a.presentation.features.filter((feature) => feature.layer.startsWith("trade_q"));
+  assert.ok(tradePoints.length > 0);
+  for (const feature of tradePoints) assert.ok(Number.isFinite(feature.value) && feature.value === feature.weight, `${feature.layer} value === weight`);
+  assert.deepEqual(toTileView(a).map.valueAxis, a.presentation.valueAxis);
   assert.ok(a.presentation.features.every((feature) => !Object.hasOwn(feature, "label")), "A07는 옛 label을 내지 않는다");
   const cuts = [0.2, 0.4, 0.6, 0.8].map((p) => {
     const values = trades.points.map((point) => point.m).sort((x, y) => x - y);

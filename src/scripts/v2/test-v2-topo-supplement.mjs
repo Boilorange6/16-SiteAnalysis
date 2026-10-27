@@ -27,8 +27,8 @@ const { TOPO_AFFECTED_TILES } = await import("../../lib/v2/topo/context.ts");
 const BASELINE_HASHES = {
   D02: "11f4bb0f56fa4da13f8e0b6a09162fca9f273f6c0f753fc882c6104dc1cec2c3",
   D03: "53e3271b3aa34b387fc08bd19859a74ebfb77b4d4e9d0c5f01b7574a80ceeab6",
-  D04: "61bd348315ccf5ae67e70a03bcc979319a23f8e6a6f7725e43841b26dbe6ec91",
-  D05: "2db2b61b84bc60579ff713d5feabdbca4d64d5b173e0fff559314cb3ceacf437",
+  D04: "ad117a41d859739cebd9a84fafbcacab386a34a3283d0583aee73ec7f483f300", // 2026-10-28 분석 장 Task 1: 지물 value·valueAxis 추가로 갱신
+  D05: "e4a16ae631e354ea847b5026aeed9649ca57327b657d85ef3db7bf3993a2be9c", // 2026-10-28 분석 장 Task 1: 지물 value·valueAxis 추가로 갱신
   D06: "ba6dea03bc92765463d56fa84ff35ec809cee81bbbf285d741b4f689f8ca32c9",
   D07: "3449042e8d029aa49a2368ae872151646740ffdc33166d0f4af54c3bc39e41c9",
   D10: "d6713c1843d3eb6bf270ba51a18573d8afa2cb786dd3650b34be15c1d204585c",

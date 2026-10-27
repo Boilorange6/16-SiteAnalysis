@@ -46,8 +46,10 @@ function heightBucket(row: BuildingRow): (typeof HEIGHT_BUCKETS)[number]["id"] |
 function polygonsFor(ctx: EngineContext, row: BuildingRow, layer: string) {
   const clipped = areaInCircle(ctx.input.center, ctx.input.radiusM, row.hit.geometry as Geometry);
   if (!clipped) return [];
+  // 그래프 값: 확인된 지상 층수만. 층수 미상·1층 가정(추정)은 null.
+  const value = layer === "floors_unknown" || layer === "floors_assumed_1f_est" ? null : row.floorsAbove;
   return clipped.parts.flatMap((rings, index) => {
-    const polygon = polygonCandidate(row.hit.featureId * 1000 + index, layer, rings, polygonArea(rings), null, buildingMapExtra(row, layer));
+    const polygon = polygonCandidate(row.hit.featureId * 1000 + index, layer, rings, polygonArea(rings), null, { ...buildingMapExtra(row, layer), value });
     return polygon ? [polygon] : [];
   });
 }
@@ -131,6 +133,7 @@ export function d05(ctx: EngineContext): TileResult {
     polygons: capD05BuildingCandidates(polygons, ctx.input.center),
     polygonTotal: polygons.length,
     polygonCap: MAX_MAP_POLYGONS,
+    valueAxis: { label: "지상 층수", unit: "층", countUnit: "동" },
     limitations,
   });
 }

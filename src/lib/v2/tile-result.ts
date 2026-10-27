@@ -78,6 +78,8 @@ const MapFeatureSchema = z.object({
   // A06: 입주(예정) 월("YYYY-MM", 일자는 만들지 않는다)과 다른 원천과 같은 사업일 수 있음
   plannedMonth: z.string().regex(/^\d{4}-\d{2}$/).nullable().optional(),
   overlap: z.boolean().optional(),
+  /** 그래프 y값(타일의 `valueAxis` 단위). 값이 없거나 추정이면 null. */
+  value: z.number().finite().nullable().optional(),
 });
 
 /** 면(폴리곤) 지물 상한: 일반 타일은 개수, 고리 하나의 꼭짓점 수. 상한은 엔진이 지키고 스키마가 다시 막는다. */
@@ -123,6 +125,8 @@ const MapPolygonSchema = z.object({
   name: z.string().nullable().optional(),
   sublabel: z.string().nullable().optional(),
   labelPriority: z.number().int().min(0).max(2).optional(),
+  /** 그래프 y값(타일의 `valueAxis` 단위). 값이 없거나 추정이면 null. */
+  value: z.number().finite().nullable().optional(),
 });
 
 const TerrainSectionSchema = z.object({
@@ -227,6 +231,8 @@ export const TileResultSchema = z
       rasters: z.array(RasterRefSchema).max(96).optional(),
       /** D01처럼 타일 자체가 고정하는 항공영상 배경. */
       basemap: z.enum(["Satellite"]).optional(),
+      /** 지물 `value`의 뜻: 축 이름·값 단위·세는 단위(예: 지상 층수·층·동). 값을 싣는 타일만 둔다. */
+      valueAxis: z.object({ label: z.string().min(1), unit: z.string(), countUnit: z.string().min(1) }).optional(),
     }),
     provenance: z.object({
       manifestHash: z.string().regex(/^[0-9a-f]{64}$/),

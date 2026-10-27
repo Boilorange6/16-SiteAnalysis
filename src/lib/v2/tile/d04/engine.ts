@@ -29,6 +29,7 @@ const buildingMapExtra = (name: string | null, year: number | null) => ({
   name,
   sublabel: year === null ? null : `${year}년`,
   labelPriority: name === null ? 0 : 1,
+  value: year, // 그래프 값: 사용승인 연도(미상 null)
 });
 const fallbackPoint = (hit: Parameters<typeof candidate>[0], layer: string, year: number | null) => {
   try {
@@ -114,6 +115,7 @@ export function d04(ctx: EngineContext): TileResult {
     layers: [...DECADE_LAYERS],
     map: points,
     polygons,
+    valueAxis: { label: "사용승인 연도", unit: "년", countUnit: "동" },
     limitations,
   });
 }
