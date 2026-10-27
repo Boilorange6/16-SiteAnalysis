@@ -18,7 +18,7 @@ import { tileReportModuleFor } from "../tile/report";
 import { addEditableMap, mapDrawPlan, nativeMapFallbackNote, nativeMapStatus } from "./map-pptx";
 import { exportBasemap } from "../ui/basemap";
 import type { BasemapChoice } from "../ui/map-projection";
-import type { BaseThemeId } from "../ui/map-theme";
+import type { BaseThemeRef } from "../ui/map-theme";
 import { badgeTextColor } from "../ui/map-labels";
 import type { PageStyle } from "../ui/board-state";
 import { drawTerrainSectionPptx } from "./terrain-section-pptx";
@@ -67,7 +67,7 @@ function background(s: Slide, image: string | undefined, tint?: string, format: 
 }
 
 /** 지도 바탕 결정에 쓰는 내보내기 설정: 보드가 고른 바탕(`basemap`)과 벡터 바탕 테마. 그림 만들기(buildMapImages)와 같은 값을 받는다. */
-export type PptxMapLook = { basemap?: BasemapChoice; baseTheme?: BaseThemeId };
+export type PptxMapLook = { basemap?: BasemapChoice; baseTheme?: BaseThemeRef };
 
 /** 맨 아래 출처 띠 + 쪽 번호. 출처·기준일은 모든 장에 있다. chosen은 보드가 고른 바탕(쪽 지도에 실제로 그려진 바탕은 footerBasemaps가 정한다). */
 function strip(s: Slide, p: PlannedSlide, credit: boolean, format: SlideFormat = "wide", chosen?: BasemapChoice) {

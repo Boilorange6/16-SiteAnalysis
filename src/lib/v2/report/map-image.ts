@@ -18,7 +18,7 @@ import type { Scene } from "../scene";
 import { renderMass3dPng } from "../ui/mass-3d-runtime";
 import { calloutLegendEntries, SLIDE, slideCalloutAvoidance, slideLayout, slidePanelRects, slideReserved, slideSiteX, slideLegend, terrainSectionLayout } from "../ui/overlay-layout";
 import { exportBasemap, resolveBasemap } from "../ui/basemap";
-import type { BaseThemeId } from "../ui/map-theme";
+import type { BaseThemeRef } from "../ui/map-theme";
 import { BASEMAP_STACK, metersPerPixel, slideViewport, tilesFor, tileUrl, type BasemapChoice, type Viewport } from "../ui/map-projection";
 import { inflateRaster, paintRaster } from "../ui/raster-image";
 import { RASTER_STYLES } from "../ui/map-layers";
@@ -357,7 +357,7 @@ function extraFor(p: PlannedSlide, model: MapModel): Extra {
 }
 
 /** 계획의 모든 지도 자리에 대한 PNG. 실패한 장은 빠진다(렌더러가 자리표시를 넣는다). */
-export async function buildMapImages(plan: PlannedSlide[], layer?: BasemapChoice, options: { baseTheme?: BaseThemeId; mapDrawing?: PptxMapDrawing } = {}): Promise<MapImages> {
+export async function buildMapImages(plan: PlannedSlide[], layer?: BasemapChoice, options: { baseTheme?: BaseThemeRef; mapDrawing?: PptxMapDrawing } = {}): Promise<MapImages> {
   const { baseTheme } = options;
   // 무엇을 그림으로, 무엇을 도형으로 그릴지는 PPT와 같은 판정(mapDrawPlan)을 따른다.
   const mapDrawing = options.mapDrawing ?? "editable";

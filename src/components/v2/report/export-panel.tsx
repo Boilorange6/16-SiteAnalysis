@@ -3,7 +3,7 @@
 import { createRoot, type Root } from "react-dom/client";
 import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
-import type { BaseThemeId } from "@/lib/v2/ui/map-theme";
+import type { BaseThemeRef } from "@/lib/v2/ui/map-theme";
 import { BaseThemeContext } from "../base-theme-context";
 import { downloadBytes } from "@/lib/v2/export/download";
 import { preflightReport, type PreflightIssue } from "@/lib/v2/report/preflight";
@@ -62,7 +62,7 @@ function pageCountLabel(count: number): string {
   return `${count}쪽`;
 }
 
-function renderExportSurfaceFactory(basemap: BasemapChoice, baseTheme: BaseThemeId | undefined, format: ReportFormat, roots: Map<HTMLElement, Root>) {
+function renderExportSurfaceFactory(basemap: BasemapChoice, baseTheme: BaseThemeRef | undefined, format: ReportFormat, roots: Map<HTMLElement, Root>) {
   return async (slide: PlannedSlide): Promise<HTMLElement> => {
     const slideFormat = slide.format ?? format;
     const width = 1200;

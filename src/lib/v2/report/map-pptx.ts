@@ -1,10 +1,10 @@
 import PptxGenJS from "pptxgenjs";
-import { buildingStyleForRaster, isBuildingLayer, layerStyle, legendItems, legendItemsForModel, legendLabelOf, type MapModel } from "../ui/map-layers";
+import { buildingStyleForRaster, isBuildingLayer, layerStyle, legendItems, legendItemsForModel, legendLabelOf, modelLayerStyle, type MapModel } from "../ui/map-layers";
 import { isSiteParcelLayer } from "../ui/site-parcel";
 import { calloutLegendEntries, SLIDE, slideCalloutAvoidance, slideGeometry, slideLayout, slideLegend, slidePanelRects, slideReserved, slideSiteX, terrainSectionLayout, type SlideFormat } from "../ui/overlay-layout";
 import { SLIDE_OVERVIEW_FILL, slideCalloutFrame } from "../ui/callout-layout";
 import { buildMapScene, locatorBox, mapLabelEntries, northArrowBox, RAIL_EXIT_COLOR, RAIL_EXIT_DOT_RADIUS, RAIL_EXIT_DOT_STROKE, scaleBarBox, scaleChromeScaleForBox, type MapScene, type MapSceneBaseBucket, type MapSceneBox } from "../ui/map-scene";
-import { baseTheme, type BaseThemeId } from "../ui/map-theme";
+import { baseTheme, type BaseThemeRef } from "../ui/map-theme";
 import { badgeTextColor } from "../ui/map-labels";
 import { terrainSectionMapStyle } from "../ui/terrain-section";
 import { FONT, fontSizeForStyle, INK, hex, textIn, type Slide } from "./pptx-kit";
@@ -61,7 +61,7 @@ export type NativeMapOptions = {
   /** 이 지도가 실제로 그리는 바탕(`exportBasemap` 결과). "vector"이면 장면의 바탕 묶음을 도형으로 그린다. */
   basemap?: BasemapChoice;
   /** 벡터 바탕 색 테마(보드 선택). 없으면 기본 테마. */
-  baseTheme?: BaseThemeId;
+  baseTheme?: BaseThemeRef;
   /** 벡터 바탕 도형 다음, 주제 도형 앞에서 불린다. 값 래스터 그림을 이 자리에 넣는다. */
   underlay?: () => void;
 };
@@ -488,7 +488,7 @@ function lineTickSegments(points: readonly PixelPoint[], size: number): Array<[P
   return ticks;
 }
 
-function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "tile" }; mode?: NativeMapMode; style?: PageStyle; format?: SlideFormat; reportFrame?: MapFrameState; layout?: ReportLayout; basemap?: BasemapChoice; baseTheme?: BaseThemeId }): MapScene {
+function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "tile" }; mode?: NativeMapMode; style?: PageStyle; format?: SlideFormat; reportFrame?: MapFrameState; layout?: ReportLayout; basemap?: BasemapChoice; baseTheme?: BaseThemeRef }): MapScene {
   const mode = options.mode ?? "tile";
   const format = options.format ?? activeFormat;
   const reportFrame = options.reportFrame;
@@ -725,7 +725,7 @@ function addPolygons(slide: Slide, code: string, scene: MapScene, model: MapMode
     if (isSiteParcelLayer(polygon.polygon.layer) || isRasterizedLayer(polygon.polygon.layer)) continue;
     const legendLabel = legendLabelFor(model, polygon.polygon.layer);
     const groupKey = `legend-${safeKey(legendLabel)}`;
-    const style = layerStyle(polygon.polygon.layer);
+    const style = modelLayerStyle(model, polygon.polygon.layer);
     const estimated = polygon.polygon.layer.endsWith("_est") || style.label.startsWith("[추정]") || style.hatch === true;
     const neutral = hasRaster && isBuildingLayer(polygon.polygon.layer);
     const building = buildingStyleForRaster(polygon.polygon.layer, hasRaster);
@@ -750,7 +750,7 @@ function addLines(slide: Slide, code: string, scene: MapScene, model: MapModel):
   for (const entry of scene.lines) {
     if (isRasterizedLayer(entry.line.layer) || entry.line.layer === "rail_line" || entry.line.layer === "rail_station_axis") continue;
     if (entry.points.length < 2) continue;
-    const style = layerStyle(entry.line.layer);
+    const style = modelLayerStyle(model, entry.line.layer);
     const sectionId = entry.line.layer === "terrain_section_a" ? "A" : entry.line.layer === "terrain_section_b" ? "B" : null;
     const sectionStyle = sectionId ? terrainSectionMapStyle(sectionId, scene.terrainSection) : null;
     const baseWidth = sectionStyle?.strokeWidth ?? entry.line.strokeWidth ?? style.strokeWidth ?? 1.5;
@@ -783,11 +783,11 @@ function addRadius(slide: Slide, code: string, scene: MapScene): void {
   const [cx, cy] = scene.center;
   for (const [index, radius] of scene.rings.entries()) {
     if (!rectInsideFrame(cx - radius, cy - radius, radius * 2, radius * 2)) continue;
-    slide.addShape("ellipse", { x: pxX(cx - radius), y: pxY(cy - radius), w: pxW(radius * 2), h: pxH(radius * 2), fill: { color: "FFFFFF", transparency: 100 }, line: { color: color(scene.lineColor), width: pxPt(1), transparency: scene.activeLayer === "Satellite" ? 30 : 65, dashType: "dash" }, objectName: tag(code, "radius", "반경", `ring-${index}`) });
+    slide.addShape("ellipse", { x: pxX(cx - radius), y: pxY(cy - radius), w: pxW(radius * 2), h: pxH(radius * 2), fill: { color: "FFFFFF", transparency: 100 }, line: { color: color(scene.ringColor), width: pxPt(1), transparency: scene.activeLayer === "Satellite" ? 30 : 65, dashType: "dash" }, objectName: tag(code, "radius", "반경", `ring-${index}`) });
   }
   const radius = scene.radiusPx;
   if (rectInsideFrame(cx - radius, cy - radius, radius * 2, radius * 2)) {
-    slide.addShape("ellipse", { x: pxX(cx - radius), y: pxY(cy - radius), w: pxW(radius * 2), h: pxH(radius * 2), fill: { color: "FFFFFF", transparency: 100 }, line: { color: color(scene.lineColor), width: pxPt(1.6), transparency: scene.activeLayer === "Satellite" ? 5 : 25 }, objectName: tag(code, "radius", "반경", "outer") });
+    slide.addShape("ellipse", { x: pxX(cx - radius), y: pxY(cy - radius), w: pxW(radius * 2), h: pxH(radius * 2), fill: { color: "FFFFFF", transparency: 100 }, line: { color: color(scene.ringColor), width: pxPt(1.6), transparency: scene.activeLayer === "Satellite" ? 5 : 25 }, objectName: tag(code, "radius", "반경", "outer") });
   }
 }
 
@@ -799,7 +799,7 @@ function addFeatures(slide: Slide, code: string, scene: MapScene, model: MapMode
     if (isRasterizedLayer(feature.layer)) continue;
     const r = entry.radius;
     if (!rectInsideFrame(entry.p[0] - r, entry.p[1] - r, r * 2, r * 2)) continue;
-    const style = layerStyle(feature.layer);
+    const style = modelLayerStyle(model, feature.layer);
     const neutral = hasRaster && isBuildingLayer(feature.layer);
     const building = buildingStyleForRaster(feature.layer, hasRaster);
     const hollow = style.sizeBy === "weight" && !feature.weight;
@@ -848,7 +848,7 @@ function addRoute(slide: Slide, code: string, scene: MapScene): void {
   }
 }
 
-function addSite(slide: Slide, code: string, scene: MapScene, themeId?: BaseThemeId): void {
+function addSite(slide: Slide, code: string, scene: MapScene, themeId?: BaseThemeRef): void {
   const [cx, cy] = scene.center;
   const siteR = 10;
   if (scene.siteMode === "parcel" && scene.siteParcels.length > 0) {
@@ -1107,7 +1107,7 @@ export function addEditableMap(slide: Slide, plan: (PlannedSlide & { kind: "tile
     addFeatures(slide, code, scene, visibleModel);
     addRailOverlay(slide, code, scene);
     addRoute(slide, code, scene);
-    addSite(slide, code, scene, options.baseTheme);
+    addSite(slide, code, scene, visibleModel.baseTheme ?? options.baseTheme);
     addLabels(slide, code, scene);
     addNorth(slide, code, scene);
     addScale(slide, code, scene);

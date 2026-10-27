@@ -11,7 +11,7 @@ import { terrainSectionLabelAnchor } from "./terrain-section";
 import type { MapLabelBox } from "../report/report-doc";
 import type { LngLat } from "../crs";
 import { BASE_SUPPRESS, resolveBasemap, type BaseLayerKind, type MapBase } from "./basemap";
-import { baseTheme, type BaseTheme, type BaseThemeId } from "./map-theme";
+import { baseTheme, type BaseTheme, type BaseThemeRef } from "./map-theme";
 
 export type MapSceneBox = { x0: number; y0: number; x1: number; y1: number };
 
@@ -390,8 +390,8 @@ export type MapSceneOptions = {
   height: number;
   /** 사용자가 고른 바탕. 없으면 바탕 자료가 있는 모델은 벡터, 아니면 일반지도. */
   activeLayer?: BasemapChoice;
-  /** 벡터 바탕의 색 테마(없으면 기본 테마). */
-  baseTheme?: BaseThemeId | null;
+  /** 벡터 바탕의 색 테마(없으면 기본 테마). `model.baseTheme`이 있으면 그것이 먼저다. */
+  baseTheme?: BaseThemeRef | null;
   fill?: number;
   siteX?: number;
   siteY?: number;
@@ -485,6 +485,8 @@ export type MapScene = {
   occupiedBoxes: MapSceneBox[];
   polygonOpacity: number;
   lineColor: string;
+  /** 반경 원·점선 고리 색. 위성은 흰색, 벡터 바탕은 테마의 ring, 그 밖은 잉크색(= lineColor). */
+  ringColor: string;
   isLayerHighlighted: (layer: string) => boolean;
   isElementDimmed: (layer: string, key: string, explicitLabel?: string) => boolean;
   isElementStrong: (layer: string, key: string, explicitLabel?: string) => boolean;
@@ -1014,7 +1016,9 @@ const baseRoadRank = (hierarchy: string): number => { const index = BASE_ROAD_RA
 
 /** 한 장면·뷰포트·테마·생략 조합의 묶음은 33개 타일이 한 번만 계산한다. */
 function baseProjection(base: MapBase, theme: BaseTheme, vp: Viewport, width: number, height: number, mpp: number, suppress: ReadonlySet<BaseLayerKind>): BaseProjection {
-  const key = `${theme.id}|${vp.center[0]},${vp.center[1]},${vp.zoom}|${width}x${height}|${[...suppress].sort().join()}`;
+  // 만든 색은 id가 모두 "custom"이라, 도형 색을 정하는 값으로 구분한다.
+  const themeKey = theme.id === "custom" ? [theme.bg, theme.building.fill, theme.parcel.line, theme.road.fill, theme.green.park, theme.water].join(",") : theme.id;
+  const key = `${themeKey}|${vp.center[0]},${vp.center[1]},${vp.zoom}|${width}x${height}|${[...suppress].sort().join()}`;
   let byKey = baseProjectionCache.get(base);
   if (!byKey) baseProjectionCache.set(base, byKey = new Map());
   const cached = byKey.get(key);
@@ -1100,7 +1104,7 @@ function baseProjection(base: MapBase, theme: BaseTheme, vp: Viewport, width: nu
     }
     add({ key: "station", layer: "station", display: "역", closed: true, paths: circles, fill: theme.station.fill, stroke: theme.station.line, strokeWidth: 1.2 });
   }
-  const places = base.places.flatMap((place) => { const [x, y] = project(place.p[0], place.p[1]); return inFrame(x, y) ? [{ name: place.name, kind: place.kind, p: [x, y] as [number, number] }] : []; });
+  const places = base.places.flatMap((place) => { if (place.kind === "park" && suppress.has("green")) return []; const [x, y] = project(place.p[0], place.p[1]); return inFrame(x, y) ? [{ name: place.name, kind: place.kind, p: [x, y] as [number, number] }] : []; });
   const result: BaseProjection = { buckets, roadRuns: [...roadRuns.values()], stations, places };
   if (byKey.size >= BASE_PROJECTION_CACHE_SIZE) byKey.delete(byKey.keys().next().value!);
   byKey.set(key, result);
@@ -1477,9 +1481,9 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
   const rail = buildRailScene({ model, features: drawn, lines: linePaths, width: W, height: H, mpp, compact, labelScale, hiddenKeys: hidden, occupied: occupiedBoxes, inFrame });
   occupiedBoxes.push(...rail.occupiedBoxes);
   let baseScene: MapScene["base"] = null;
-  if (layer === "vector" && model.base) {
-    const theme = baseTheme(options.baseTheme);
-    const suppress = new Set<BaseLayerKind>(BASE_SUPPRESS[model.tileCode ?? ""] ?? []);
+  const theme = layer === "vector" && model.base ? baseTheme(model.baseTheme ?? options.baseTheme) : null;
+  if (theme && model.base) {
+    const suppress = new Set<BaseLayerKind>([...(BASE_SUPPRESS[model.tileCode ?? ""] ?? []), ...(model.baseHide ?? [])]);
     const projection = baseProjection(model.base, theme, vp, W, H, mpp, suppress);
     // 바탕 라벨은 가장 낮은 우선순위: 방위표·축척·범례·대지 표식·철도 라벨·주제 라벨이 먼저 자리를 잡는다.
     const labelOccupied = [...(legendBox ? [legendBox] : []), ...calloutAvoid, ...(showSiteMarker && !muted ? [siteBounds] : []), ...labelPlacements.flatMap((placement) => [placement.box, placement.leader]), ...rail.occupiedBoxes];
@@ -1520,6 +1524,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     occupiedBoxes,
     polygonOpacity: sat ? 0.45 : 0.35,
     lineColor,
+    ringColor: sat ? lineColor : theme ? theme.ring : lineColor,
     isLayerHighlighted,
     isElementDimmed,
     isElementStrong,

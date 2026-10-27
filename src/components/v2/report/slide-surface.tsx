@@ -3,7 +3,7 @@
 import * as React from "react";
 import { createContext, memo, useCallback, useContext, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
-import type { BaseThemeId } from "@/lib/v2/ui/map-theme";
+import type { BaseThemeRef } from "@/lib/v2/ui/map-theme";
 import { BaseThemeContext } from "../base-theme-context";
 import { metersPerPixel, slideViewport, zoomViewAt, type MapView } from "@/lib/v2/ui/map-projection";
 import { frameBasemap } from "@/lib/v2/ui/basemap";
@@ -2784,7 +2784,7 @@ export type SlideSurfaceProps = {
   slide: PlannedSlide;
   basemap: BasemapChoice;
   /** 벡터 바탕 테마. 별도 React 루트(내보내기)처럼 보드의 컨텍스트가 닿지 않는 곳에서 넘긴다. */
-  baseTheme?: BaseThemeId;
+  baseTheme?: BaseThemeRef;
   mode: "edit" | "thumb" | "export";
   selection?: SurfaceSelection;
   fontHighlight?: FontTargetKey | null;

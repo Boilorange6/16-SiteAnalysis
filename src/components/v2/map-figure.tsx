@@ -1,6 +1,6 @@
 import * as React from "react";
 import { memo, useCallback, useContext, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { buildingStyleForRaster, isBuildingLayer, layerStyle, legendItems, RASTER_STYLES, type MapModel, type RasterStyle } from "@/lib/v2/ui/map-layers";
+import { buildingStyleForRaster, isBuildingLayer, layerStyle, legendItems, modelLayerStyle, RASTER_STYLES, type MapModel, type RasterStyle } from "@/lib/v2/ui/map-layers";
 import { badgeTextColor, mapLabelText as formatMapLabelText } from "@/lib/v2/ui/map-labels";
 import { applyView, basemapAttribution, BASEMAP_STACK, framedViewport, makeProjector, metersPerPixel, scaleBar, tilesFor, tileUrl, worldPx, type BasemapChoice, type MapView, type Viewport } from "@/lib/v2/ui/map-projection";
 import { rasterAffine, rasterLegendColor, rasterLegendEntries, resolveRasterStyle } from "@/lib/v2/ui/raster-image";
@@ -11,7 +11,7 @@ import { calloutFrame, layoutCallouts, PX, PX_NARROW, type Placed } from "@/lib/
 import { buildMapScene, mapCalloutTextLayout, mapElementKey, mapFeatureKey, mapLabelEntries, mapTextWidth, RAIL_EXIT_COLOR, RAIL_EXIT_DOT_RADIUS, RAIL_EXIT_DOT_STROKE, type MapCalloutTextLayout, type MapSceneLabel } from "@/lib/v2/ui/map-scene";
 import { terrainSectionMapStyle } from "@/lib/v2/ui/terrain-section";
 import { resolveBasemap } from "@/lib/v2/ui/basemap";
-import { baseTheme, type BaseThemeId } from "@/lib/v2/ui/map-theme";
+import { baseTheme, type BaseThemeRef } from "@/lib/v2/ui/map-theme";
 import { BaseThemeContext } from "./base-theme-context";
 import { MAP_LABEL_MIN_HEIGHT, MAP_LABEL_MIN_WIDTH, normalizeMapLabelBox, type MapLabelBox } from "@/lib/v2/report/report-doc";
 
@@ -33,7 +33,7 @@ export type MapFigureProps = {
    */
   layer?: BasemapChoice;
   /** 벡터 바탕의 색 테마. 없으면 BaseThemeContext, 그것도 없으면 기본 테마. */
-  baseTheme?: BaseThemeId;
+  baseTheme?: BaseThemeRef;
   /** 배경 타일 주소 → 실제 href (PPT용: data URI로 바꿔 넣는다). 반환 undefined면 그 타일은 생략 */
   tileHref?: (url: string) => string | undefined;
   /** 결과 래스터 이름 → 압축 해제·팔레트 처리한 이미지 data URL (MapBox/PPT가 주입) */
@@ -403,7 +403,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseT
   const rasterModel = model as RasterPresentationModel;
   const activeLayer = resolveBasemap(model, layer);
   const themeFromContext = useContext(BaseThemeContext);
-  const themeId = baseThemeProp ?? themeFromContext;
+  const themeId = model.baseTheme ?? baseThemeProp ?? themeFromContext;
   const theme = baseTheme(themeId);
   const sat = activeLayer === "Satellite";
   // 항공 사진 위에서는 어두운 선·점 테두리가 묻히므로 흰색으로 바꾼다
@@ -696,7 +696,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseT
   const previewCandidates = useMemo<PreviewPickCandidate[]>(() => {
     if (!previewInteraction) return [];
     const featureCandidates = scene.features.map((entry) => {
-      const style = layerStyle(entry.feature.layer);
+      const style = modelLayerStyle(model, entry.feature.layer);
       const label = previewLabelByKey.get(entry.key);
       return {
         key: entry.key,
@@ -710,7 +710,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseT
       };
     });
     const lineCandidates = scene.lines.map((entry) => {
-      const style = layerStyle(entry.line.layer);
+      const style = modelLayerStyle(model, entry.line.layer);
       const label = previewLabelByKey.get(entry.key);
       return {
         key: entry.key,
@@ -725,7 +725,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseT
       };
     });
     const polygonCandidates = scene.polygons.filter((entry) => !isSiteParcelLayer(entry.polygon.layer)).map((entry) => {
-      const style = layerStyle(entry.polygon.layer);
+      const style = modelLayerStyle(model, entry.polygon.layer);
       const label = previewLabelByKey.get(entry.key);
       const [lng, lat] = centerOf(entry.polygon.rings[0] ?? []);
       return {
@@ -1324,7 +1324,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseT
           </linearGradient>
         ))}
         {polygons.filter(isEstimated).map((polygon) => {
-          const st = layerStyle(polygon.polygon.layer);
+          const st = modelLayerStyle(model, polygon.polygon.layer);
           return (
             <pattern key={hatchId(polygon.index)} id={hatchId(polygon.index)} patternUnits="userSpaceOnUse" width={10 * u} height={10 * u} patternTransform="rotate(45)">
               <rect width={10 * u} height={10 * u} fill={st.fill ?? st.color} fillOpacity={st.fillOpacity ?? polygonOpacity} />
@@ -1333,7 +1333,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseT
             );
         })}
         {linePaths.filter((d) => layerStyle(d.l.layer).arrow).map((d) => {
-          const st = layerStyle(d.l.layer);
+          const st = modelLayerStyle(model, d.l.layer);
           return (
             <marker key={`arrow-${d.index}`} id={`arrow-${uid}-${d.index}`} markerWidth={4 * u} markerHeight={4 * u} refX={8} refY={5} viewBox="0 0 10 10" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
               <path d="M 0 0 L 10 5 L 0 10 z" fill={d.l.color ?? st.color} />
@@ -1418,7 +1418,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseT
         <g clipPath={showRadius ? `url(#r${uid})` : undefined} data-radius-clip={showRadius ? "true" : undefined}>
           {polygons.map((polygon) => {
             if (isSiteParcelLayer(polygon.polygon.layer) || !shouldRasterizeLayer(polygon.polygon.layer)) return null;
-            const st = layerStyle(polygon.polygon.layer);
+            const st = modelLayerStyle(model, polygon.polygon.layer);
             const estimated = isEstimated(polygon);
             const neutralBuilding = rasterImages.length > 0 && isBuildingLayer(polygon.polygon.layer);
             const buildingStyle = buildingStyleForRaster(polygon.polygon.layer, rasterImages.length > 0);
@@ -1438,7 +1438,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseT
             );
           })}
           {linePaths.filter((d) => backgroundOnlyActive ? shouldRasterizeLayer(d.l.layer) : (d.l.layer !== "rail_line" && d.l.layer !== "rail_station_axis")).map((d) => {
-            const st = layerStyle(d.l.layer);
+            const st = modelLayerStyle(model, d.l.layer);
             const sectionId = d.l.layer === "terrain_section_a" ? "A" : d.l.layer === "terrain_section_b" ? "B" : null;
             const sectionStyle = sectionId ? terrainSectionMapStyle(sectionId, terrainSection) : null;
             const lineSelected = isSelected(d.l.fid);
@@ -1493,9 +1493,9 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseT
           </g>
         )}
         {showNativeChrome && showRadius && rings.map((r, i) => (
-          <circle key={`ring-${i}-${r}`} cx={cx} cy={cy} r={r} fill="none" stroke={line} strokeOpacity={sat ? 0.7 : 0.35} strokeWidth={1 * u} strokeDasharray={`${4 * u} ${4 * u}`} />
+          <circle key={`ring-${i}-${r}`} cx={cx} cy={cy} r={r} fill="none" stroke={scene.ringColor} strokeOpacity={sat ? 0.7 : 0.35} strokeWidth={1 * u} strokeDasharray={`${4 * u} ${4 * u}`} />
         ))}
-        {showNativeChrome && showRadius && <circle cx={cx} cy={cy} r={R} fill="none" stroke={line} strokeOpacity={sat ? 0.95 : 0.75} strokeWidth={1.6 * u} />}
+        {showNativeChrome && showRadius && <circle cx={cx} cy={cy} r={R} fill="none" stroke={scene.ringColor} strokeOpacity={sat ? 0.95 : 0.75} strokeWidth={1.6 * u} />}
 
          {showNativeChrome && drawn.map((d, i) => {
             if (d.f.highlight && d.f.distanceM != null) {
@@ -1506,7 +1506,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseT
           return null;
         })}
          {drawn.map((d, i) => {
-             const st = layerStyle(d.f.layer);
+             const st = modelLayerStyle(model, d.f.layer);
              const r = radiusOf(d.f);
              const neutralBuilding = rasterImages.length > 0 && isBuildingLayer(d.f.layer);
              const buildingStyle = buildingStyleForRaster(d.f.layer, rasterImages.length > 0);
