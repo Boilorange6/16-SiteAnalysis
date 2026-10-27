@@ -1,7 +1,7 @@
 "use client";
 
 /** 「색 만들기」 카드: 분위기로 바탕 색 7개·다이어그램 팔레트를 만들고, 고친 색은 바로 지도에 적용한다. */
-import { useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { saveMyColor, SAVE_FAILED_MESSAGE, type SavedBase, type SavedPalette } from "@/lib/v2/ui/my-map-colors";
 import { baseThemeWarnings, generateBaseColors, generatePaletteColors, lum, MOODS, paletteWarnings, shiftL, type Mood } from "@/lib/v2/ui/map-color";
 import { baseTheme, BASE_TOGGLE_LAYERS, themeFromColors, type BaseThemeColors, type BaseToggleLayer } from "@/lib/v2/ui/map-theme";
@@ -18,7 +18,8 @@ export type MapColorMakerProps = {
   kind: MapColorKind;
   /** 지금 적용된 색. 이 값에서 시작한다. */
   value: Required<MapColorChoice>;
-  onApply(patch: MapColorChoice): void;
+  /** group: 같은 입력이 이어지는 편집(색 고르개 끌기)의 묶음 이름. 받는 쪽이 되돌리기 한 단계로 합칠 수 있다. */
+  onApply(patch: MapColorChoice, group?: string): void;
   /** 계정에 저장이 끝났을 때. 저장된 테마를 목록에 올리고 적용하는 일은 부른 쪽이 한다. */
   onSaved(kind: MapColorKind, saved: SavedBase | SavedPalette): void;
   onClose(): void;
@@ -85,8 +86,18 @@ export default function MapColorMaker({ kind, value, onApply, onSaved, onClose }
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const lastGroup = useRef<{ key: string; at: number } | null>(null);
+  // 저장은 서버를 기다리는 동안 화면이 바뀔 수 있다. 끝난 뒤에는 늘 최신 콜백을 부르고, 카드가 이미 닫혔으면 아무것도 하지 않는다.
+  const latest = useRef({ onApply, onSaved });
+  latest.current = { onApply, onSaved };
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
-  const apply = (colors: Colors) => onApply(kind === "base" ? { base: { name: "만든 색", colors: colors as BaseThemeColors } } : { palette: { name: "만든 색", colors: colors as DiagramPaletteColors } });
+  const apply = (colors: Colors, group?: string) => onApply(kind === "base" ? { base: { name: "만든 색", colors: colors as BaseThemeColors } } : { palette: { name: "만든 색", colors: colors as DiagramPaletteColors } }, group);
   const set = (next: MakerState) => {
     stateRef.current = next;
     setState(next);
@@ -98,7 +109,7 @@ export default function MapColorMaker({ kind, value, onApply, onSaved, onClose }
     lastGroup.current = group ? { key: group, at: now } : null;
     const cur = stateRef.current;
     set({ colors, undo: joined ? cur.undo : [...cur.undo, cur.colors].slice(-UNDO_LIMIT), redo: [] });
-    apply(colors);
+    apply(colors, group);
   };
   const undo = () => {
     const cur = stateRef.current;
@@ -156,11 +167,12 @@ export default function MapColorMaker({ kind, value, onApply, onSaved, onClose }
     setSaveError(null);
     try {
       const saved = kind === "base" ? await saveMyColor("base", colors as BaseThemeColors) : await saveMyColor("palette", colors as DiagramPaletteColors);
-      onSaved(kind, saved);
+      if (!mounted.current) return;
+      latest.current.onSaved(kind, saved);
     } catch {
-      setSaveError(SAVE_FAILED_MESSAGE);
+      if (mounted.current) setSaveError(SAVE_FAILED_MESSAGE);
     } finally {
-      setSaving(false);
+      if (mounted.current) setSaving(false);
     }
   };
 

@@ -595,9 +595,12 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
   const vectorAvailable = useMemo(() => (scene?.origin ? baseUsable(mapBaseFromScene(scene)) : false), [scene]);
   const [basemap, setBasemap] = useState<BasemapChoice>("vector");
   // 지도 색 팝오버: 열림 여부, 줄 위에 올려 둔 미리 보기(저장하지 않음), 연 버튼.
-  const [mapColorOpen, setMapColorOpen] = useState(false);
+  // 같은 기본 지도 버튼이 머리 줄(bar)과 접힌 「더 보기」 메뉴(menu) 두 곳에 있어서, 어느 쪽에서 열었는지 기억해 그 버튼에 붙인다.
+  const [mapColorFrom, setMapColorFrom] = useState<"bar" | "menu" | null>(null);
   const [previewColors, setPreviewColors] = useState<MapColorChoice | null>(null);
-  const mapColorTriggerRef = useRef<HTMLButtonElement>(null);
+  const mapColorBarRef = useRef<HTMLButtonElement>(null);
+  const mapColorMenuRef = useRef<HTMLButtonElement>(null);
+  const closeMapColor = useCallback(() => setMapColorFrom(null), []);
   const mapColorValue = useMemo(() => resolveMapColors(board, {}), [board]);
   const applyMapColor = useCallback((patch: MapColorChoice) => {
     if (patch.base !== undefined) dispatch({ type: "baseTheme", ref: patch.base });
@@ -609,9 +612,29 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
   // 기본 지도가 아니게 되거나 보고서로 넘어가면 지도 색 팝오버와 미리 보기를 접는다.
   useEffect(() => {
     if (boardMode === "tile" && shownBasemap === "vector") return;
-    setMapColorOpen(false);
+    setMapColorFrom(null);
     setPreviewColors(null);
   }, [boardMode, shownBasemap]);
+  // 이미 눌린 기본 지도를 다시 누르면 지도 색 팝오버를 연다(`기본 지도 ▾`). 눌리지 않았으면 지금처럼 바탕만 바꾼다.
+  const basemapButton = (b: (typeof BASEMAPS)[number], from: "bar" | "menu") => {
+    const mapColorTrigger = b.id === "vector" && shownBasemap === "vector";
+    return (
+      <button
+        key={b.id}
+        ref={b.id === "vector" ? (from === "bar" ? mapColorBarRef : mapColorMenuRef) : undefined}
+        type="button"
+        aria-pressed={shownBasemap === b.id}
+        disabled={b.id === "vector" && !vectorAvailable}
+        title={b.id === "vector" && !vectorAvailable ? "이 분석에는 기본 지도 자료가 없습니다" : undefined}
+        aria-label={mapColorTrigger ? b.label : undefined}
+        aria-haspopup={mapColorTrigger ? "dialog" : undefined}
+        aria-expanded={mapColorTrigger ? mapColorFrom === from : undefined}
+        onClick={() => (mapColorTrigger ? setMapColorFrom((cur) => (cur === from ? null : from)) : setBasemap(b.id))}
+      >
+        {mapColorTrigger ? "기본 지도 ▾" : b.label}
+      </button>
+    );
+  };
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (boardMode === "report") params.set("mode", "report");
@@ -1116,23 +1139,16 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
                 <span className={styles.segGroup}>
                   <span className={styles.segLabel}>배경지도</span>
                   <span className={styles.seg} role="group" aria-label="배경지도">
-                    {BASEMAPS.map((b) => {
-                      // 이미 눌린 기본 지도를 다시 누르면 지도 색 팝오버를 연다. 눌리지 않았으면 지금처럼 바탕만 바꾼다.
-                      const mapColorTrigger = b.id === "vector" && shownBasemap === "vector";
-                      return (
-                        <button key={b.id} ref={b.id === "vector" ? mapColorTriggerRef : undefined} type="button" aria-pressed={shownBasemap === b.id} disabled={b.id === "vector" && !vectorAvailable} title={b.id === "vector" && !vectorAvailable ? "이 분석에는 기본 지도 자료가 없습니다" : undefined} aria-label={mapColorTrigger ? b.label : undefined} aria-haspopup={mapColorTrigger ? "dialog" : undefined} aria-expanded={mapColorTrigger ? mapColorOpen : undefined} onClick={() => (mapColorTrigger ? setMapColorOpen((open) => !open) : setBasemap(b.id))}>
-                          {mapColorTrigger ? "기본 지도 ▾" : b.label}
-                        </button>
-                      );
-                    })}
+                    {BASEMAPS.map((b) => basemapButton(b, "bar"))}
                   </span>
-                  {mapColorOpen && shownBasemap === "vector" && (
+                  {mapColorFrom !== null && shownBasemap === "vector" && (
                     <MapColorBoardPopover
-                      triggerRef={mapColorTriggerRef}
+                      key={mapColorFrom}
+                      triggerRef={mapColorFrom === "menu" ? mapColorMenuRef : mapColorBarRef}
                       value={mapColorValue}
                       onPreview={setPreviewColors}
                       onApply={applyMapColor}
-                      onClose={() => setMapColorOpen(false)}
+                      onClose={closeMapColor}
                     />
                   )}
                 </span>
@@ -1196,11 +1212,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
                   <span className={styles.segGroup}>
                     <span className={styles.segLabel}>배경지도</span>
                     <span className={styles.seg} role="group" aria-label="배경지도">
-                      {BASEMAPS.map((b) => (
-                        <button key={b.id} type="button" aria-pressed={shownBasemap === b.id} disabled={b.id === "vector" && !vectorAvailable} title={b.id === "vector" && !vectorAvailable ? "이 분석에는 기본 지도 자료가 없습니다" : undefined} onClick={() => setBasemap(b.id)}>
-                          {b.label}
-                        </button>
-                      ))}
+                      {BASEMAPS.map((b) => basemapButton(b, "menu"))}
                     </span>
                   </span>
                   <div className={styles.mobileRail}>

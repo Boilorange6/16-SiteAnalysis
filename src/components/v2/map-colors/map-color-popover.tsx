@@ -29,10 +29,13 @@ export type MapColorPopoverProps = {
   scope?: MapColorScopeProps;
   /** 줄 위에 150 ms 머물면 그 줄을, 목록을 떠나거나 닫으면 null을 알린다. 저장된 값을 바꾸지 않는다. */
   onPreview(choice: MapColorChoice | null): void;
-  onApply(patch: MapColorChoice): void;
+  /** group: 같은 입력이 이어지는 편집의 묶음 이름(색 고르개 끌기). 받는 쪽이 되돌리기 한 단계로 합칠 수 있다. */
+  onApply(patch: MapColorChoice, group?: string): void;
   onClose(): void;
   /** 「색 만들기」 카드가 팝오버 어느 쪽에 뜨는가 */
   makerSide: "left" | "right";
+  /** 만들기 카드를 새로 시작해야 하는 맥락(보고서에서 고른 쪽). 바뀌면 열린 카드가 새 값에서 다시 시작한다. */
+  contextKey?: string;
   /** 시험용: 있으면 내 테마를 서버에서 부르지 않고 이 값을 쓴다. */
   initialMine?: MyColors;
   /** 시험용: 처음 보일 탭 */
@@ -40,6 +43,7 @@ export type MapColorPopoverProps = {
 };
 
 const PREVIEW_DELAY_MS = 150;
+const DELETE_FAILED_MESSAGE = "내 테마를 지우지 못했습니다";
 const MAKER_MARGIN = 8;
 
 type Row = { key: string; kind: "mine" | "preset"; name: string; ref: BaseThemeRef | DiagramPaletteRef; strip: string[]; savedId?: number };
@@ -67,6 +71,25 @@ const baseStrip = (ref: BaseThemeRef): string[] => {
 /** 다이어그램 색 띠: 범주 앞 5칸 */
 const paletteStrip = (ref: DiagramPaletteRef): string[] => (paletteColors(ref) ?? appPaletteColors()).cat.slice(0, 5);
 
+export type MapColorEditStamp = { group: string; scope: "document" | "page"; id?: string; at: number };
+export const MAP_COLOR_JOIN_MS = 600;
+
+/** 보고서 되돌리기에서 방금 적용과 합칠 수 있는가: 묶음 이름이 있고, 같은 묶음·같은 범위·같은 쪽이며, 0.6초 안일 때만. */
+export function canJoinMapColorEdit(stamp: MapColorEditStamp | null, next: { group?: string; scope: "document" | "page"; id?: string }, now: number, hasPast: boolean): boolean {
+  return !!next.group && !!stamp && hasPast && stamp.group === next.group && stamp.scope === next.scope && stamp.id === next.id && now - stamp.at < MAP_COLOR_JOIN_MS;
+}
+
+const byIdDesc =<T extends { id: number }>(items: T[]): T[] => [...new Map(items.map((s) => [s.id, s])).values()].sort((a, b) => b.id - a.id);
+
+/** 늦게 도착한 목록을 이미 있는 값과 합친다. 그 사이 저장한 테마를 덮어쓰지 않는다(없으면 불러온 목록 그대로). */
+export function mergeMine(current: MyColors | null, loaded: MyColors): MyColors {
+  if (!current) return loaded;
+  return { base: byIdDesc([...current.base, ...loaded.base]), palette: byIdDesc([...current.palette, ...loaded.palette]) };
+}
+
+/** 같은 색인지 알아내는 짧은 표식. 만들기 카드가 스스로 적용한 값과 밖에서 바뀐 값을 가른다. */
+const refSig = (ref: BaseThemeRef | DiagramPaletteRef): string => (typeof ref === "string" ? ref : JSON.stringify(ref.colors).toLowerCase());
+
 function buildRows(tab: MapColorKind, mine: MyColors | null): Row[] {
   if (tab === "base") {
     const own = (mine?.base ?? []).map((s: SavedBase): Row => {
@@ -84,7 +107,7 @@ function buildRows(tab: MapColorKind, mine: MyColors | null): Row[] {
   return [...own, ...presets];
 }
 
-export default function MapColorPopover({ value, scope, onPreview, onApply, onClose, makerSide, initialMine, initialTab = "base" }: MapColorPopoverProps) {
+export default function MapColorPopover({ value, scope, onPreview, onApply, onClose, makerSide, contextKey, initialMine, initialTab = "base" }: MapColorPopoverProps) {
   const [tab, setTab] = useState<MapColorKind>(initialTab);
   const [mine, setMine] = useState<MyColors | null>(initialMine ?? null);
   const [makerOpen, setMakerOpen] = useState(false);
@@ -106,7 +129,7 @@ export default function MapColorPopover({ value, scope, onPreview, onApply, onCl
   useEffect(() => {
     if (initialMine) return;
     let alive = true;
-    void loadMyColors().then((m) => alive && setMine(m));
+    void loadMyColors().then((m) => alive && setMine((cur) => mergeMine(cur, m)));
     return () => {
       alive = false;
     };
@@ -172,7 +195,6 @@ export default function MapColorPopover({ value, scope, onPreview, onApply, onCl
   const choose = (row: Row) => {
     onApply(choiceOf(row));
     endPreview();
-    setMakerEpoch((n) => n + 1);
   };
   const switchTab = (next: MapColorKind) => {
     endPreview();
@@ -180,16 +202,43 @@ export default function MapColorPopover({ value, scope, onPreview, onApply, onCl
     setTab(next);
   };
 
+  // 만들기 카드는 스스로 적용한 색은 그대로 두고, 밖에서 바뀐 값(줄 누름·이 쪽/전체 전환·쪽 이동·되돌리기)이면 새 값에서 다시 시작한다.
+  const valueSig = refSig(tab === "base" ? value.base : value.palette);
+  const ownSig = useRef(valueSig);
+  useEffect(() => {
+    if (ownSig.current === valueSig) return;
+    ownSig.current = valueSig;
+    setMakerEpoch((n) => n + 1);
+  }, [valueSig]);
+  const applyFromMaker = (patch: MapColorChoice, group?: string) => {
+    const ref = tab === "base" ? patch.base : patch.palette;
+    if (ref !== undefined) ownSig.current = refSig(ref);
+    onApply(patch, group);
+  };
+
+  // 지운 뒤·취소한 뒤 키보드 포커스를 돌려줄 곳. 렌더가 끝난 다음에 옮긴다.
+  const listRef = useRef<HTMLDivElement>(null);
+  const focusAfterRef = useRef<{ row: string } | "list" | null>(null);
+  useEffect(() => {
+    const target = focusAfterRef.current;
+    if (!target) return;
+    focusAfterRef.current = null;
+    if (target === "list") listRef.current?.focus();
+    else listRef.current?.querySelector<HTMLElement>(`[data-row-key="${target.row}"]`)?.focus();
+  });
+
   const remove = async (row: Row) => {
     if (row.savedId === undefined) return;
     setListError(null);
     try {
       await removeMyColor(row.savedId);
       setMine((cur) => (cur ? { base: cur.base.filter((s) => s.id !== row.savedId), palette: cur.palette.filter((s) => s.id !== row.savedId) } : cur));
+      focusAfterRef.current = "list";
       setConfirmId(null);
-    } catch (error) {
+    } catch {
+      focusAfterRef.current = { row: row.key };
       setConfirmId(null);
-      setListError(error instanceof Error ? error.message : "내 테마를 지우지 못했습니다");
+      setListError(DELETE_FAILED_MESSAGE);
     }
   };
 
@@ -198,11 +247,11 @@ export default function MapColorPopover({ value, scope, onPreview, onApply, onCl
     if (kind === "base") {
       const s = item as SavedBase;
       setMine((cur) => ({ base: [s, ...(cur?.base ?? [])], palette: cur?.palette ?? [] }));
-      onApply({ base: { name: s.name, colors: { ...s.colors } } });
+      applyFromMaker({ base: { name: s.name, colors: { ...s.colors } } });
     } else {
       const s = item as SavedPalette;
       setMine((cur) => ({ base: cur?.base ?? [], palette: [s, ...(cur?.palette ?? [])] }));
-      onApply({ palette: { name: s.name, colors: { cat: [...s.colors.cat], seq: [...s.colors.seq] }} });
+      applyFromMaker({ palette: { name: s.name, colors: { cat: [...s.colors.cat], seq: [...s.colors.seq] } } });
     }
   };
 
@@ -215,16 +264,26 @@ export default function MapColorPopover({ value, scope, onPreview, onApply, onCl
         <div key={row.key} className={styles.confirm} role="group" aria-label={`${row.name} 지우기 확인`}>
           <span>지울까요?</span>
           <button type="button" data-danger="" onClick={() => void remove(row)}>지우기</button>
-          <button type="button" onClick={() => setConfirmId(null)}>취소</button>
+          <button
+            type="button"
+            autoFocus
+            onClick={() => {
+              focusAfterRef.current = { row: row.key };
+              setConfirmId(null);
+            }}
+          >
+            취소
+          </button>
         </div>
       );
     }
     return (
-      <div key={row.key} className={styles.rowWrap} role="listitem">
+      <div key={row.key} className={styles.rowWrap}>
         <button
           type="button"
           className={styles.row}
           data-row={row.kind}
+          data-row-key={row.key}
           data-name={row.name}
           aria-pressed={current}
           onClick={() => choose(row)}
@@ -266,7 +325,7 @@ export default function MapColorPopover({ value, scope, onPreview, onApply, onCl
         </div>
       )}
       {!scope && tab === "palette" && <p className={styles.note}>타일 카드의 주제 색에 적용됩니다.</p>}
-      <div className={styles.list} role="list" aria-label={tab === "base" ? "바탕 테마" : "다이어그램 팔레트"} aria-busy={mine === null} onMouseLeave={endPreview} onBlur={(e) => !e.currentTarget.contains(e.relatedTarget as Node | null) && endPreview()}>
+      <div ref={listRef} tabIndex={-1} className={styles.list} role="group" aria-label={tab === "base" ? "바탕 테마" : "다이어그램 팔레트"} aria-busy={mine === null} onMouseLeave={endPreview} onBlur={(e) => !e.currentTarget.contains(e.relatedTarget as Node | null) && endPreview()}>
         {mine === null && <div className={styles.skeleton} data-loading="mine" aria-hidden="true" />}
         {ownRows.length > 0 && <div className={styles.groupLabel}>내 테마</div>}
         {ownRows.map(renderRow)}
@@ -293,10 +352,10 @@ export default function MapColorPopover({ value, scope, onPreview, onApply, onCl
       {makerOpen && (
         <div ref={makerSlotRef} className={styles.makerSlot} data-side={makerSide}>
           <MapColorMaker
-            key={`${tab}-${makerEpoch}`}
+            key={`${tab}-${makerEpoch}-${scope?.value ?? ""}-${contextKey ?? ""}`}
             kind={tab}
             value={value}
-            onApply={onApply}
+            onApply={applyFromMaker}
             onSaved={saved}
             onClose={() => {
               setMakerOpen(false);
@@ -319,40 +378,77 @@ const BOARD_GAP = 8;
 const SCREEN_MARGIN = 12;
 const MAKER_GAP = 12;
 
+export type BoardPosition = {
+  left: number;
+  /** above면 화면 아래 끝에서 이 값만큼 위(창이 버튼 위로 뜸), 아니면 화면 위 끝에서 이 값만큼 아래 */
+  edge: number;
+  above: boolean;
+  /** 꼬리 가로 위치. 버튼에 붙일 수 없으면 null(꼬리를 그리지 않는다) */
+  tail: number | null;
+  side: "left" | "right";
+};
+
+/**
+ * 버튼 아래 8 px에 놓는다. 아래가 모자라고 위가 넉넉하면 버튼 위로 뒤집고, 둘 다 모자라면 화면 안으로만 밀어 넣는다.
+ * 가로는 화면 안으로 눌러 넣고, 만들기 카드는 왼쪽에 자리가 없으면 오른쪽에 둔다(양쪽 모두 화면 안).
+ */
+export function boardPosition(rect: { left: number; right: number; top: number; bottom: number }, height: number, vw: number, vh: number): BoardPosition {
+  const center = (rect.left + rect.right) / 2;
+  const left = Math.max(SCREEN_MARGIN, Math.min(center - BOARD_WIDTH / 2, vw - BOARD_WIDTH - SCREEN_MARGIN));
+  const side = left - MAKER_GAP - BOARD_WIDTH >= MAKER_MARGIN ? "left" : "right";
+  const below = rect.bottom + BOARD_GAP;
+  const fitsBelow = below + height <= vh - SCREEN_MARGIN;
+  const fitsAbove = rect.top - BOARD_GAP - height >= SCREEN_MARGIN;
+  const tailX = center - left - 6.5;
+  if (fitsBelow) return { left, edge: below, above: false, tail: tailX, side };
+  if (fitsAbove) return { left, edge: vh - (rect.top - BOARD_GAP), above: true, tail: tailX, side };
+  return { left, edge: Math.max(SCREEN_MARGIN, vh - SCREEN_MARGIN - height), above: false, tail: null, side };
+}
+
 /** 보드용 자리: 버튼 아래에 꼬리로 붙는 고정 위치 창. 바깥을 누르면 닫는다. */
 export function MapColorBoardPopover({ triggerRef, ...props }: MapColorBoardPopoverProps) {
   const hostRef = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState<{ left: number; top: number; tail: number; side: "left" | "right" } | null>(null);
-  const { onClose } = props;
+  const [pos, setPos] = useState<BoardPosition | null>(null);
+  const onCloseRef = useRef(props.onClose);
+  onCloseRef.current = props.onClose;
 
-  const close = useCallback(() => {
-    onClose();
+  /** Esc·닫기 단추는 포커스를 버튼으로 돌려주고, 바깥을 눌러 닫을 때는 누른 곳의 포커스를 뺏지 않는다. */
+  const close = useCallback((refocus: boolean) => {
+    onCloseRef.current();
     const trigger = triggerRef.current;
-    window.requestAnimationFrame(() => trigger?.focus());
-  }, [onClose, triggerRef]);
+    if (refocus) window.requestAnimationFrame(() => trigger?.focus());
+  }, [triggerRef]);
+  const closeWithFocus = useCallback(() => close(true), [close]);
 
   useLayoutEffect(() => {
     const place = () => {
-      const rect = triggerRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const center = rect.left + rect.width / 2;
-      const left = Math.max(SCREEN_MARGIN, Math.min(center - BOARD_WIDTH / 2, window.innerWidth - BOARD_WIDTH - SCREEN_MARGIN));
-      setPos({ left, top: rect.bottom + BOARD_GAP, tail: center - left - 6.5, side: left - MAKER_GAP - BOARD_WIDTH >= MAKER_MARGIN ? "left" : "right" });
+      const trigger = triggerRef.current;
+      const rect = trigger?.getBoundingClientRect();
+      // 연 버튼이 사라졌다(머리 줄이 접히며 숨음 등): 붙을 곳이 없으니 닫는다.
+      if (!trigger || !rect || (rect.width === 0 && rect.height === 0)) {
+        close(false);
+        return;
+      }
+      setPos(boardPosition(rect, hostRef.current?.offsetHeight ?? 0, window.innerWidth, window.innerHeight));
     };
     place();
     window.addEventListener("resize", place);
     window.addEventListener("scroll", place, true);
+    // 내 테마 줄이 늘고 줄 때 창 높이가 달라지면 위/아래 맞춤을 다시 잡는다.
+    const observer = typeof ResizeObserver === "undefined" || !hostRef.current ? null : new ResizeObserver(place);
+    if (observer && hostRef.current) observer.observe(hostRef.current);
     return () => {
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", place, true);
+      observer?.disconnect();
     };
-  }, [triggerRef]);
+  }, [close, triggerRef]);
 
   useEffect(() => {
     const onDown = (event: PointerEvent) => {
       if (!(event.target instanceof Node)) return;
       if (hostRef.current?.contains(event.target) || triggerRef.current?.contains(event.target)) return;
-      close();
+      close(false);
     };
     document.addEventListener("pointerdown", onDown);
     return () => document.removeEventListener("pointerdown", onDown);
@@ -370,10 +466,10 @@ export function MapColorBoardPopover({ triggerRef, ...props }: MapColorBoardPopo
       className={styles.host}
       role="dialog"
       aria-label="지도 색"
-      style={pos ? { left: pos.left, top: pos.top } : { visibility: "hidden", left: 0, top: 0 }}
+      style={pos ? { left: pos.left, ...(pos.above ? { bottom: pos.edge } : { top: pos.edge }) } : { visibility: "hidden", left: 0, top: 0 }}
     >
-      <span className={styles.hostTail} style={{ left: pos?.tail ?? 0 }} aria-hidden="true" />
-      <MapColorPopover {...props} onClose={close} makerSide={pos?.side ?? "left"} />
+      {pos?.tail !== null && <span className={styles.hostTail} data-above={pos?.above ? "" : undefined} style={{ left: pos?.tail ?? 0 }} aria-hidden="true" />}
+      <MapColorPopover {...props} onClose={closeWithFocus} makerSide={pos?.side ?? "left"} />
     </div>,
     document.body,
   );

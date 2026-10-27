@@ -33,7 +33,7 @@ import NotesField from "./notes-field";
 import ExportPanel from "./export-panel";
 import TextBoxPopover from "./text-box-popover";
 import SidePanelHeader from "./side-panel-header";
-import MapColorPopover from "../map-colors/map-color-popover";
+import MapColorPopover, { canJoinMapColorEdit, type MapColorEditStamp } from "../map-colors/map-color-popover";
 import { resolveMapColors } from "@/lib/v2/ui/map-colors";
 import styles from "./report-mode.module.css";
 import legacySurfaceStyles from "../report-surface.module.css";
@@ -341,6 +341,8 @@ function otherCalloutPageLabels(plan: PlannedSlide[], current: CalloutPage): Rea
 
 export default function ReportMode({ board, dispatch, views, summary, analysisDate, basemap, dirty, demo = false, busy = false, onPresentation, results, scene, analysisSiteParcel, resultFor }: ReportModeProps) {
   const [history, setHistory] = useState<ReportHistory>({ past: [], present: board.reportDoc, future: [] });
+  const historyRef = useRef(history);
+  historyRef.current = history;
   const [selectedId, setSelectedId] = useState<string | null>(board.reportDoc.pages[0]?.id ?? null);
   const [selectedSlideKey, setSelectedSlideKey] = useState<string | null>(null);
   const [rail, setRail] = useState<RailKey | null>(() => initialReportRail(board.reportDoc.pages.length > 0));
@@ -361,7 +363,8 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   const [mapColorScope, setMapColorScope] = useState<"document" | "page">("document");
   // 팝오버에서 줄 위에 올려 둔 색. 저장하지 않고 계획(plan)에만 덮는다.
   const [mapColorPreview, setMapColorPreview] = useState<{ scope: "document" | "page"; id?: string; choice: MapColorChoice } | null>(null);
-  const mapColorsAtRef = useRef(0);
+  // 마지막 지도 색 적용의 묶음 표식. 같은 묶음·범위·쪽이 0.6초 안에 이어질 때만 되돌리기 한 단계로 합친다.
+  const mapColorStampRef = useRef<MapColorEditStamp | null>(null);
   const [sidePanelOpacity, setSidePanelOpacity] = useState(100);
   const [textBoxPlacement, setTextBoxPlacement] = useState<{ kind: TextBoxKind; x: number; y: number } | null>(null);
   const [textBoxEditingId, setTextBoxEditingId] = useState<string | null>(null);
@@ -662,7 +665,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   }, [activePopover, closeDrawer, closeFontContext, closePopover, drawerOpen, fontContext]);
 
   const commitDoc = useCallback((next: ReportDoc, message?: string) => {
-    mapColorsAtRef.current = 0;
+    mapColorStampRef.current = null;
     setHistory((current) => {
       if (current.present === next) return current;
       return { past: [...current.past.slice(-99), current.present], present: next, future: [] };
@@ -679,7 +682,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   const undo = useCallback(() => {
     const previous = history.past[history.past.length - 1];
     if (!previous) return;
-    mapColorsAtRef.current = 0;
+    mapColorStampRef.current = null;
     setHistory({ past: history.past.slice(0, -1), present: previous, future: [history.present, ...history.future] });
     dispatch({ type: "reportDoc", doc: previous });
   }, [dispatch, history]);
@@ -687,7 +690,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   const redo = useCallback(() => {
     const next = history.future[0];
     if (!next) return;
-    mapColorsAtRef.current = 0;
+    mapColorStampRef.current = null;
     setHistory({ past: [...history.past, history.present], present: next, future: history.future.slice(1) });
     dispatch({ type: "reportDoc", doc: next });
   }, [dispatch, history]);
@@ -1356,19 +1359,25 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   // 지도 색: 「이 쪽만」은 지도가 있는 쪽에서만 쓴다. 지도 없는 쪽으로 옮겨 가면 보고서 전체로 돌아간다.
   const mapColorTarget: "document" | "page" = mapColorScope === "page" && layoutHasMap && !!selectedPage ? "page" : "document";
   const mapColorValue = resolveMapColors(board, history.present, mapColorTarget === "page" ? selectedPage : undefined);
-  const applyMapColors = useCallback((patch: MapColorChoice) => {
-    const next = reportDocReducer(history.present, { type: "mapColors", scope: mapColorTarget, id: selectedPage?.id, patch });
-    if (next === history.present) return;
-    // 색 고르개를 끄는 동안 이어지는 입력은 되돌리기 한 단계로 묶는다.
+  // 서버 저장처럼 늦게 끝나는 적용도 그 사이의 다른 편집을 되돌리지 않도록, 늘 가장 최근 문서에서 계산한다.
+  const applyMapColors = useCallback((patch: MapColorChoice, group?: string) => {
+    const current = historyRef.current;
+    const next = reportDocReducer(current.present, { type: "mapColors", scope: mapColorTarget, id: selectedPage?.id, patch });
+    if (next === current.present) return;
+    // 같은 입력(같은 줄의 색 고르개 끌기)이 같은 범위·같은 쪽에서 이어질 때만 되돌리기 한 단계로 묶는다.
     const now = Date.now();
-    if (now - mapColorsAtRef.current < 600 && history.past.length > 0) {
-      setHistory((current) => ({ ...current, present: next }));
+    const stamp = mapColorStampRef.current;
+    const joined = canJoinMapColorEdit(stamp, { group, scope: mapColorTarget, id: selectedPage?.id }, now, current.past.length > 0);
+    if (joined) {
+      historyRef.current = { ...current, present: next };
+      setHistory((cur) => ({ ...cur, present: next }));
       dispatch({ type: "reportDoc", doc: next });
     } else {
+      historyRef.current = { past: [...current.past.slice(-99), current.present], present: next, future: [] };
       commitDoc(next);
     }
-    mapColorsAtRef.current = now;
-  }, [commitDoc, dispatch, history.past.length, history.present, mapColorTarget, selectedPage?.id]);
+    mapColorStampRef.current = group ? { group, scope: mapColorTarget, id: selectedPage?.id, at: now } : null;
+  }, [commitDoc, dispatch, mapColorTarget, selectedPage?.id]);
   const previewMapColors = useCallback((choice: MapColorChoice | null) => {
     setMapColorPreview(choice ? { scope: mapColorTarget, id: selectedPage?.id, choice } : null);
   }, [mapColorTarget, selectedPage?.id]);
@@ -1839,7 +1848,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
             </div>
             <div className={styles.railPopoverRoot}>
               <button ref={mapColorTriggerRef} type="button" className={`${styles.railButton} ${mapColorPopoverOpen ? styles.railButtonActive : ""}`} aria-haspopup="dialog" aria-pressed={mapColorPopoverOpen} aria-expanded={mapColorPopoverOpen} aria-controls={mapColorPopoverOpen ? "report-map-color-popover" : undefined} aria-label="지도 색" onClick={(event) => toggleMapColorPopover(event.currentTarget)} disabled={!selectedPage}><span aria-hidden="true"><RailIcon name="palette" /></span><span className={styles.railTooltip} role="tooltip">지도 색</span></button>
-              {mapColorPopoverOpen && selectedPage && <div ref={mapColorPopoverRef} id="report-map-color-popover" className={`${styles.floatCard} ${styles.sidePanelCard} ${styles.anchoredCard} ${styles.railPopover} ${styles.mapColorPopover}`} style={{ ...anchoredCardStyle, ...sidePanelStyle }} role="dialog" aria-label="지도 색"><div className={styles.popoverBody}><SidePanelHeader title="지도 색" opacity={sidePanelOpacity} onOpacityChange={changeSidePanelOpacity} onClose={() => closePopover(true)} closeLabel="지도 색 창 닫기" /><MapColorPopover value={mapColorValue} scope={{ value: mapColorTarget, pageAvailable: layoutHasMap, pageOverridden: !!selectedPage.mapColors, onChange: setMapColorScope, onClearPage: clearPageMapColors }} onPreview={previewMapColors} onApply={applyMapColors} onClose={() => closePopover(true)} makerSide="right" /></div></div>}
+              {mapColorPopoverOpen && selectedPage && <div ref={mapColorPopoverRef} id="report-map-color-popover" className={`${styles.floatCard} ${styles.sidePanelCard} ${styles.anchoredCard} ${styles.railPopover} ${styles.mapColorPopover}`} style={{ ...anchoredCardStyle, ...sidePanelStyle }} role="dialog" aria-label="지도 색"><div className={styles.popoverBody}><SidePanelHeader title="지도 색" opacity={sidePanelOpacity} onOpacityChange={changeSidePanelOpacity} onClose={() => closePopover(true)} closeLabel="지도 색 창 닫기" /><MapColorPopover value={mapColorValue} scope={{ value: mapColorTarget, pageAvailable: layoutHasMap, pageOverridden: !!selectedPage.mapColors, onChange: setMapColorScope, onClearPage: clearPageMapColors }} onPreview={previewMapColors} onApply={applyMapColors} onClose={() => closePopover(true)} makerSide="right" contextKey={selectedPage.id} /></div></div>}
             </div>
             {textBoxPopoverOpen && <div ref={textBoxPopoverRef} id="report-textbox-popover" className={`${styles.floatCard} ${styles.sidePanelCard} ${styles.anchoredCard} ${styles.railPopover} ${styles.textBoxPopover}`} style={{ ...anchoredCardStyle, ...sidePanelStyle }} role="dialog" aria-label="글상자 종류"><TextBoxPopover opacity={sidePanelOpacity} onOpacityChange={changeSidePanelOpacity} onChoose={chooseTextBoxKind} onClose={() => closePopover(true)} /></div>}
           </nav>
