@@ -4,7 +4,7 @@ import { isSiteParcelLayer } from "../ui/site-parcel";
 import { calloutLegendEntries, SLIDE, slideCalloutAvoidance, slideGeometry, slideLayout, slideLegend, slidePanelRects, slideReserved, slideSiteX, terrainSectionLayout, type SlideFormat } from "../ui/overlay-layout";
 import { SLIDE_OVERVIEW_FILL, slideCalloutFrame } from "../ui/callout-layout";
 import { buildMapScene, locatorBox, mapLabelEntries, northArrowBox, RAIL_EXIT_COLOR, RAIL_EXIT_DOT_RADIUS, RAIL_EXIT_DOT_STROKE, scaleBarBox, scaleChromeScaleForBox, type MapScene, type MapSceneBaseBucket, type MapSceneBox } from "../ui/map-scene";
-import type { BaseThemeId } from "../ui/map-theme";
+import { baseTheme, type BaseThemeId } from "../ui/map-theme";
 import { badgeTextColor } from "../ui/map-labels";
 import { terrainSectionMapStyle } from "../ui/terrain-section";
 import { FONT, fontSizeForStyle, INK, hex, textIn, type Slide } from "./pptx-kit";
@@ -112,6 +112,22 @@ export function nativeMapStatus(model: MapModel): NativeMapStatus {
       ? `레이어 도형 수 상한 초과: ${denseLayers.join(", ")}`
       : "tileCode 지도 네이티브 경로";
   return { code, native, reason, estimatedShapes, layerCounts: Object.fromEntries(layerCounts), denseLayers, rasterLayers: denseLayers, rasterValues: (model.rasters ?? []).map((raster) => raster.name) };
+}
+
+/**
+ * 한 지도 자리를 무엇으로 그리는가. 그림 만들기(map-image)와 PPT 그리기(render-pptx)가 같은 판정을 쓴다.
+ * - image "full": 지도 전체가 그림 한 장(JPEG). 이미지 한 장 모드, 도형화 못 하는 지도, 표지·출처 장.
+ * - image "background": 편집 도형 아래 배경(타일·값 래스터·밀집 층)만 담은 JPEG.
+ * - image "transparent": 벡터 바탕 위에 얹는 값 래스터·밀집 층만 담은 투명 PNG.
+ * - image "none": 그림 없음(벡터 바탕이고 값 래스터·밀집 층도 없다).
+ */
+export type MapDrawPlan = { baseShapes: boolean; image: "none" | "transparent" | "background" | "full"; thematicShapes: boolean };
+
+export function mapDrawPlan(status: NativeMapStatus, drawn: BasemapChoice, mapDrawing: "editable" | "image"): MapDrawPlan {
+  if (mapDrawing === "image" || !status.native) return { baseShapes: false, image: "full", thematicShapes: false };
+  if (drawn !== "vector") return { baseShapes: false, image: "background", thematicShapes: true };
+  const hasRaster = status.rasterValues.length > 0 || status.rasterLayers.length > 0;
+  return { baseShapes: true, image: hasRaster ? "transparent" : "none", thematicShapes: true };
 }
 
 export function isEditableMap(model: MapModel | null | undefined): boolean {
@@ -692,8 +708,9 @@ function addBaseMap(slide: Slide, code: string, scene: MapScene, muted: boolean)
       ...(label.angle ? { rotate: label.angle } : {}),
     };
     // 화면의 paint-order 후광: 같은 글자를 후광색 윤곽선으로 한 번 더 깔고 그 위에 글자를 얹는다.
-    slide.addText(label.text, { ...common, color: color(label.halo), outline: { size: Math.max(1.2, pxPt(Math.max(2, label.fontSize * 0.3))), color: color(label.halo) }, objectName: tag(code, key, display, "halo") });
-    slide.addText(label.text, { ...common, color: color(label.color), objectName: tag(code, key, display, "text") });
+    // 흐린 장은 화면처럼 라벨도 55%로 옅게: 윤곽선은 투명도를 줄 수 없어 후광은 생략하고 글자만 옅게 한다.
+    if (!muted) slide.addText(label.text, { ...common, color: color(label.halo), outline: { size: Math.max(1.2, pxPt(Math.max(2, label.fontSize * 0.3))), color: color(label.halo) }, objectName: tag(code, key, display, "halo") });
+    slide.addText(label.text, { ...common, color: color(label.color), ...(muted ? { transparency: transparency(BASE_MUTED_OPACITY) } : {}), objectName: tag(code, key, display, "text") });
   }
 }
 
@@ -827,13 +844,20 @@ function addRoute(slide: Slide, code: string, scene: MapScene): void {
   }
 }
 
-function addSite(slide: Slide, code: string, scene: MapScene): void {
+function addSite(slide: Slide, code: string, scene: MapScene, themeId?: BaseThemeId): void {
   const [cx, cy] = scene.center;
   const siteR = 10;
   if (scene.siteMode === "parcel" && scene.siteParcels.length > 0) {
     const paths = scene.siteParcels.flatMap((polygon) => polygon.rings);
-    addCustom(slide, paths, { fill: "FFFFFF", fillOpacity: 0.18, line: "FFFFFF", lineWidth: Math.max(0.5 * siteR, 2.4), objectName: tag(code, "site", "분석 대지", "halo"), closed: true });
-    addCustom(slide, paths, { line: "111111", lineWidth: Math.max(0.2 * siteR, 1.2), objectName: tag(code, "site", "분석 대지", "outline"), closed: true });
+    if (scene.base) {
+      // 벡터 바탕 위에서는 화면(MapFigure)과 같은 테마 대지 표시: 테마색 면 + 외곽선, 후광은 있을 때만.
+      const site = baseTheme(themeId).site;
+      if (site.haloPx > 0) addCustom(slide, paths, { line: "FFFFFF", lineWidth: site.lineWidthPx + 2 * site.haloPx, objectName: tag(code, "site", "분석 대지", "halo"), closed: true });
+      addCustom(slide, paths, { fill: site.fill, fillOpacity: site.fillOpacity, line: site.line, lineWidth: site.lineWidthPx, objectName: tag(code, "site", "분석 대지", "outline"), closed: true });
+    } else {
+      addCustom(slide, paths, { fill: "FFFFFF", fillOpacity: 0.18, line: "FFFFFF", lineWidth: Math.max(0.5 * siteR, 2.4), objectName: tag(code, "site", "분석 대지", "halo"), closed: true });
+      addCustom(slide, paths, { line: "111111", lineWidth: Math.max(0.2 * siteR, 1.2), objectName: tag(code, "site", "분석 대지", "outline"), closed: true });
+    }
     if (rectInsideFrame(cx - 0.7 * siteR, cy - 0.7 * siteR, 1.4 * siteR, 1.4 * siteR)) {
       slide.addShape("diamond", { x: pxX(cx - 0.7 * siteR), y: pxY(cy - 0.7 * siteR), w: pxW(1.4 * siteR), h: pxH(1.4 * siteR), fill: { color: "FFFFFF" }, line: { color: "111111", width: pxPt(0.22 * siteR) }, objectName: tag(code, "site", "분석 대지", "diamond") });
     }
@@ -1078,7 +1102,7 @@ export function addEditableMap(slide: Slide, plan: (PlannedSlide & { kind: "tile
     addFeatures(slide, code, scene, visibleModel);
     addRailOverlay(slide, code, scene);
     addRoute(slide, code, scene);
-    addSite(slide, code, scene);
+    addSite(slide, code, scene, options.baseTheme);
     addLabels(slide, code, scene);
     addNorth(slide, code, scene);
     addScale(slide, code, scene);

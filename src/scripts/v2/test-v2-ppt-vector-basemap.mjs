@@ -13,7 +13,10 @@ const { toUtmk } = await import("../../lib/v2/crs.ts");
 const { GODEOK_RESULTS } = await import("../../lib/v2/ui/fixtures/godeok.ts");
 const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
 const { renderReportPptx } = await import("../../lib/v2/report/render-pptx.ts");
-const { mapBaseFromScene, frameBasemap, resolveBasemap } = await import("../../lib/v2/ui/basemap.ts");
+const { mapBaseFromScene, frameBasemap, resolveBasemap, exportBasemap } = await import("../../lib/v2/ui/basemap.ts");
+const { footerBasemaps, fitFooterText } = await import("../../lib/v2/report/pptx-kit.ts");
+const { mapDrawPlan, nativeMapStatus } = await import("../../lib/v2/report/map-pptx.ts");
+const { buildMapScene } = await import("../../lib/v2/ui/map-scene.ts");
 const { BASE_THEMES } = await import("../../lib/v2/ui/map-theme.ts");
 const { defaultFrame } = await import("../../lib/v2/report/report-doc.ts");
 const { mapKeysOf } = await import("../../lib/v2/report/report-plan.ts");
@@ -52,7 +55,7 @@ const scene = {
     green: [[box(-400, -400, 120, 100)], [box(250, 200, 100, 100)]],
     greenKinds: ["forest", "park"],
     water: [[box(300, -380, 120, 60)]],
-    rail: [], stations: [], places: [{ name: "역삼동", kind: "dong", x: 60, y: -300 }],
+    rail: [], stations: [], places: [{ name: "역삼동", kind: "dong", x: 60, y: -300 }, { name: "바깥동", kind: "dong", x: 430, y: 250 }],
   },
   counts: { buildingsTotal: 40, buildingsIncluded: 40, parcelsTotal: 3, parcelsIncluded: 3 },
   sources: [], limitations: [],
@@ -86,7 +89,9 @@ const geometry = (block) => {
   return off && ext ? { x: +off[1], y: +off[2], w: +ext[1], h: +ext[2] } : null;
 };
 
+const RASTER = [{ name: "sun", palette: "sun_hours", cols: 2, rows: 2, dtype: "uint8", scale: 1, offset: 0, nodata: null, bbox: [0, 0, 1, 1] }];
 const vectorModel = modelOf("A04", { base });
+const rasterModel = modelOf("A04", { base, rasters: RASTER });
 const key = (plan) => mapKeysOf(plan)[0];
 
 // ── bucket-shapes: 건물이 40동이어도 GRP|map-base-building 도형은 1개 ──
@@ -107,7 +112,7 @@ const key = (plan) => mapKeysOf(plan)[0];
 
 // ── z-order: 바탕 < 값 래스터(PNG) < 주제 ──
 {
-  const plan = tilePlan("A04", vectorModel, "zorder");
+  const plan = tilePlan("A04", rasterModel, "zorder");
   const { zip, xml: [xml] } = await slidesOf([plan], { [key(plan)]: PNG }, { basemap: "vector" });
   const lastBase = xml.lastIndexOf("GRP|map-base-");
   const pic = xml.indexOf("<p:pic>");
@@ -130,7 +135,7 @@ const key = (plan) => mapKeysOf(plan)[0];
 
 // ── cell-mode: 조판 칸 안에서 바탕 묶음이 칸 프레임 안 ──
 {
-  const cellView = (code, suffix) => viewFor(code, modelOf(code, { base }), suffix);
+  const cellView = (code, suffix) => viewFor(code, modelOf(code, { base, ...(code === "A04" ? { rasters: RASTER } : {}) }), suffix);
   const sheet = {
     kind: "sheet", view: { ...fixture, tileId: "sheet", code: "SHEET", title: "조판", tileType: "stack", map: null }, grid: "2x2",
     cells: [
@@ -213,7 +218,9 @@ const key = (plan) => mapKeysOf(plan)[0];
   assert.match(read("../../components/v2/report/slide-surface.tsx"), /frameBasemap\(/);
   assert.match(read("../../lib/v2/report/map-image.ts"), /exportBasemap\(|frameBasemap\(/);
   assert.ok(!/function frameLayer/.test(read("../../lib/v2/report/map-image.ts")), "PPT 쪽 따로 만든 frameLayer 제거");
-  assert.match(read("../../components/v2/report/drawer-map.tsx"), /aria-disabled/);
+  // 프레임의 "기본 지도"는 늘 그려지므로(벡터 또는 VWorld) 드로어에서 막지 않는다
+  assert.ok(!/aria-disabled|baseUsable/.test(read("../../components/v2/report/drawer-map.tsx")), "드로어 기본 지도는 막지 않는다");
+  assert.match(read("../../components/v2/report/slide-surface.tsx"), /footerBasemaps\(slide, basemap\)/, "화면 출처 띠도 같은 바탕 목록");
 }
 
 // ── 내보내기 바탕 결정(carried): 바탕 없는 모델이 vector를 받아도 빈 격자가 아니라 VWorld 흰 지도 ──
@@ -230,6 +237,167 @@ const key = (plan) => mapKeysOf(plan)[0];
   requested.length = 0;
   tileSvg({ ...viewFor("S02", { ...plain, base }, "tile-img-v"), tileType: "simulation" }, { width: 1600, height: 1200, layer: "vector", tileHref: (url) => { requested.push(url); return PNG; } });
   assert.equal(requested.length, 0, "벡터 바탕은 타일을 요청하지 않는다");
+}
+
+const sheetPlanOf = (models, images = {}) => ({
+  kind: "sheet", view: { ...fixture, tileId: "sheet", code: "SHEET", title: "조판", tileType: "stack", map: null }, grid: "2x2",
+  cells: models.map((model, i) => ({ view: viewFor(model.tileCode, model, `fix-c${i}`), face: "front", mapKey: `fix-c${i}`, pinnedKeys: [] })),
+  footer: "조판 · 기준일 2026-10-14", no: 1, total: 1, ...images,
+});
+
+// ── fix1-1: 결과가 지정한 바탕(D01·D10 위성)이 프레임·보드 선택보다 먼저 ──
+{
+  const sat = modelOf("D01", { base, basemap: "Satellite" });
+  for (const frame of ["base", "road", "none", "air"]) assert.equal(frameBasemap({ basemap: frame }, sat), "Satellite", `프레임 ${frame}`);
+  assert.equal(exportBasemap(sat, "vector"), "Satellite");
+  assert.equal(exportBasemap(sat, "vector", { basemap: "base" }), "Satellite");
+  // PPT: 프레임 base(기본값) + 바탕 자료 있음 + 위성 -> 배경 그림 1장, 바탕 도형 없음, VWorld 출처
+  const plan = tilePlan("D01", sat, "sat-frame", { page: framePage("base") });
+  const { xml: [xml] } = await slidesOf([plan], { [key(plan)]: JPEG }, { basemap: "vector" });
+  assert.equal(count(xml, /<p:pic>/g), 1, "위성 배경 그림 1장");
+  assert.ok(!xml.includes("GRP|map-base-"), "벡터 바탕 도형 없음");
+  assert.ok(xml.includes("VWorld") && !xml.includes("OpenStreetMap"), "VWorld 출처");
+  assert.match(xml, /GRP\|map-D01-/, "주제 도형은 그대로");
+  // 화면 경로(MapFigure에 frameBasemap 결과를 layer로)도 위성: 벡터 바탕 그림 없음
+  const { renderToStaticMarkup } = await import("react-dom/server");
+  const { default: MapFigure } = await import("../../components/v2/map-figure.tsx");
+  const markup = renderToStaticMarkup(React.createElement(MapFigure, { model: sat, width: 960, height: 540, fixed: true, layer: frameBasemap({ basemap: "base" }, sat), basemap: "none", legend: false, credit: false }));
+  assert.ok(!markup.includes("data-map-base"), "화면도 벡터 바탕 없음");
+}
+
+// ── fix1-2: 한 판정(mapDrawPlan)으로 그림 종류·도형을 정한다 — 그리기 방식 × 타일/칸 × 벡터/VWorld ──
+{
+  const plain = modelOf("A04", { base });
+  const withRaster = modelOf("A04", { base, rasters: RASTER });
+  const status = nativeMapStatus(plain);
+  assert.deepEqual(mapDrawPlan(status, "vector", "editable"), { baseShapes: true, image: "none", thematicShapes: true });
+  assert.deepEqual(mapDrawPlan(nativeMapStatus(withRaster), "vector", "editable"), { baseShapes: true, image: "transparent", thematicShapes: true });
+  assert.deepEqual(mapDrawPlan(status, "Base", "editable"), { baseShapes: false, image: "background", thematicShapes: true });
+  assert.deepEqual(mapDrawPlan(status, "vector", "image"), { baseShapes: false, image: "full", thematicShapes: false });
+  assert.deepEqual(mapDrawPlan(nativeMapStatus({ ...plain, tileCode: undefined }), "vector", "editable"), { baseShapes: false, image: "full", thematicShapes: false });
+  const expectations = {
+    "editable/vector": { base: true, thematic: true, pics: 1 },
+    "editable/Base": { base: false, thematic: true, pics: 1 },
+    "image/vector": { base: false, thematic: false, pics: 1 },
+    "image/Base": { base: false, thematic: false, pics: 1 },
+  };
+  for (const [name, want] of Object.entries(expectations)) {
+    const [mapDrawing, basemap] = name.split("/");
+    const model = withRaster;
+    // 타일
+    const tile = tilePlan("A04", model, `matrix-t-${name}`);
+    const { xml: [tileXml] } = await slidesOf([tile], { [key(tile)]: PNG }, { mapDrawing, basemap });
+    assert.equal(tileXml.includes("GRP|map-base-"), want.base, `타일 ${name} 바탕 도형`);
+    assert.equal(tileXml.includes("GRP|map-A04-"), want.thematic, `타일 ${name} 주제 도형`);
+    assert.equal(count(tileXml, /<p:pic>/g), want.pics, `타일 ${name} 그림 수`);
+    // 조판 칸
+    const sheet = sheetPlanOf([model]);
+    const { xml: [sheetXml] } = await slidesOf([sheet], { "fix-c0": PNG }, { mapDrawing, basemap });
+    assert.equal(sheetXml.includes("GRP|map-cell-0-base-"), want.base, `칸 ${name} 바탕 도형`);
+    assert.equal(sheetXml.includes("GRP|map-cell-0-A04-"), want.thematic, `칸 ${name} 주제 도형 (이미지 한 장이면 칸 위에 도형을 또 얹지 않는다)`);
+    assert.equal(count(sheetXml, /<p:pic>/g), want.pics, `칸 ${name} 그림 수`);
+  }
+  // 값 래스터가 없는 벡터 칸·타일은 그림을 만들지 않으므로 그림이 와도 쓰지 않는다
+  const plainTile = tilePlan("A04", plain, "matrix-none");
+  const { xml: [noneXml] } = await slidesOf([plainTile], { [key(plainTile)]: PNG }, { mapDrawing: "editable", basemap: "vector" });
+  assert.equal(count(noneXml, /<p:pic>/g), 0);
+}
+
+// ── fix1-3: 화면 출처 띠 = PPT 출처 띠(벡터 쪽·섞인 조판) ──
+{
+  const vectorTile = tilePlan("A04", vectorModel, "foot-v");
+  assert.deepEqual(footerBasemaps(vectorTile, "vector"), ["vector"]);
+  assert.deepEqual(footerBasemaps(vectorTile, "Base"), ["Base"], "보드가 VWorld를 고르면 VWorld");
+  const satTile = tilePlan("D01", modelOf("D01", { base, basemap: "Satellite" }), "foot-s", { page: framePage("base") });
+  assert.deepEqual(footerBasemaps(satTile, "vector"), ["Satellite"]);
+  const mixed = sheetPlanOf([vectorModel, modelOf("D01", { base, basemap: "Satellite" })]);
+  assert.deepEqual(footerBasemaps(mixed, "vector"), ["vector", "Satellite"]);
+  for (const plan of [vectorTile, mixed]) {
+    const { xml: [xml] } = await slidesOf([plan], { "fix-c0": PNG }, { basemap: "vector" });
+    const text = fitFooterText(plan.footer, true, 9, 9, footerBasemaps(plan, "vector")).text;
+    assert.ok(xml.includes(text), `PPT 출처 띠가 화면 출처 띠와 같은 문구: ${text}`);
+  }
+  assert.ok(fitFooterText("출처", true, 9, 9, footerBasemaps(mixed, "vector")).text.includes("VWorld") && fitFooterText("출처", true, 9, 9, footerBasemaps(mixed, "vector")).text.includes("OpenStreetMap"), "섞인 조판은 둘 다");
+  assert.ok(!fitFooterText("출처", true, 9, 9, footerBasemaps(vectorTile, "vector")).text.includes("VWorld"));
+}
+
+// ── fix1-4: 벡터 바탕 위의 대지 표시는 화면과 같은 테마 토큰 ──
+{
+  const ring = [[-40, -30], [50, -30], [50, 40], [-40, 40], [-40, -30]].map(([e, n]) => [ORIGIN_LNG + e / 88200, ORIGIN_LAT + n / 111320]);
+  const withSite = (extra = {}) => modelOf("A04", { siteParcel: [{ layer: "parcel_site", fid: "site-1", rings: [ring], name: "분석 대지" }], ...extra });
+  const outlineOf = (xml) => spBlocks(xml).find((b) => b.includes("GRP|map-A04-site|분석 대지|outline"));
+  for (const id of ["warm", "cool", "paper"]) {
+    const site = BASE_THEMES[id].site;
+    const plan = tilePlan("A04", withSite({ base }), `site-${id}`);
+    const { xml: [xml] } = await slidesOf([plan], {}, { basemap: "vector", baseTheme: id });
+    const outline = outlineOf(xml);
+    assert.ok(outline, `${id} 대지 외곽선`);
+    assert.ok(outline.toUpperCase().includes(`VAL="${site.fill.slice(1).toUpperCase()}"`), `${id} 면색 ${site.fill}`);
+    assert.ok(outline.toUpperCase().includes(`VAL="${site.line.slice(1).toUpperCase()}"`), `${id} 선색 ${site.line}`);
+    assert.match(outline, new RegExp(`<a:alpha val="${Math.round(site.fillOpacity * 100000)}"`), `${id} 면 투명도`);
+    assert.equal(xml.includes("GRP|map-A04-site|분석 대지|halo"), site.haloPx > 0, `${id} 후광`);
+  }
+  // 벡터가 아닌 지도는 그대로(흰 18% 면 + 검은 외곽선)
+  const plain = tilePlan("A04", withSite(), "site-plain");
+  const { xml: [plainXml] } = await slidesOf([plain], { [key(plain)]: JPEG }, { basemap: "vector" });
+  const plainOutline = outlineOf(plainXml);
+  assert.ok(plainOutline && plainOutline.toUpperCase().includes('VAL="111111"') && !plainOutline.toUpperCase().includes(BASE_THEMES.warm.site.line.slice(1).toUpperCase()));
+}
+
+// ── fix1-5: 바탕 라벨은 반경 원 안에만, 칸은 화면 규칙(compact 또는 폭 600 미만이면 없음) ──
+{
+  const model = { ...vectorModel };
+  const labelsOf = (options) => buildMapScene({ model, width: 960, height: 540, activeLayer: "vector", ...options }).base.labels;
+  const inside = labelsOf({});
+  const free = labelsOf({ showRadius: false });
+  const sceneForCircle = buildMapScene({ model, width: 960, height: 540, activeLayer: "vector" });
+  const [cx, cy] = sceneForCircle.center;
+  const R = sceneForCircle.radiusPx;
+  for (const label of inside) {
+    for (const x of [label.box.x0, label.box.x1]) for (const y of [label.box.y0, label.box.y1]) {
+      assert.ok(Math.hypot(x - cx, y - cy) <= R + 1e-6, `라벨 ${label.text} 상자가 원 밖`);
+    }
+  }
+  assert.ok(inside.length > 0 && inside.some((l) => l.text === "역삼동"), "원 안 라벨은 남는다");
+  assert.ok(!inside.some((l) => l.text === "바깥동") && free.some((l) => l.text === "바깥동"), "원에 걸치는 라벨은 반경 표시가 있을 때만 버린다");
+  // 칸: PPT 칸 장면(폭 960, compact)과 화면 칸(폭 < 600)이 같은 라벨 집합(없음)
+  assert.deepEqual(labelsOf({ width: 330, height: 186 }), [], "화면 칸 폭 < 600이면 라벨 없음");
+  assert.deepEqual(labelsOf({ compact: true }), [], "compact면 라벨 없음");
+  const sheet = sheetPlanOf([vectorModel, modelOf("A06", { base })]);
+  const { xml: [sheetXml] } = await slidesOf([sheet], {}, { basemap: "vector" });
+  assert.ok(!sheetXml.includes("map-cell-0-base-label") && !sheetXml.includes("map-cell-1-base-label"), "PPT 칸에도 바탕 라벨 없음");
+  // 타일: PPT 라벨이 장면 라벨과 같은 수
+  const tile = tilePlan("A04", vectorModel, "labels-tile");
+  const { xml: [tileXml] } = await slidesOf([tile], {}, { basemap: "vector" });
+  assert.ok(count(tileXml, /name="GRP\|map-base-label-[^"|]*\|[^"|]*\|text"/g) >= 1);
+}
+
+// ── fix1-6: 흐린 장은 바탕 라벨도 옅게 ──
+{
+  const mutedPlan = tilePlan("A04", vectorModel, "muted", { muted: true });
+  const { xml: [xml] } = await slidesOf([mutedPlan], {}, { basemap: "vector" });
+  const texts = spBlocks(xml).filter((b) => /name="GRP\|map-base-label-[^"|]*\|[^"|]*\|text"/.test(b));
+  assert.ok(texts.length > 0 && texts.every((b) => /<a:alpha val="55000"/.test(b)), "라벨 글자 55%");
+  assert.ok(!xml.includes("|halo\""), "흐린 장은 후광 글상자 없음");
+  const normal = tilePlan("A04", vectorModel, "not-muted");
+  const { xml: [normalXml] } = await slidesOf([normal], {}, { basemap: "vector" });
+  assert.ok(normalXml.includes("|halo\""), "보통 장은 후광 있음");
+}
+
+// ── fix1-7: 값 래스터 그림이 오지 못하면 조용히 빠지지 않고 자리표시 ──
+{
+  const rastered = modelOf("A04", { base, rasters: RASTER });
+  const tile = tilePlan("A04", rastered, "raster-missing");
+  const { xml: [missing] } = await slidesOf([tile], {}, { basemap: "vector" });
+  assert.ok(missing.includes("지도 이미지를 만들지 못했습니다"), "타일 자리표시");
+  const { xml: [present] } = await slidesOf([tile], { [key(tile)]: PNG }, { basemap: "vector" });
+  assert.ok(!present.includes("지도 이미지를 만들지 못했습니다") && count(present, /<p:pic>/g) === 1);
+  const sheet = sheetPlanOf([rastered]);
+  const { xml: [cellMissing] } = await slidesOf([sheet], {}, { basemap: "vector" });
+  assert.ok(cellMissing.includes("그림을 만들지 못했습니다"), "칸 자리표시");
+  // 래스터가 없는 벡터 장은 자리표시도 없다(no-picture)
+  const { xml: [none] } = await slidesOf([tilePlan("A04", vectorModel, "no-raster")], {}, { basemap: "vector" });
+  assert.ok(!none.includes("만들지 못했습니다"));
 }
 
 // ── 투명 그림(값 래스터용): 바탕색·격자·벡터 바탕을 그리지 않는다 ──

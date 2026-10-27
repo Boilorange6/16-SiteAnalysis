@@ -13,9 +13,9 @@ import type { RoseModel } from "../ui/wind-rose";
 import { sheetCells, type SheetGrid } from "../ui/sheet";
 import { reportSummaryNotes } from "../ui/terrain-section";
 import { COVER_MAP_KEY, mapKeyOf, type PlannedSlide } from "./report-plan";
-import { E, FONT, INK, L, LINE, MUTED, coverLayout, fitBlock, fitFooterText, fitPt, fontSizeForStyle, hex, linesOf, plate, sourceLayout, textIn, titlePlateRect, type Border, type ReportItem, type Slide } from "./pptx-kit";
+import { E, FONT, INK, L, LINE, MUTED, coverLayout, fitBlock, fitFooterText, fitPt, footerBasemaps, fontSizeForStyle, hex, linesOf, plate, sourceLayout, textIn, titlePlateRect, type Border, type ReportItem, type Slide } from "./pptx-kit";
 import { tileReportModuleFor } from "../tile/report";
-import { addEditableMap, nativeMapFallbackNote, nativeMapStatus } from "./map-pptx";
+import { addEditableMap, mapDrawPlan, nativeMapFallbackNote, nativeMapStatus } from "./map-pptx";
 import { exportBasemap } from "../ui/basemap";
 import type { BasemapChoice } from "../ui/map-projection";
 import type { BaseThemeId } from "../ui/map-theme";
@@ -69,8 +69,8 @@ function background(s: Slide, image: string | undefined, tint?: string, format: 
 /** 지도 바탕 결정에 쓰는 내보내기 설정: 보드가 고른 바탕(`basemap`)과 벡터 바탕 테마. 그림 만들기(buildMapImages)와 같은 값을 받는다. */
 export type PptxMapLook = { basemap?: BasemapChoice; baseTheme?: BaseThemeId };
 
-/** 맨 아래 출처 띠 + 쪽 번호. 출처·기준일은 모든 장에 있다. layers는 그 쪽 지도에 실제로 그려진 바탕(출처 표기를 정한다). */
-function strip(s: Slide, p: PlannedSlide, credit: boolean, format: SlideFormat = "wide", layers: readonly BasemapChoice[] = []) {
+/** 맨 아래 출처 띠 + 쪽 번호. 출처·기준일은 모든 장에 있다. chosen은 보드가 고른 바탕(쪽 지도에 실제로 그려진 바탕은 footerBasemaps가 정한다). */
+function strip(s: Slide, p: PlannedSlide, credit: boolean, format: SlideFormat = "wide", chosen?: BasemapChoice) {
   const size = slideSize(format);
   const g = slideGeometry(format);
   const defaultStrip = format === "wide" ? L.strip : slideLayout(format).strip;
@@ -85,7 +85,7 @@ function strip(s: Slide, p: PlannedSlide, credit: boolean, format: SlideFormat =
   const textX = r.x;
   const room = Math.max(0.2, r.w - pageNumberWidth - 0.08);
   const showCredit = !pageElementDeleted(p.page, "source");
-  const footer = fitFooterText(p.footer, showCredit, room, fontSizeForStyle(p.style ?? {}, "source"), layers);
+  const footer = fitFooterText(p.footer, showCredit, room, fontSizeForStyle(p.style ?? {}, "source"), footerBasemaps(p, chosen));
   if (showCredit) s.addText(footer.text, { x: textX, y: r.y, w: room, h: r.h, valign: "middle", fontFace: FONT, fontSize: footer.fontSize, color: "454A55", margin: 0, fit: "shrink" });
   s.addText(`${p.no} / ${p.total}`, { x: r.x + r.w - pageNumberWidth, y: r.y, w: pageNumberWidth, h: r.h, align: "right", valign: "middle", fontFace: FONT, fontSize: 9, color: "454A55", margin: 0 });
 }
@@ -460,7 +460,7 @@ function cover(pptx: PptxGenJS, p: PlannedSlide & { kind: "cover" }, images: Map
   });
   pageTextBoxes(s, p, format);
   pageNotes(s, p);
-  strip(s, p, !!p.map, format, p.map ? [exportBasemap(p.map, look.basemap)] : []);
+  strip(s, p, !!p.map, format, look.basemap);
 }
 
 function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapImages, mapDrawing: PptxMapDrawing, look: PptxMapLook) {
@@ -489,22 +489,23 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
   const contentBox = summaryRect ? innerInfoBox(summaryRect, summaryScale) : { x: g.edge, w: Math.max(0.2, g.w - 2 * g.edge), h: 0.2 };
   const calloutReport = tileReportModuleFor(v.code)?.report;
   const mapStatus = p.map ? nativeMapStatus(p.map) : null;
-  const nativeMap = mapDrawing === "editable" && !!p.map && !!mapStatus?.native;
   const mapLayer = p.map ? exportBasemap(p.map, look.basemap, frameOf(p)) : null;
-  const stripLayers = mapLayer ? [mapLayer] : [];
-  // 벡터 바탕이면 바탕은 도형으로 먼저 그리고, 그림은 값 래스터·밀집 층만(있을 때) 그 위에 놓는다.
-  const vectorMap = nativeMap && mapLayer === "vector";
+  // 그림 만들기(buildMapImages)와 같은 판정: 무엇이 바탕 도형이고, 그림은 어떤 종류이며, 주제 도형을 그리는지.
+  const draw = p.map && mapStatus && mapLayer ? mapDrawPlan(mapStatus, mapLayer, mapDrawing) : null;
   const mapImage = chart ? undefined : images[mapKeyOf(p) ?? v.tileId];
-  if (!vectorMap) background(s, mapImage, chart ? mix(v.color, 0.07) : undefined, format);
+  // 지도 전체·배경 그림이 필요한 쪽만 배경 그림을 깐다. 벡터 바탕은 도형이 배경이라 그림은 값 래스터가 있을 때만 바탕 위에 얹는다.
+  if (!draw || draw.image === "full" || draw.image === "background") background(s, mapImage, chart ? mix(v.color, 0.07) : undefined, format);
   const fallbackNotes: string[] = [];
-  if (nativeMap && p.map) {
+  if (draw?.thematicShapes && p.map) {
     const size = slideSize(format);
     addEditableMap(s, p, p.map, {
       style, format, frame: frameForLayout(p, format), reportFrame: frameOf(p), layout: layoutOf(p),
       basemap: mapLayer ?? undefined,
       baseTheme: look.baseTheme,
-      underlay: vectorMap && mapImage ? () => { s.addImage({ data: mapImage, x: 0, y: 0, w: size.w, h: size.h }); } : undefined,
+      underlay: draw.image === "transparent" && mapImage ? () => { s.addImage({ data: mapImage, x: 0, y: 0, w: size.w, h: size.h }); } : undefined,
     });
+    // 값 래스터가 있어야 하는데 그림이 오지 못했으면 조용히 빠지지 않게 예전 전체 그림 경로와 같은 자리표시를 둔다.
+    if (draw.image === "transparent" && !mapImage) s.addText("지도 이미지를 만들지 못했습니다", { x: g.edge, y: size.h / 2 - 0.2, w: 5, h: 0.4, fontFace: FONT, fontSize: 11, color: MUTED, margin: 0, fill: { color: "FFFFFF", transparency: 25 } });
     if (mapStatus?.denseLayers.length || mapStatus?.rasterValues.length) fallbackNotes.push(nativeMapFallbackNote(p.map));
   } else if (p.map) fallbackNotes.push(nativeMapFallbackNote(p.map));
   const coTail = co ? calloutPageTitleTail(co.model.complexes, co.page, co.model.unit, co.shownKeys, co.numberStart ?? 1) : null;
@@ -513,7 +514,7 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
     calloutReport?.render({ slide: s, planned: p, part: "page" });
     pageTextBoxes(s, p, format);
     pageNotes(s, p, fallbackNotes);
-    strip(s, p, true, format, stripLayers);
+    strip(s, p, true, format, look.basemap);
     return;
   }
 
@@ -541,7 +542,7 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
     infoPanel(s, items, summaryRect, summaryScale);
     pageTextBoxes(s, p, format);
     pageNotes(s, p, fallbackNotes);
-    strip(s, p, true, format, stripLayers);
+    strip(s, p, true, format, look.basemap);
     return;
   }
 
@@ -588,10 +589,10 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
   infoPanel(s, items, summaryRect, summaryScale);
   pageTextBoxes(s, p, format);
   pageNotes(s, p, fallbackNotes);
-  strip(s, p, !chart, format, stripLayers);
+  strip(s, p, !chart, format, look.basemap);
 }
 
-function sheet(pptx: PptxGenJS, p: PlannedSlide & { kind: "sheet" }, images: MapImages, look: PptxMapLook) {
+function sheet(pptx: PptxGenJS, p: PlannedSlide & { kind: "sheet" }, images: MapImages, mapDrawing: PptxMapDrawing, look: PptxMapLook) {
   const format = formatOf(p);
   const g = slideGeometry(format);
   const s = pptx.addSlide();
@@ -599,7 +600,6 @@ function sheet(pptx: PptxGenJS, p: PlannedSlide & { kind: "sheet" }, images: Map
   titlePlate(s, p.view.color, p.view.title, p.grid, g.w - 2 * g.edge, p.style, false, format);
   const cells = sheetCells(p.grid as SheetGrid);
   const cellNotes = new Set<string>();
-  const cellLayers: BasemapChoice[] = [];
   for (const [index, cell] of p.cells.entries()) {
     if (!cell) continue;
     const r = cells[index];
@@ -610,12 +610,11 @@ function sheet(pptx: PptxGenJS, p: PlannedSlide & { kind: "sheet" }, images: Map
     const cellMap = sourceMap && sourceMap.tileCode ? sourceMap : sourceMap ? { ...sourceMap, tileCode: cell.view.code } : null;
     const cellStatus = cellMap ? nativeMapStatus(cellMap) : null;
     const cellLayer = cellMap ? exportBasemap(cellMap, look.basemap, cell.reportFrame) : null;
-    if (cellLayer) cellLayers.push(cellLayer);
-    // 벡터 바탕 칸: 바탕은 도형, 그림은 값 래스터·밀집 층이 있을 때만(addEditableMap 안에서 바탕 위에 놓는다).
-    const vectorCell = !!cellStatus?.native && cellLayer === "vector";
+    // 그림 만들기(buildMapImages)와 같은 판정. 벡터 바탕 칸은 바탕이 도형이라 그림은 값 래스터·밀집 층이 있을 때만 바탕 위(addEditableMap 안)에 놓는다.
+    const cellDraw = cellMap && cellStatus && cellLayer ? mapDrawPlan(cellStatus, cellLayer, mapDrawing) : null;
     const cellImage = images[cell.mapKey];
-    if (vectorCell) {
-      // 아래 addEditableMap이 그린다
+    if (cellDraw && (cellDraw.image === "transparent" || cellDraw.image === "none")) {
+      // 아래 addEditableMap이 바탕·그림·주제를 차례로 그린다
     } else if (chart) {
       const data = cell.view.chart ?? [];
       const max = Math.max(1, ...data.map((entry) => entry.value));
@@ -636,13 +635,15 @@ function sheet(pptx: PptxGenJS, p: PlannedSlide & { kind: "sheet" }, images: Map
       s.addText("그림을 만들지 못했습니다", { x: r.x + 0.15, y: r.y + r.h / 2 - 0.12, w: r.w - 0.3, h: 0.25, align: "center", fontFace: FONT, fontSize: 9, color: MUTED, margin: 0 });
     }
     if (!chart && !cell.mass && !cell.rose) {
-      if (cellMap && cellStatus?.native) {
+      if (cellMap && cellStatus && cellDraw?.thematicShapes) {
         addEditableMap(s, null, cellMap, {
           mode: "cell", scope: `cell-${index}`, frame: { x: r.x, y: r.y, w: r.w, h: r.h }, style: cell.style, reportFrame: cell.reportFrame, format,
           basemap: cellLayer ?? undefined,
           baseTheme: look.baseTheme,
-          underlay: vectorCell && cellImage ? () => { s.addImage({ data: cellImage, x: r.x, y: r.y, w: r.w, h: r.h, sizing: { type: "contain", w: r.w, h: r.h }, altText: `${cell.view.title} 값 래스터` }); } : undefined,
+          underlay: cellDraw.image === "transparent" && cellImage ? () => { s.addImage({ data: cellImage, x: r.x, y: r.y, w: r.w, h: r.h, sizing: { type: "contain", w: r.w, h: r.h }, altText: `${cell.view.title} 값 래스터` }); } : undefined,
         });
+        // 값 래스터가 있어야 하는데 그림이 오지 못했으면 조용히 빠지지 않게 자리표시를 둔다.
+        if (cellDraw.image === "transparent" && !cellImage) s.addText("그림을 만들지 못했습니다", { x: r.x + 0.15, y: r.y + r.h / 2 - 0.12, w: r.w - 0.3, h: 0.25, align: "center", fontFace: FONT, fontSize: 9, color: MUTED, margin: 0, fill: { color: "FFFFFF", transparency: 25 } });
         if (cellStatus.denseLayers.length || cellStatus.rasterValues.length) cellNotes.add(nativeMapFallbackNote(cellMap));
       }
     }
@@ -654,7 +655,7 @@ function sheet(pptx: PptxGenJS, p: PlannedSlide & { kind: "sheet" }, images: Map
   }
   pageTextBoxes(s, p, format);
   pageNotes(s, p, [...cellNotes]);
-  strip(s, p, true, format, cellLayers);
+  strip(s, p, true, format, look.basemap);
 }
 
 function sources(pptx: PptxGenJS, p: PlannedSlide & { kind: "sources" }, images: MapImages, look: PptxMapLook) {
@@ -692,7 +693,7 @@ function sources(pptx: PptxGenJS, p: PlannedSlide & { kind: "sources" }, images:
   s.addText(`분석 생성일 ${p.analysisDate} · 기준일은 원천 자료 날짜${p.rows.length > 12 ? ` · 원천 ${p.rows.length}건` : ""}`, { x: source.footer.x, y: source.footer.y, w: source.footer.w, h: source.footer.h, fontFace: FONT, fontSize: sourcePt, color: MUTED, margin: 0, fit: "shrink" });
   pageTextBoxes(s, p, format);
   pageNotes(s, p);
-  strip(s, p, !!p.map, format, p.map ? [exportBasemap(p.map, look.basemap)] : []);
+  strip(s, p, !!p.map, format, look.basemap);
 }
 
 function blank(pptx: PptxGenJS, p: PlannedSlide) {
@@ -723,7 +724,7 @@ export async function renderReportPptx(plan: PlannedSlide[], images: MapImages =
     if (p.page?.kind === "blank") blank(pptx, p);
     else if (p.kind === "cover") cover(pptx, p, images, look);
     else if (p.kind === "tile") tile(pptx, p, images, mapDrawing, look);
-    else if (p.kind === "sheet") sheet(pptx, p, images, look);
+    else if (p.kind === "sheet") sheet(pptx, p, images, mapDrawing, look);
     else sources(pptx, p, images, look);
   }
   const bytes = (await pptx.write({ outputType: "uint8array" })) as Uint8Array;

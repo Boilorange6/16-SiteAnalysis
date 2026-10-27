@@ -1108,12 +1108,14 @@ function baseProjection(base: MapBase, theme: BaseTheme, vp: Viewport, width: nu
 }
 
 /** 역 > 동 > 공원 > 도로 순으로 놓고, 점유 상자·이미 놓은 라벨과 겹치거나 지도 밖이면 버린다. */
-function baseLabels(projection: BaseProjection, theme: BaseTheme, width: number, height: number, labelScale: number, occupied: readonly MapSceneBox[]): MapSceneBaseLabel[] {
+/** circle이 있으면(분석 반경 표시) 라벨 상자는 반경 원 안에 통째로 들어와야 한다: 원 밖은 흐려지고 바탕 자료도 끝나는 자리이며, PPT 글상자는 잘라낼 수 없다. */
+function baseLabels(projection: BaseProjection, theme: BaseTheme, width: number, height: number, labelScale: number, occupied: readonly MapSceneBox[], circle: { cx: number; cy: number; r: number } | null = null): MapSceneBaseLabel[] {
   const fontSize = theme.label.fontPx * labelScale;
   const textHeight = fontSize * 1.3;
   const placed: MapSceneBaseLabel[] = [];
   const blockers: MapSceneBox[] = [...occupied];
-  const fits = (box: MapSceneBox) => box.x0 >= 0 && box.y0 >= 0 && box.x1 <= width && box.y1 <= height
+  const inCircle = (box: MapSceneBox) => !circle || [box.x0, box.x1].every((x) => [box.y0, box.y1].every((y) => Math.hypot(x - circle.cx, y - circle.cy) <= circle.r));
+  const fits = (box: MapSceneBox) => box.x0 >= 0 && box.y0 >= 0 && box.x1 <= width && box.y1 <= height && inCircle(box)
     && !blockers.some((other) => boxesOverlap({ x0: box.x0 - BASE_LABEL_GAP, y0: box.y0 - BASE_LABEL_GAP, x1: box.x1 + BASE_LABEL_GAP, y1: box.y1 + BASE_LABEL_GAP }, other));
   const place = (label: Omit<MapSceneBaseLabel, "fontSize" | "halo" | "color" | "box">, color: string, box: MapSceneBox): boolean => {
     if (!fits(box)) return false;
@@ -1479,7 +1481,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     const projection = baseProjection(model.base, theme, vp, W, H, mpp, suppress);
     // 바탕 라벨은 가장 낮은 우선순위: 방위표·축척·범례·대지 표식·철도 라벨·주제 라벨이 먼저 자리를 잡는다.
     const labelOccupied = [...(legendBox ? [legendBox] : []), ...calloutAvoid, ...(showSiteMarker && !muted ? [siteBounds] : []), ...labelPlacements.flatMap((placement) => [placement.box, placement.leader]), ...rail.occupiedBoxes];
-    baseScene = { bg: theme.bg, buckets: projection.buckets, labels: compact || W < BASE_LABEL_MIN_WIDTH ? [] : baseLabels(projection, theme, W, H, labelScale, labelOccupied) };
+    baseScene = { bg: theme.bg, buckets: projection.buckets, labels: compact || W < BASE_LABEL_MIN_WIDTH ? [] : baseLabels(projection, theme, W, H, labelScale, labelOccupied, showRadius ? { cx, cy, r: radiusPx } : null) };
   }
   return {
     width: W,

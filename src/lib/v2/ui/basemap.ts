@@ -72,15 +72,17 @@ export function resolveBasemap(model: { basemap?: BasemapChoice; base?: MapBase 
 
 /**
  * 보고서 지도 프레임의 배경 선택 -> 실제 바탕. 화면(SlideSurface)과 PPT·그림이 같은 함수를 쓴다.
+ * 결과가 지정한 바탕(model.basemap, D01·D10 위성)이 프레임 선택보다 먼저다(`resolveBasemap`과 같은 규칙).
  * "base"는 쓸 수 있는 바탕 자료가 있으면 벡터, 없으면 VWorld 기본 지도.
  */
-export function frameBasemap(frame: { basemap: MapFrameState["basemap"] }, model: { base?: MapBase | null }): BasemapChoice {
+export function frameBasemap(frame: { basemap: MapFrameState["basemap"] }, model: { basemap?: BasemapChoice; base?: MapBase | null }): BasemapChoice {
+  if (model.basemap) return model.basemap;
   if (frame.basemap === "air") return "Satellite";
   if (frame.basemap === "none") return "white";
   if (frame.basemap === "base" && baseUsable(model.base)) return "vector";
   return "Base";
 }
 
-/** 내보내기(PPT·그림)의 바탕: 프레임이 있으면 프레임 선택, 없으면 결과 지정 > 보드 선택 > 벡터 > 일반지도. */
+/** 내보내기(PPT·그림)의 바탕: 결과 지정 > (프레임이 있으면 프레임 선택, 없으면 보드 선택) > 벡터 > 일반지도. */
 export const exportBasemap = (model: { basemap?: BasemapChoice; base?: MapBase | null }, chosen?: BasemapChoice, frame?: { basemap: MapFrameState["basemap"] }): BasemapChoice =>
   frame ? frameBasemap(frame, model) : resolveBasemap(model, chosen);

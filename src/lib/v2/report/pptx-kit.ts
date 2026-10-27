@@ -3,6 +3,9 @@ import { PPT_FONT_MAIN as FONT } from "../../ppt-design-config";
 import { DEFAULT_REPORT_FONT_SIZES, type FontSizeKey } from "./report-doc";
 import type { PageStyle } from "../ui/board-state";
 import { VECTOR_ATTRIBUTION, type BasemapChoice } from "../ui/map-projection";
+import { exportBasemap } from "../ui/basemap";
+import type { MapModel } from "../ui/map-layers";
+import type { PlannedSlide } from "./report-plan";
 import { OV, SLIDE, slideLayout, slidePanelRects, slidePanelScale, slideSize, stripText, layoutRects, type Rect, type SlideFormat } from "../ui/overlay-layout";
 
 export { SLIDE, layoutRects, slideSize };
@@ -145,6 +148,23 @@ export function sourceLayout(rowCount: number, style: PageStyle = {}, format: Sl
     tableContent: { x: table.x + 0.3, y: table.y + 0.2, w: table.w - 0.6, h: Math.max(0, table.h - 0.3) },
     footer: { x: table.x + 0.3, y: table.y + table.h + 0.08, w: table.w - 0.6, h: 0.24 },
   };
+}
+
+/**
+ * 쪽 지도에 실제로 그려지는 바탕들(출처 띠 표기를 정한다). 화면 미리보기(SlideFooter)와 PPT 출처 띠가 같은 값을 쓴다.
+ * 조판은 칸마다, 타일은 보고서 프레임 선택까지 반영한 결과다.
+ */
+export function footerBasemaps(slide: PlannedSlide, chosen?: BasemapChoice): BasemapChoice[] {
+  if (slide.kind === "sheet") {
+    return slide.cells.flatMap((cell) => {
+      if (!cell || cell.mass || cell.rose || (cell.face === "back" && cell.view.chart)) return [];
+      const model = cell.view.map ?? cell.view.backdrop;
+      return model ? [exportBasemap(model, chosen, cell.reportFrame)] : [];
+    });
+  }
+  const model = (slide as { map?: MapModel | null }).map;
+  if (!model) return [];
+  return [exportBasemap(model, chosen, slide.kind === "tile" && slide.page?.kind === "tile" ? slide.page.frame : undefined)];
 }
 
 export type FooterFit = { text: string; fontSize: number; lines: 1 };

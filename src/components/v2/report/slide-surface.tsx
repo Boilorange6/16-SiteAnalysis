@@ -9,7 +9,7 @@ import { metersPerPixel, slideViewport, zoomViewAt, type MapView } from "@/lib/v
 import { frameBasemap } from "@/lib/v2/ui/basemap";
 import { mapFrameScaleOptions, scaleOptionsForFrame, zoomForScale } from "@/lib/v2/ui/report-scale";
 import { SLIDE_LEGEND, calloutLegendEntries, layoutRects, slideCalloutAvoidance, slideCalloutLegendLayout, slideGeometry, slideLayout, slideLegend, slideLegendGeometry, slidePanelRects, slidePanelScale, slideReserved, slideSize, slideSiteX, terrainSectionLayout, type Rect, type SlideFormat, type TerrainSectionLayout } from "@/lib/v2/ui/overlay-layout";
-import { coverLayout, fitBlock, fitFooterText, fontSizeForStyle, sourceLayout, titlePlateRect, type Slide } from "@/lib/v2/report/pptx-kit";
+import { coverLayout, fitBlock, fitFooterText, fontSizeForStyle, footerBasemaps, sourceLayout, titlePlateRect, type Slide } from "@/lib/v2/report/pptx-kit";
 import { SLIDE_OVERVIEW_FILL, calloutHoverText, calloutKeyFromTag, calloutKeyTag, calloutPageTitleTail, slideCalloutFrame } from "@/lib/v2/ui/callout-layout";
 import { a05ReportModule } from "@/lib/v2/tile/a05/report";
 import { layerStyle, legendItemsOf, legendLabelOf } from "@/lib/v2/ui/map-layers";
@@ -1155,12 +1155,12 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
   </>;
 }
 
-function SlideFooter({ slide, rect: rectProp, unit, fontHighlight, onFontContextMenu, interactive = false, hidden = false, selected = false, onSelect, onDelete, interaction }: { slide: PlannedSlide; rect?: Rect; unit: number; fontHighlight?: FontTargetKey | null; onFontContextMenu?: SurfaceContextMenuHandler; interactive?: boolean; hidden?: boolean; selected?: boolean; onSelect?: (selection: SurfaceSelection) => void; onDelete?: () => void; interaction?: PanelInteraction }) {
+function SlideFooter({ slide, basemap, rect: rectProp, unit, fontHighlight, onFontContextMenu, interactive = false, hidden = false, selected = false, onSelect, onDelete, interaction }: { slide: PlannedSlide; basemap?: BasemapChoice; rect?: Rect; unit: number; fontHighlight?: FontTargetKey | null; onFontContextMenu?: SurfaceContextMenuHandler; interactive?: boolean; hidden?: boolean; selected?: boolean; onSelect?: (selection: SurfaceSelection) => void; onDelete?: () => void; interaction?: PanelInteraction }) {
   const styles = useSurfaceStyles();
   const format = (slide.format ?? "wide") as SlideFormat;
   const rect = rectProp ?? slideLayout(format).strip;
   const actionBar = actionBarOffsetForRect(rect, unit, { w: slideSize(format).w * unit, h: slideSize(format).h * unit });
-  const footer = fitFooterText(slide.footer, slide.kind === "sheet" || !!slide.map, slideSize(format).w - slideGeometry(format).edge - 1.7, fontSizeForStyle(slide.style, "source"));
+  const footer = fitFooterText(slide.footer, slide.kind === "sheet" || !!slide.map, slideSize(format).w - slideGeometry(format).edge - 1.7, fontSizeForStyle(slide.style, "source"), footerBasemaps(slide, basemap));
   const longPressRef = useRef<{ x: number; y: number; timer: number } | null>(null);
   const clearLongPress = () => {
     if (longPressRef.current) window.clearTimeout(longPressRef.current.timer);
@@ -1771,7 +1771,7 @@ function CoverSurface({ slide, unit, basemap, interactive, thumbnail = false, on
           })}
         </ul>
       </div>
-      <SlideFooter slide={slide} unit={unit} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} interactive={interactive && !!onFontContextMenu} />
+      <SlideFooter slide={slide} basemap={basemap} unit={unit} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} interactive={interactive && !!onFontContextMenu} />
     </>
   );
 }
@@ -1797,7 +1797,7 @@ function SourcesSurface({ slide, unit, basemap, thumbnail = false, fontHighlight
         </div>
         <p className={styles.sourceAsOf} style={{ ...rectStyle(layout.footer, unit), ...fontStyle(sourcePt, unit) }}>분석 생성일 {slide.analysisDate} · 기준일은 원천 자료 날짜{slide.rows.length > 12 ? ` · 원천 ${slide.rows.length}건` : ""}</p>
       </div>
-      <SlideFooter slide={slide} unit={unit} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} interactive={!thumbnail && !!onFontContextMenu} />
+      <SlideFooter slide={slide} basemap={basemap} unit={unit} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} interactive={!thumbnail && !!onFontContextMenu} />
     </>
   );
 }
@@ -2081,7 +2081,7 @@ function SheetSurface({ slide, unit, basemap, thumbnail = false, editable = fals
           />}
         </div>
       </div>
-      <SlideFooter slide={slide} unit={unit} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} interactive={!thumbnail && !!onFontContextMenu} />
+      <SlideFooter slide={slide} basemap={basemap} unit={unit} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} interactive={!thumbnail && !!onFontContextMenu} />
     </>
   );
 }
@@ -2356,7 +2356,7 @@ function TileSurface({ slide, unit, basemap, panels, interactive, pickable = fal
        {!slide.page?.deletedElementKeys?.includes("title") && <div onDoubleClick={() => onText?.("title")}><TitlePanel slide={slide} rect={panels.title} unit={unit} interaction={panelInteraction?.("title")} /></div>}
        {panels.summary && hasSummaryPanel(slide) && !slide.page?.deletedElementKeys?.includes("summary") && <div onDoubleClick={() => onText?.("summary")}><SummaryPanel slide={slide} rect={terrainLayout?.summary ?? panels.summary} unit={unit} terrainSectionShown={terrainShown} interaction={panelInteraction?.("summary")} /></div>}
        {panels.legend && !callout && <LegendPanel slide={{ ...slide, map: model } as Extract<PlannedSlide, { kind: "tile" }>} rect={panels.legend} unit={unit} format={format} hoverLabel={hoverLegend} onLegendHover={setHoverLegend} onLegendPin={staticSurface || thumbnail ? undefined : onLegendPin} onLegendMenu={staticSurface || thumbnail || !onFontContextMenu ? undefined : (x, y, opener) => onFontContextMenu({ kind: "panel", key: "legend" }, x, y, opener)} interaction={panelInteraction?.("legend")} legendOptions={reportFrame?.legend} />}
-        <SlideFooter slide={slide} rect={panels.source} unit={unit} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} interactive={interactive && !thumbnail && !!onFontContextMenu} hidden={slide.page?.deletedElementKeys?.includes("source")} selected={selection?.kind === "element" && selection.key === "source"} onSelect={selectSurface} onDelete={() => onPanelDelete?.("source")} interaction={panelInteraction?.("source")} />
+        <SlideFooter slide={slide} basemap={basemap} rect={panels.source} unit={unit} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} interactive={interactive && !thumbnail && !!onFontContextMenu} hidden={slide.page?.deletedElementKeys?.includes("source")} selected={selection?.kind === "element" && selection.key === "source"} onSelect={selectSurface} onDelete={() => onPanelDelete?.("source")} interaction={panelInteraction?.("source")} />
     </>
   );
 }

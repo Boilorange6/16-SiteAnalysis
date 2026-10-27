@@ -26,7 +26,7 @@ import { SLIDE_OVERVIEW_FILL, slideCalloutFrame } from "../ui/callout-layout";
 import { sheetCells, type SheetGrid } from "../ui/sheet";
 import { mapKeyOf, type PlannedSlide } from "./report-plan";
 import type { MapImages, PptxMapDrawing } from "./render-pptx";
-import { nativeMapStatus } from "./map-pptx";
+import { mapDrawPlan, nativeMapStatus } from "./map-pptx";
 import type { PageStyle } from "../ui/board-state";
 import { mapFrameScaleOptions, scaleOptionsForFrame, zoomForScale, type ReportScaleOptions } from "../ui/report-scale";
 import { DEFAULT_REPORT_FONT_SIZES, type MapFrameState } from "./report-doc";
@@ -359,11 +359,8 @@ function extraFor(p: PlannedSlide, model: MapModel): Extra {
 /** 계획의 모든 지도 자리에 대한 PNG. 실패한 장은 빠진다(렌더러가 자리표시를 넣는다). */
 export async function buildMapImages(plan: PlannedSlide[], layer?: BasemapChoice, options: { baseTheme?: BaseThemeId; mapDrawing?: PptxMapDrawing } = {}): Promise<MapImages> {
   const { baseTheme } = options;
-  // 편집 가능한 도형이면 PPT가 지도를 도형으로 그리므로 그림은 값 래스터·밀집 층만 담는다. "image"면 지도 전체가 한 장이다.
-  const editable = options.mapDrawing !== "image";
-  // 벡터 바탕은 PPT가 도형으로 그린다. 그림에는 바탕을 빼고(투명 PNG), 값 래스터·밀집 층이 없으면 그림 자체를 만들지 않는다.
-  const rasterOnly = (status: ReturnType<typeof nativeMapStatus>, drawn: BasemapChoice) => editable && status.native && drawn === "vector";
-  const hasRasterContent = (status: ReturnType<typeof nativeMapStatus>) => status.rasterValues.length > 0 || status.rasterLayers.length > 0;
+  // 무엇을 그림으로, 무엇을 도형으로 그릴지는 PPT와 같은 판정(mapDrawPlan)을 따른다.
+  const mapDrawing = options.mapDrawing ?? "editable";
   const cache = new Map<string, string | null>();
   const rasterCache = await prefetchRasters(plan, "");
   const out: MapImages = {};
@@ -381,24 +378,23 @@ export async function buildMapImages(plan: PlannedSlide[], layer?: BasemapChoice
             const rect = cells[cellIndex];
             if (!model || !rect) continue;
             const frame = cell.reportFrame;
-            const renderModel = frame ? { ...model, basemap: undefined } : model;
             const cellWidth = Math.max(1, Math.round(rect.w * PX_PER_INCH));
             const cellHeight = Math.max(1, Math.round(rect.h * PX_PER_INCH));
             const cellScaleOptions = frame ? scaleOptionsForFrame(rect.w * 25.4, { width: cellWidth, height: cellHeight, siteX: 0.5, fill: 0.8 }) : null;
             const cellStyle = frame && cellScaleOptions ? reportFrameStyle(frame, cell.style ?? p.style ?? {}, model, cellScaleOptions) : cell.style;
             const status = nativeMapStatus(model);
             const drawn = exportBasemap(model, layer, frame);
-            const vectorLayers = rasterOnly(status, drawn);
-            if (vectorLayers && !hasRasterContent(status)) continue;
-            out[cell.mapKey] = await rasterizeMap(renderModel, cache, drawn, {
+            const draw = mapDrawPlan(status, drawn, mapDrawing);
+            if (draw.image === "none") continue;
+            out[cell.mapKey] = await rasterizeMap(model, cache, drawn, {
               siteX: 0.5,
               avoid: [],
               legend: false,
               bare: false,
               baseTheme,
-              transparent: vectorLayers,
+              transparent: draw.image === "transparent",
               pinnedKeys: cell.pinnedKeys,
-              backgroundOnly: editable && status.native ? status.rasterLayers : false,
+              backgroundOnly: draw.image === "full" ? false : status.rasterLayers,
               hiddenKeys: [...new Set([...(cellStyle?.hiddenKeys ?? []), ...(frame?.hiddenLabelKeys ?? [])])],
               deletedElementKeys: frame?.deletedElementKeys,
               labelBoxes: frame?.labelBoxes,
@@ -442,13 +438,12 @@ export async function buildMapImages(plan: PlannedSlide[], layer?: BasemapChoice
     try {
       const extra = extraFor(p, model);
       const status = nativeMapStatus(model);
-      const nativeBackground = editable && p.kind === "tile" && status.native;
       const frame = p.kind === "tile" && p.page?.kind === "tile" ? p.page.frame : undefined;
-      const renderModel = frame ? { ...model, basemap: undefined } : model;
       const drawn = exportBasemap(model, layer, frame);
-      const vectorLayers = p.kind === "tile" && rasterOnly(status, drawn);
-      if (vectorLayers && !hasRasterContent(status)) continue;
-      out[key] = await rasterizeMap(renderModel, cache, drawn, { ...extra, baseTheme, transparent: vectorLayers, backgroundOnly: nativeBackground ? status.rasterLayers : false }, rasterCache);
+      // 표지·출처 장은 지도를 도형으로 그리지 않으므로 늘 지도 전체 한 장이다.
+      const draw = p.kind === "tile" ? mapDrawPlan(status, drawn, mapDrawing) : mapDrawPlan(status, drawn, "image");
+      if (draw.image === "none") continue;
+      out[key] = await rasterizeMap(model, cache, drawn, { ...extra, baseTheme, transparent: draw.image === "transparent", backgroundOnly: draw.image === "full" ? false : status.rasterLayers }, rasterCache);
     } catch (e) {
       console.warn(`지도 이미지 생성 실패 (${key})`, e);
     }
