@@ -663,7 +663,7 @@ const BASE_SIMPLIFY_PX = 0.25;
 const BASE_MUTED_OPACITY = 0.55;
 
 /**
- * 벡터 바탕을 PPT 도형으로 옮긴다: 프레임 안 바탕색 사각형 1개 + 묶음마다 custGeom 1개 + 이름 라벨.
+ * 벡터 바탕을 PPT 도형으로 옮긴다: 프레임 안 바탕색 사각형 1개 + 묶음마다 custGeom 1개. 이름 라벨은 addBaseLabels(주제 면·선 위).
  * 화면(MapFigure)과 같은 scene.base를 쓰므로 층 순서·색·굵기가 같다. 도형 이름은 `GRP|map-<code>-<layer>|바탕 · <층>|<묶음>`.
  * code는 슬라이드 안에서 지도마다 다른 값("base", 조판 칸은 "cell-N-base").
  */
@@ -687,7 +687,11 @@ function addBaseMap(slide: Slide, code: string, scene: MapScene, muted: boolean)
       objectName: tag(code, bucket.layer, `바탕 · ${BASE_LAYER_NAME[bucket.layer]}`, bucket.key),
     });
   }
-  for (const label of base.labels) {
+}
+
+/** 바탕 이름 라벨: 주제 면·선 위, 점·대지 표식·주제 라벨 아래(화면 MapFigure의 data-map-base="labels"와 같은 자리). */
+function addBaseLabels(slide: Slide, code: string, scene: MapScene, muted: boolean): void {
+  for (const label of scene.base?.labels ?? []) {
     const pt = fontPt(label.fontSize, 6);
     const w = textIn(label.text, pt) + 0.12;
     const h = (pt / 72) * 1.5;
@@ -1097,6 +1101,7 @@ export function addEditableMap(slide: Slide, plan: (PlannedSlide & { kind: "tile
     options.underlay?.();
     addPolygons(slide, code, scene, visibleModel);
     addLines(slide, code, scene, visibleModel);
+    if (scene.base) addBaseLabels(slide, options.scope ? `${options.scope}-base` : "base", scene, !!plan?.muted);
     addRadius(slide, code, scene);
     addNearestLines(slide, code, scene);
     addFeatures(slide, code, scene, visibleModel);

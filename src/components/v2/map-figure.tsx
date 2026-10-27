@@ -1373,7 +1373,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseT
         {tiles.length > 0 && (!sat || muted) && <rect width={W} height={H} fill="#fff" fillOpacity={muted ? 0.5 : activeLayer === "Base" ? 0.35 : 0.15} />}
         {tiles.length > 0 && sat && !muted && <rect width={W} height={H} fill="#000" fillOpacity={0.12} />}
 
-        {/* 벡터 바탕: 층별 묶음(경로 하나씩)과 그 바로 위의 이름 라벨. 주제 레이어보다 아래, 선택·hover 대상이 아니다. */}
+        {/* 벡터 바탕: 층별 묶음(경로 하나씩). 주제 레이어보다 아래, 선택·hover 대상이 아니다. 이름 라벨은 주제 면·선 위(아래쪽 data-map-base="labels"). */}
         {scene.base && !transparent && (
           <g data-map-base="vector" pointerEvents="none" opacity={muted ? 0.55 : undefined}>
             {baseBucketPaths.map(({ bucket, d }) => (
@@ -1390,26 +1390,6 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseT
                 strokeLinecap={bucket.dash || bucket.closed ? undefined : "round"}
                 opacity={bucket.opacity}
               />
-            ))}
-            {scene.base.labels.map((label) => (
-              <text
-                key={label.key}
-                data-map-base-label={label.kind}
-                x={label.x}
-                y={label.y}
-                textAnchor="middle"
-                dominantBaseline="central"
-                fontSize={label.fontSize}
-                fontWeight={label.kind === "station" ? 700 : undefined}
-                fill={label.color}
-                stroke={label.halo}
-                strokeWidth={Math.max(2, label.fontSize * 0.3)}
-                strokeLinejoin="round"
-                paintOrder="stroke"
-                transform={label.angle ? `rotate(${label.angle} ${label.x} ${label.y})` : undefined}
-              >
-                {label.text}
-              </text>
             ))}
           </g>
         )}
@@ -1487,6 +1467,31 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseT
           })}
           {showNativeChrome && railNodes}
         </g>
+        {/* 바탕 이름 라벨: 주제 면·선 위(가려 읽히지 않던 문제), 점·대지 표식·주제 라벨 아래. PPT addBaseLabels와 같은 자리. */}
+        {scene.base && !transparent && scene.base.labels.length > 0 && (
+          <g data-map-base="labels" pointerEvents="none" opacity={muted ? 0.55 : undefined}>
+            {scene.base.labels.map((label) => (
+              <text
+                key={label.key}
+                data-map-base-label={label.kind}
+                x={label.x}
+                y={label.y}
+                textAnchor="middle"
+                dominantBaseline="central"
+                fontSize={label.fontSize}
+                fontWeight={label.kind === "station" ? 700 : undefined}
+                fill={label.color}
+                stroke={label.halo}
+                strokeWidth={Math.max(2, label.fontSize * 0.3)}
+                strokeLinejoin="round"
+                paintOrder="stroke"
+                transform={label.angle ? `rotate(${label.angle} ${label.x} ${label.y})` : undefined}
+              >
+                {label.text}
+              </text>
+            ))}
+          </g>
+        )}
         {showNativeChrome && showRadius && rings.map((r, i) => (
           <circle key={`ring-${i}-${r}`} cx={cx} cy={cy} r={r} fill="none" stroke={line} strokeOpacity={sat ? 0.7 : 0.35} strokeWidth={1 * u} strokeDasharray={`${4 * u} ${4 * u}`} />
         ))}

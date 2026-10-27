@@ -118,11 +118,34 @@ const key = (plan) => mapKeysOf(plan)[0];
   const pic = xml.indexOf("<p:pic>");
   const thematic = xml.indexOf("GRP|map-A04-");
   assert.ok(lastBase > 0 && pic > 0 && thematic > 0, `순서 요소 ${lastBase}/${pic}/${thematic}`);
-  assert.ok(lastBase < pic, "바탕 도형이 그림보다 먼저");
+  const lastBaseShape = Math.max(...[...xml.matchAll(/GRP\|map-base-(?!label-)/g)].map((m) => m.index));
+  assert.ok(lastBaseShape < pic, "바탕 도형이 그림보다 먼저");
   assert.ok(pic < thematic, "그림이 주제 도형보다 먼저");
   assert.equal(count(xml, /<p:pic>/g), 1);
   const rels = await zip.file("ppt/slides/_rels/slide1.xml.rels").async("string");
   assert.match(rels, /media\/[^"]+\.png"/, "값 래스터 그림은 PNG");
+}
+
+// ── 바탕 이름 라벨은 주제 면 위(면에 가려 읽히지 않던 문제), 주제 점보다 아래 — PPT·화면 같은 자리 ──
+{
+  const ring = [[ORIGIN_LNG - 0.004, ORIGIN_LAT - 0.004], [ORIGIN_LNG + 0.004, ORIGIN_LAT - 0.004], [ORIGIN_LNG + 0.004, ORIGIN_LAT + 0.004], [ORIGIN_LNG - 0.004, ORIGIN_LAT - 0.004]];
+  const model = modelOf("D03", { base, polygons: [{ layer: "use:주거", fid: "p1", rings: [ring] }] });
+  const plan = tilePlan("D03", model, "label-order");
+  const { xml: [xml] } = await slidesOf([plan], {}, { basemap: "vector" });
+  const lastPolygon = xml.lastIndexOf("GRP|map-D03-legend-주거");
+  const firstLabel = xml.indexOf("GRP|map-base-label-");
+  const point = xml.indexOf("GRP|map-D03-legend-버스정류장");
+  assert.ok(lastPolygon > 0 && firstLabel > 0 && point > 0, `면 ${lastPolygon} · 라벨 ${firstLabel} · 점 ${point}`);
+  assert.ok(lastPolygon < firstLabel, "바탕 라벨이 주제 면 위");
+  assert.ok(firstLabel < point, "바탕 라벨이 주제 점 아래");
+  const { renderToStaticMarkup } = await import("react-dom/server");
+  const { default: MapFigure } = await import("../../components/v2/map-figure.tsx");
+  const svg = renderToStaticMarkup(React.createElement(MapFigure, { model, width: 960, height: 540, fixed: true, layer: "vector", basemap: "none", legend: false, credit: false }));
+  const svgPolygon = svg.lastIndexOf('data-poly="true"');
+  const svgLabels = svg.indexOf('data-map-base="labels"');
+  assert.ok(svgPolygon > 0 && svgLabels > 0, `화면 면 ${svgPolygon} · 라벨 ${svgLabels}`);
+  assert.ok(svgPolygon < svgLabels, "화면도 바탕 라벨이 주제 면 위");
+  assert.ok(svg.indexOf('data-map-base="vector"') < svgPolygon, "화면 바탕 도형은 주제 면 아래");
 }
 
 // ── no-picture: 래스터·밀집 층이 없는 vector 장에는 지도 배경 그림이 없다 ──
