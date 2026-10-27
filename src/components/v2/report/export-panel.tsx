@@ -1,8 +1,10 @@
 "use client";
 
 import { createRoot, type Root } from "react-dom/client";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
+import type { BaseThemeId } from "@/lib/v2/ui/map-theme";
+import { BaseThemeContext } from "../base-theme-context";
 import { downloadBytes } from "@/lib/v2/export/download";
 import { preflightReport, type PreflightIssue } from "@/lib/v2/report/preflight";
 import { rasterizePages } from "@/lib/v2/report/raster-export";
@@ -60,7 +62,7 @@ function pageCountLabel(count: number): string {
   return `${count}쪽`;
 }
 
-function renderExportSurfaceFactory(basemap: BasemapChoice, format: ReportFormat, roots: Map<HTMLElement, Root>) {
+function renderExportSurfaceFactory(basemap: BasemapChoice, baseTheme: BaseThemeId | undefined, format: ReportFormat, roots: Map<HTMLElement, Root>) {
   return async (slide: PlannedSlide): Promise<HTMLElement> => {
     const slideFormat = slide.format ?? format;
     const width = 1200;
@@ -81,7 +83,7 @@ function renderExportSurfaceFactory(basemap: BasemapChoice, format: ReportFormat
     document.body.appendChild(host);
     const root = createRoot(host);
     roots.set(host, root);
-    root.render(<SlideSurface slide={slide} basemap={basemap} mode="export" classMap={surfaceClassMap} />);
+    root.render(<SlideSurface slide={slide} basemap={basemap} baseTheme={baseTheme} mode="export" classMap={surfaceClassMap} />);
     await nextFrame();
     await nextFrame();
     return host;
@@ -104,7 +106,8 @@ export default function ExportPanel({ plan, format, basemap, currentPageId, sele
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
   const focusAfterRunRef = useRef(false);
   const rootsRef = useRef(new Map<HTMLElement, Root>());
-  const renderSurface = useMemo(() => renderExportSurfaceFactory(basemap, format, rootsRef.current), [basemap, format]);
+  const baseThemeId = useContext(BaseThemeContext);
+  const renderSurface = useMemo(() => renderExportSurfaceFactory(basemap, baseThemeId, format, rootsRef.current), [basemap, baseThemeId, format]);
   const disposeSurface = useCallback((node: HTMLElement) => {
     rootsRef.current.get(node)?.unmount();
     rootsRef.current.delete(node);

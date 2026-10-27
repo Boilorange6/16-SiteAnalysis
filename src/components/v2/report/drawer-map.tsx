@@ -41,7 +41,7 @@ type DrawerMapProps = {
 };
 
 const BASEMAPS: Array<{ value: MapFrameState["basemap"]; label: string }> = [
-  { value: "base", label: "일반" },
+  { value: "base", label: "기본 지도" },
   { value: "road", label: "도로" },
   { value: "air", label: "항공" },
   { value: "none", label: "없음" },

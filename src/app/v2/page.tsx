@@ -8,6 +8,7 @@ import Presentation from "@/components/v2/presentation";
 import ReportMode from "@/components/v2/report/report-mode";
 import { useTileDrag } from "@/components/v2/use-tile-drag";
 import { BASEMAPS, BasemapContext, SetBasemapContext } from "@/components/v2/map-box";
+import { BaseThemeContext } from "@/components/v2/base-theme-context";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import styles from "@/components/v2/board.module.css";
 import { SUMMARY_ID, boardReducer, boardStorageKey, initBoard, nextCopyId, rebaseSnapshotAnalysisId, selectBoardSnapshotForLoad, serializeBoardState, sourceTileId, viewOf, type CardFace, type CutSpec, type GridColumns, type PinnedLabel } from "@/lib/v2/ui/board-state";
@@ -587,7 +588,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
   });
   const [note, setNote] = useState(""); // 스크린리더 안내(aria-live)
   const [highlightedTileId, setHighlightedTileId] = useState<string | null>(null);
-  const [basemap, setBasemap] = useState<BasemapChoice>("white"); // 보드 상태(서버에 저장하지 않음). 화면과 PPT가 같이 따른다
+  const [basemap, setBasemap] = useState<BasemapChoice>("vector"); // 보드 상태(서버에 저장하지 않음). 화면과 PPT가 같이 따른다. 기본은 분석 장면으로 그린 기본 지도(자료가 없는 옛 분석은 일반지도로 돌아간다)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (boardMode === "report") params.set("mode", "report");
@@ -691,7 +692,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
     [baseViews, board.order, board.stacks],
   );
   const sheetableIds = useMemo(() => board.order.filter((id) => views.has(id) && views.get(id)!.code !== "SHEET"), [board.order, views]);
-  const summary = useMemo(() => toSummaryView(siteSummary, results), [siteSummary, results]);
+  const summary = useMemo(() => toSummaryView(siteSummary, results, scene), [siteSummary, results, scene]);
   const analysisDate = results[0]?.conditions.analysisDate ?? "기준일 미확인";
   const reportPlanContext = useMemo(() => ({ summary, analysisDate, views, results: reportResults, scene, analysisSiteParcel, resultFor: reportResultFor }), [analysisDate, analysisSiteParcel, reportResultFor, reportResults, scene, summary, views]);
   const reportDocPageCount = useMemo(() => printedPageCount(board.reportDoc, views, reportPlanContext), [board.reportDoc, reportPlanContext, views]);
@@ -993,6 +994,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
   return (
     <BasemapContext.Provider value={basemap}>
     <SetBasemapContext.Provider value={setBasemap}>
+    <BaseThemeContext.Provider value={board.baseTheme}>
     <main className={styles.root}>
       <div
         className={`${styles.page} ${boardMode === "report" ? styles.reportPage : ""}`}
@@ -1361,6 +1363,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
       )}
       {presentationPlan && <Presentation plan={presentationPlan} onClose={() => setPresentationPlan(null)} />}
     </main>
+    </BaseThemeContext.Provider>
     </SetBasemapContext.Provider>
     </BasemapContext.Provider>
   );

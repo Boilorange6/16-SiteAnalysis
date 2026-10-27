@@ -1,5 +1,5 @@
 import * as React from "react";
-import { memo, useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { memo, useCallback, useContext, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { buildingStyleForRaster, isBuildingLayer, layerStyle, legendItems, RASTER_STYLES, type MapModel, type RasterStyle } from "@/lib/v2/ui/map-layers";
 import { badgeTextColor, mapLabelText as formatMapLabelText } from "@/lib/v2/ui/map-labels";
 import { applyView, BASEMAP_ATTRIBUTION, BASEMAP_STACK, framedViewport, makeProjector, metersPerPixel, scaleBar, tilesFor, tileUrl, worldPx, type BasemapChoice, type MapView, type Viewport } from "@/lib/v2/ui/map-projection";
@@ -10,6 +10,9 @@ import { isSiteParcelLayer } from "@/lib/v2/ui/site-parcel";
 import { calloutFrame, layoutCallouts, PX, PX_NARROW, type Placed } from "@/lib/v2/ui/callout-layout";
 import { buildMapScene, mapCalloutTextLayout, mapElementKey, mapFeatureKey, mapLabelEntries, mapTextWidth, RAIL_EXIT_COLOR, RAIL_EXIT_DOT_RADIUS, RAIL_EXIT_DOT_STROKE, type MapCalloutTextLayout, type MapSceneLabel } from "@/lib/v2/ui/map-scene";
 import { terrainSectionMapStyle } from "@/lib/v2/ui/terrain-section";
+import { resolveBasemap } from "@/lib/v2/ui/basemap";
+import { baseTheme, type BaseThemeId } from "@/lib/v2/ui/map-theme";
+import { BaseThemeContext } from "./base-theme-context";
 import { MAP_LABEL_MIN_HEIGHT, MAP_LABEL_MIN_WIDTH, normalizeMapLabelBox, type MapLabelBox } from "@/lib/v2/report/report-doc";
 
 export { mapCalloutTextLayout, mapFeatureKey, mapLabelEntries, mapLabelText } from "@/lib/v2/ui/map-scene";
@@ -24,8 +27,13 @@ export type MapFigureProps = {
   height: number;
   /** "none"이면 배경 타일 없이 격자만 (배경을 못 받았을 때) */
   basemap?: "tiles" | "none";
-  /** 배경지도 종류 (기본 일반=white). 항공은 위성 사진 위에 글자 레이어를 겹친다 */
+  /**
+   * 사용자가 고른 배경지도. 항공은 위성 사진 위에 글자 레이어를 겹친다.
+   * 결과가 지정한 바탕(model.basemap) > 이 값 > 바탕 자료(model.base)가 있으면 "vector" > "white".
+   */
   layer?: BasemapChoice;
+  /** 벡터 바탕의 색 테마. 없으면 BaseThemeContext, 그것도 없으면 기본 테마. */
+  baseTheme?: BaseThemeId;
   /** 배경 타일 주소 → 실제 href (PPT용: data URI로 바꿔 넣는다). 반환 undefined면 그 타일은 생략 */
   tileHref?: (url: string) => string | undefined;
   /** 결과 래스터 이름 → 압축 해제·팔레트 처리한 이미지 data URL (MapBox/PPT가 주입) */
@@ -379,7 +387,7 @@ function backgroundTransform(from: Viewport, to: Viewport, width: number, height
   return `matrix(${scale},0,0,${scale},${e},${f})`;
 }
 
-function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "white", tileHref, rasterHref, rasterName, bare, backgroundOnly = false, fixed, layoutUnit, labelScale = 1, compact = false, label, legend, legendY, north: northOpt, northX, northScale, scale = true, showRadius = true, showSiteMarker = true, credit = true, bottomInset = 0, avoid = EMPTY_BOXES, siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, scaleY, scaleBoxOverride, scaleChromeScale, scaleFontScale, siteY = 0.5, calloutTop: calloutTopOpt, calloutLeftBottom, selectedFids = EMPTY_KEYS, terrainSection = "A", highlightLabel = null, legendFocus = null, highlightPinnedLabel = null, hoverKey = null, emphasisKey = null, pinnedKeys = EMPTY_KEYS, showAutomaticLabels = true, onFeatureClick, onFeatureHover, onFeatureSelect, onLabelSelect, onFeaturePin, onLegendHover, onLegendPin, path = EMPTY_PATH, onMapClick, view, viewport, dragging = false, previewInteraction = false, preserveShortCalloutLabels = false, hiddenKeys = EMPTY_KEYS, deletedElementKeys = EMPTY_KEYS, labelBoxes = EMPTY_LABEL_BOXES, onLabelBoxChange, onLabelBoxReset, selectedElementKey = null, selectedLabelKey = null }: MapFigureProps) {
+function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseTheme: baseThemeProp, tileHref, rasterHref, rasterName, bare, backgroundOnly = false, fixed, layoutUnit, labelScale = 1, compact = false, label, legend, legendY, north: northOpt, northX, northScale, scale = true, showRadius = true, showSiteMarker = true, credit = true, bottomInset = 0, avoid = EMPTY_BOXES, siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, scaleY, scaleBoxOverride, scaleChromeScale, scaleFontScale, siteY = 0.5, calloutTop: calloutTopOpt, calloutLeftBottom, selectedFids = EMPTY_KEYS, terrainSection = "A", highlightLabel = null, legendFocus = null, highlightPinnedLabel = null, hoverKey = null, emphasisKey = null, pinnedKeys = EMPTY_KEYS, showAutomaticLabels = true, onFeatureClick, onFeatureHover, onFeatureSelect, onLabelSelect, onFeaturePin, onLegendHover, onLegendPin, path = EMPTY_PATH, onMapClick, view, viewport, dragging = false, previewInteraction = false, preserveShortCalloutLabels = false, hiddenKeys = EMPTY_KEYS, deletedElementKeys = EMPTY_KEYS, labelBoxes = EMPTY_LABEL_BOXES, onLabelBoxChange, onLabelBoxReset, selectedElementKey = null, selectedLabelKey = null }: MapFigureProps) {
   if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
     const target = window as Window & { __V2_PREVIEW_METRICS__?: Record<string, number> };
     const metrics = target.__V2_PREVIEW_METRICS__ ?? (target.__V2_PREVIEW_METRICS__ = {});
@@ -391,7 +399,10 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
   const shouldRasterizeLayer = (layerName: string) => !backgroundOnlyActive || !!backgroundLayerSet?.has(layerName);
   const showNativeChrome = !backgroundOnlyActive;
   const rasterModel = model as RasterPresentationModel;
-  const activeLayer = model.basemap ?? layer;
+  const activeLayer = resolveBasemap(model, layer);
+  const themeFromContext = useContext(BaseThemeContext);
+  const themeId = baseThemeProp ?? themeFromContext;
+  const theme = baseTheme(themeId);
   const sat = activeLayer === "Satellite";
   // 항공 사진 위에서는 어두운 선·점 테두리가 묻히므로 흰색으로 바꾼다
   const line = sat ? "#fff" : INK;
@@ -563,6 +574,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     width: W,
     height: H,
     activeLayer,
+    baseTheme: themeId,
     fill: mapFill,
     siteX: mapSiteX,
     siteY: mapSiteY,
@@ -605,7 +617,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
     legendFocus,
     layoutUnit: u,
     labelScale: safeLabelScale,
-  }), [activeLayer, avoid, bare, bottomInset, calloutLeftBottom, calloutTopOpt, compact, deletedElementKeys, effectiveLabelBoxes, emphasisKey, fill, fixed, H, hiddenKeys, highlightLabel, layoutUnit, legendFocus, mapCenterY, mapFill, mapSiteX, mapSiteY, muted, model, northOpt, northScale, northX, panelH, panelW, panelX, panelY, path, rightInset, safeLabelScale, scale, scaleChromeScale, scaleFontScale, scaleLeft, scaleX, scaleY, scaleBoxOverride, sceneDragging, sceneHoverKey, showAutomaticLabels, showLegend, showRadius, showSiteMarker, siteX, selectedFids, terrainSection, pinnedKeys, W, view, viewport]);
+  }), [activeLayer, themeId, avoid, bare, bottomInset, calloutLeftBottom, calloutTopOpt, compact, deletedElementKeys, effectiveLabelBoxes, emphasisKey, fill, fixed, H, hiddenKeys, highlightLabel, layoutUnit, legendFocus, mapCenterY, mapFill, mapSiteX, mapSiteY, muted, model, northOpt, northScale, northX, panelH, panelW, panelX, panelY, path, rightInset, safeLabelScale, scale, scaleChromeScale, scaleFontScale, scaleLeft, scaleX, scaleY, scaleBoxOverride, sceneDragging, sceneHoverKey, showAutomaticLabels, showLegend, showRadius, showSiteMarker, siteX, selectedFids, terrainSection, pinnedKeys, W, view, viewport]);
   const vp = scene.viewport;
   const proj = makeProjector(vp);
   const mpp = scene.mpp;
@@ -615,7 +627,13 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
   const scaleUnit = scene.unit * scene.scaleChromeScale;
   const scaleTextUnit = scene.unit * scene.scaleChromeScale * scene.scaleFontScale;
 
-  const tiles = basemap === "tiles" ? scene.tiles : [];
+  const tiles = basemap === "tiles" && activeLayer !== "vector" ? scene.tiles : [];
+  // 묶음 경로 문자열은 묶음 배열(장면·뷰포트·테마별 캐시)이 바뀔 때만 다시 만든다. 지물마다 DOM 노드를 만들지 않는다.
+  const baseBuckets = scene.base?.buckets;
+  const baseBucketPaths = useMemo(() => (baseBuckets ?? []).map((bucket) => ({
+    bucket,
+    d: bucket.paths.map((points) => `${points.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x} ${y}`).join("")}${bucket.closed ? "Z" : ""}`).join(""),
+  })), [baseBuckets]);
   const stack = BASEMAP_STACK[activeLayer];
   const backgroundImages: BackgroundImage[] = stack.flatMap((ly) => tiles.flatMap((tile) => {
     const url = tileUrl(ly, tile.z, tile.x, tile.y);
@@ -1322,8 +1340,8 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
         })}
       </defs>
       <g clipPath={`url(#c${uid})`}>
-        <rect width={W} height={H} fill="#f2f2ef" />
-        {basemap === "none" && (
+        <rect width={W} height={H} fill={scene.base?.bg ?? "#f2f2ef"} />
+        {basemap === "none" && !scene.base && (
           <g stroke="#dcdde1" strokeWidth={1}>
             {Array.from({ length: Math.ceil(W / grid) + 1 }, (_, i) => (
               <line key={`v${i}`} x1={(cx % grid) + i * grid} y1={0} x2={(cx % grid) + i * grid} y2={H} />
@@ -1352,6 +1370,47 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
         </g>
         {tiles.length > 0 && (!sat || muted) && <rect width={W} height={H} fill="#fff" fillOpacity={muted ? 0.5 : activeLayer === "Base" ? 0.35 : 0.15} />}
         {tiles.length > 0 && sat && !muted && <rect width={W} height={H} fill="#000" fillOpacity={0.12} />}
+
+        {/* 벡터 바탕: 층별 묶음(경로 하나씩)과 그 바로 위의 이름 라벨. 주제 레이어보다 아래, 선택·hover 대상이 아니다. */}
+        {scene.base && (
+          <g data-map-base="vector" pointerEvents="none" opacity={muted ? 0.55 : undefined}>
+            {baseBucketPaths.map(({ bucket, d }) => (
+              <path
+                key={bucket.key}
+                data-map-base-layer={bucket.layer}
+                d={d}
+                fillRule="evenodd"
+                fill={bucket.fill ?? "none"}
+                stroke={bucket.stroke ?? "none"}
+                strokeWidth={bucket.strokeWidth}
+                strokeDasharray={bucket.dash}
+                strokeLinejoin="round"
+                strokeLinecap={bucket.dash || bucket.closed ? undefined : "round"}
+                opacity={bucket.opacity}
+              />
+            ))}
+            {scene.base.labels.map((label) => (
+              <text
+                key={label.key}
+                data-map-base-label={label.kind}
+                x={label.x}
+                y={label.y}
+                textAnchor="middle"
+                dominantBaseline="central"
+                fontSize={label.fontSize}
+                fontWeight={label.kind === "station" ? 700 : undefined}
+                fill={label.color}
+                stroke={label.halo}
+                strokeWidth={Math.max(2, label.fontSize * 0.3)}
+                strokeLinejoin="round"
+                paintOrder="stroke"
+                transform={label.angle ? `rotate(${label.angle} ${label.x} ${label.y})` : undefined}
+              >
+                {label.text}
+              </text>
+            ))}
+          </g>
+        )}
 
         {/* 격자 셀 경계가 보이는 원해상도 래스터. 배경 타일 위, 면·선·점 아래에 둔다. */}
         {rasterImages.map(({ ref, href, matrix }) => (
@@ -1486,7 +1545,12 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
         {/* 대지 표시 */}
         {showNativeChrome && !muted && showSiteMarker && (
           <g role="img" aria-label="분석 대지" pointerEvents="none">
-            {siteMode === "parcel" && sitePath ? (
+            {siteMode === "parcel" && sitePath && scene.base ? (
+              <>
+                {theme.site.haloPx > 0 && <path d={sitePath} fillRule="evenodd" fill="none" stroke="#fff" strokeWidth={theme.site.lineWidthPx + 2 * theme.site.haloPx} strokeLinejoin="round" clipPath={`url(#r${uid})`} />}
+                <path d={sitePath} fillRule="evenodd" fill={theme.site.fill} fillOpacity={theme.site.fillOpacity} stroke={theme.site.line} strokeWidth={theme.site.lineWidthPx} strokeLinejoin="round" clipPath={`url(#r${uid})`} />
+              </>
+            ) : siteMode === "parcel" && sitePath ? (
               <>
                 <path d={sitePath} fillRule="evenodd" fill="rgba(255,255,255,.18)" stroke="#fff" strokeWidth={Math.max(0.5 * siteR, 2.4)} strokeLinejoin="round" clipPath={`url(#r${uid})`} />
                 <path d={sitePath} fill="none" stroke="#111" strokeWidth={Math.max(0.2 * siteR, 1.2)} strokeLinejoin="round" clipPath={`url(#r${uid})`} />
@@ -1715,7 +1779,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer = "whi
               </text>
             </>
           )}
-          {credit && (
+          {credit && !scene.base && (
             <text x={W - 4 * u} y={H - 4 * u} fontSize={6.6 * u} textAnchor="end" fill="#3b3f47" stroke="#fff" strokeOpacity={0.8} strokeWidth={2 * u} paintOrder="stroke">
               {BASEMAP_ATTRIBUTION}
             </text>

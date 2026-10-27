@@ -449,7 +449,6 @@ export default function DetailWindow({ view, layer, onLayer, onClose, terrainSec
                     width={mapSize.width}
                     height={mapSize.height}
                     label={`${view.title} 상세 지도`}
-                    layer={activeLayer}
                     tileHref={activeLayer === "Satellite" ? (url) => url.includes("/Hybrid/") ? undefined : url : undefined}
                     rasterHref={(raster) => rasterHrefs[raster.name] ?? null}
                     legend

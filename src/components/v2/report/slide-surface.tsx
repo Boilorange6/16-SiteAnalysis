@@ -3,6 +3,8 @@
 import * as React from "react";
 import { createContext, memo, useCallback, useContext, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
+import type { BaseThemeId } from "@/lib/v2/ui/map-theme";
+import { BaseThemeContext } from "../base-theme-context";
 import { metersPerPixel, slideViewport, zoomViewAt, type MapView } from "@/lib/v2/ui/map-projection";
 import { mapFrameScaleOptions, scaleOptionsForFrame, zoomForScale } from "@/lib/v2/ui/report-scale";
 import { SLIDE_LEGEND, calloutLegendEntries, layoutRects, slideCalloutAvoidance, slideCalloutLegendLayout, slideGeometry, slideLayout, slideLegend, slideLegendGeometry, slidePanelRects, slidePanelScale, slideReserved, slideSize, slideSiteX, terrainSectionLayout, type Rect, type SlideFormat, type TerrainSectionLayout } from "@/lib/v2/ui/overlay-layout";
@@ -592,7 +594,7 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
   const savedNorthBox = panelRectInMap(style.panels?.north, format, unit, frame, panelBasis, width, height);
   const savedScaleBox = panelRectInMap(style.panels?.scaleBar, format, unit, frame, panelBasis, width, height);
   const savedLocatorBox = panelRectInMap(style.panels?.locator, format, unit, frame, panelBasis, width, height);
-  const displayBasemap: BasemapChoice = reportFrame?.basemap === "air" ? "Satellite" : reportFrame?.basemap === "none" ? "white" : reportFrame?.basemap === "road" || reportFrame?.basemap === "base" ? "Base" : basemap;
+  const displayBasemap: BasemapChoice = reportFrame?.basemap === "air" ? "Satellite" : reportFrame?.basemap === "none" ? "white" : reportFrame?.basemap === "road" ? "Base" : reportFrame?.basemap === "base" ? (model.base ? "vector" : "Base") : basemap;
   const baseViewport = useMemo(() => slideViewport(model, undefined, { width, height, siteX, siteY: mapSiteY, fill: mapFill }), [height, mapFill, mapSiteY, model, siteX, width]);
   const viewport = useMemo(() => slideViewport(model, style, { width, height, siteX, siteY: mapSiteY, fill: mapFill }), [height, mapFill, mapSiteY, model, siteX, style, width]);
   const focusedLabel = useMemo(() => legendLabelOf(model, style.legendFocus), [model, style.legendFocus]);
@@ -2087,7 +2089,7 @@ function LocatorInset({ model, basemap, box }: { model: NonNullable<ReturnType<t
   const styles = useSurfaceStyles();
   const width = Math.max(1, Math.round(box.x1 - box.x0));
   const height = Math.max(1, Math.round(box.y1 - box.y0));
-  const locatorModel = { ...model, radiusM: Math.max(model.radiusM * 3, model.radiusM + 1), features: [], polygons: [], lines: [], total: 0 };
+  const locatorModel = { ...model, radiusM: Math.max(model.radiusM * 3, model.radiusM + 1), features: [], polygons: [], lines: [], total: 0, base: null };
   return <div className={styles.locatorInset ?? styles.surfaceRoot} data-map-locator="true" aria-label="위치도" style={{ left: box.x0, top: box.y0, width, height, pointerEvents: "none" }}><MapFigure model={locatorModel} width={width} height={height} fixed basemap="none" layer={basemap} legend={false} north={false} scale={false} credit={false} showAutomaticLabels={false} viewport={slideViewport(locatorModel, undefined, { width, height, siteX: 0.5, siteY: 0.5, fill: 0.82 })} /></div>;
 }
 
@@ -2780,6 +2782,8 @@ export type SurfaceSelection =
 export type SlideSurfaceProps = {
   slide: PlannedSlide;
   basemap: BasemapChoice;
+  /** 벡터 바탕 테마. 별도 React 루트(내보내기)처럼 보드의 컨텍스트가 닿지 않는 곳에서 넘긴다. */
+  baseTheme?: BaseThemeId;
   mode: "edit" | "thumb" | "export";
   selection?: SurfaceSelection;
   fontHighlight?: FontTargetKey | null;
@@ -2820,6 +2824,7 @@ export type SlideSurfaceProps = {
 export function SlideSurface({
   slide,
   basemap,
+  baseTheme,
   mode,
   selection,
   fontHighlight,
@@ -2856,6 +2861,7 @@ export function SlideSurface({
   onSheetCellNavigate,
   classMap,
 }: SlideSurfaceProps) {
+  const inheritedBaseTheme = useContext(BaseThemeContext);
   const format = (slide.format ?? "wide") as SlideFormat;
   const size = slideSize(format);
   const safeBasemap = (basemap as string) === "none" ? "white" : basemap;
@@ -2890,6 +2896,7 @@ export function SlideSurface({
   const cellActivate = (index: number) => onSheetCellActivate?.(index);
   return (
     <SurfaceStyleContext.Provider value={styles}>
+    <BaseThemeContext.Provider value={baseTheme ?? inheritedBaseTheme}>
       <div
         className={styles.surfaceRoot}
         data-slide-surface="true"
@@ -2942,6 +2949,7 @@ export function SlideSurface({
             />}
         {locked && (active || selection?.kind === "map") && <span className={styles.surfaceLockedMessage} data-map-locked="true">지도 위치 고정됨</span>}
       </div>
+    </BaseThemeContext.Provider>
     </SurfaceStyleContext.Provider>
   );
 }

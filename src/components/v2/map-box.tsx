@@ -14,7 +14,7 @@ import { useMapView, type MapTouchPan, type MapWheelMode } from "./use-map-view"
 import styles from "./board.module.css";
 
 /** 보드가 고른 배경지도 종류. 카드·상세·요약의 모든 지도가 같이 따른다. */
-export const BasemapContext = createContext<BasemapChoice>("white");
+export const BasemapContext = createContext<BasemapChoice>("vector");
 /** 상세 화면 위쪽 전환 버튼이 보드의 배경지도를 바꾼다 */
 export const SetBasemapContext = createContext<(b: BasemapChoice) => void>(() => {});
 
@@ -36,6 +36,7 @@ type Opts = Pick<MapFigureProps, "legend" | "legendY" | "north" | "scale" | "cre
 type Opts2 = Omit<Opts, "rightInset"> & { rightInset?: number | ((w: number) => number) };
 
 export const BASEMAPS: Array<{ id: BasemapChoice; label: string }> = [
+  { id: "vector", label: "기본 지도" },
   { id: "white", label: "일반지도" },
   { id: "Base", label: "도로" },
   { id: "Satellite", label: "항공" },
