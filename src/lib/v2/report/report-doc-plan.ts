@@ -1,5 +1,5 @@
 /** 독립 보고서 문서를 기존 PPT 슬라이드 계획으로 바꾸는 순수 어댑터. */
-import { defaultFrame, DEFAULT_REPORT_FONT_SIZES, mergeReportFontSizes, newPageId, pageElementDeleted, reportFontSizesFromLegacyScale, type MapFrameState, type ReportDoc, type ReportPage, type ReportFormat, type TilePart } from "./report-doc";
+import { defaultFrame, DEFAULT_REPORT_FONT_SIZES, mergeReportFontSizes, newPageId, pageElementDeleted, reportFontSizesFromLegacyScale, type MapColorChoice, type MapFrameState, type ReportDoc, type ReportPage, type ReportFormat, type TilePart } from "./report-doc";
 import {
   buildReportPlan,
   complexCounts,
@@ -18,7 +18,8 @@ import type { MapModel } from "../ui/map-layers";
 import { catalogEntry, TILE_CODES } from "../ui/tile-catalog";
 import type { SourceDetailRow, SourceMeta } from "../ui/source-details";
 import { sourceDetailsFor, UNKNOWN_AS_OF } from "../ui/source-details";
-import { toTileView, type SummaryView, type TileView } from "../ui/tile-view";
+import { toTileView, withCalloutPalette, withPalette, type SummaryView, type TileView } from "../ui/tile-view";
+import { mergeMapColors, withMapColors } from "../ui/map-colors";
 import type { Scene } from "../scene";
 import type { MapPolygon, TileResult } from "../tile-result";
 import type { A05Filter } from "../engine/a05-filter";
@@ -673,7 +674,22 @@ export function planReportDoc(doc: ReportDoc, views: ReadonlyMap<string, TileVie
       raw.push(plannedWithMeta({ kind: "sheet", view: sheetView(page.id, cellViews, page.grid), grid: page.grid, cells }, page, page.id, `${ctx.summary.asOfLine} · 비교`, style, doc.format));
     }
   }
-  return raw.map((slide, index) => ({ ...slide, no: index + 1, total: raw.length }));
+  return raw.map((slide, index) => ({ ...colorSlide(slide, mergeMapColors(doc, slide.page)), no: index + 1, total: raw.length }));
+}
+
+/** 쪽·보고서가 고른 지도 색을 슬라이드의 모든 지도 모델(전면·view·조판 칸)과 설명선 모델에 붙인다. 고른 것이 없으면 같은 슬라이드. */
+function colorSlide<S extends ReportSlide>(slide: S, colors: MapColorChoice | undefined): S {
+  if (!colors) return slide;
+  if (slide.kind === "cover" || slide.kind === "sources") return { ...slide, map: withMapColors(slide.map, colors) ?? null };
+  if (slide.kind === "tile") {
+    return {
+      ...slide,
+      map: withMapColors(slide.map, colors) ?? null,
+      view: withPalette(slide.view, colors),
+      ...(slide.callout ? { callout: { ...slide.callout, model: withCalloutPalette(slide.callout.model, colors.palette) } } : {}),
+    };
+  }
+  return { ...slide, view: withPalette(slide.view, colors), cells: slide.cells.map((cell) => (cell ? { ...cell, view: withPalette(cell.view, colors) } : cell)) };
 }
 
 export function printedPageCount(doc: ReportDoc, views: ReadonlyMap<string, TileView>, ctx: ReportDocPlanContext): number {

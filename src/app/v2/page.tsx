@@ -20,7 +20,7 @@ import { stackView } from "@/lib/v2/ui/stack";
 import { sheetView } from "@/lib/v2/ui/sheet";
 import { exportAvailability, formatElapsedMs, jobProgress } from "@/lib/v2/ui/board-status";
 import { GODEOK_RESULTS, GODEOK_SUMMARY, RECOVERED } from "@/lib/v2/ui/fixtures/godeok";
-import { toSummaryView, toTileView, viewWithLayer, type SiteSummary, type TileView } from "@/lib/v2/ui/tile-view";
+import { toSummaryView, toTileView, viewWithLayer, withPalette, type SiteSummary, type TileView } from "@/lib/v2/ui/tile-view";
 import { siteParcelFromResults } from "@/lib/v2/ui/site-parcel";
 import { toLngLat } from "@/lib/v2/crs";
 import { jibunFromPnu, type SitePickerParcel } from "@/lib/v2/ui/site-picker";
@@ -671,8 +671,11 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
       const tileViews = spec.tiles.map((tileId) => next.get(tileId)).filter((view): view is NonNullable<typeof view> => !!view);
       if (tileViews.length > 0) next.set(id, sheetView(id, tileViews, spec.grid));
     }
-    return next;
-  }, [baseViews, board.cameras, board.sheets, board.stacks]);
+    // 보드가 고른 팔레트·끈 바탕 레이어를 모든 view의 지도 모델과 설명선에 붙인다(바탕 테마는 BaseThemeContext).
+    if (!board.palette && !board.baseHide) return next;
+    const colors = { palette: board.palette, hide: board.baseHide };
+    return new Map([...next].map(([id, view]) => [id, withPalette(view, colors)] as const));
+  }, [baseViews, board.baseHide, board.cameras, board.palette, board.sheets, board.stacks]);
   const addTileItems = useMemo<AddTileItem[]>(() => {
     const resultIds = new Set(results.map((result) => result.tileId));
     const boardCounts = new Map<string, number>();

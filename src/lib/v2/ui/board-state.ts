@@ -17,7 +17,9 @@ import { clampReportFontSizes, EMPTY_REPORT_DOC, defaultFrame, mergeReportFontSi
 import { normalizePagePanels, clonePagePanels, type PagePanelKey, type PagePanelRect, type PagePanels } from "../report/report-geometry";
 export type { PagePanelKey, PagePanelRect, PagePanels } from "../report/report-geometry";
 import type { TileReportSettings } from "../report/report-plan";
-import { isBaseThemeId, type BaseThemeId } from "./map-theme";
+import type { BaseThemeRef, BaseToggleLayer } from "./map-theme";
+import type { DiagramPaletteRef } from "./map-palette";
+import { normalizeBaseRef, normalizeHide, normalizeMapColors, normalizePaletteRef } from "./map-colors";
 
 export type TileSize = 1 | 2 | 4;
 export type GridColumns = 2 | 3 | 4 | 5 | 6;
@@ -194,7 +196,11 @@ export type BoardState = {
   /** 보드와 독립된 보고서 모드의 페이지 문서. 옛 report는 불러오기용으로만 보존한다. */
   reportDoc: ReportDoc;
   /** 벡터 바탕지도 테마. 없으면 기본(warm). */
-  baseTheme?: BaseThemeId;
+  baseTheme?: BaseThemeRef;
+  /** 다이어그램 팔레트. 없으면 앱 색(app). */
+  palette?: DiagramPaletteRef;
+  /** 끈 바탕 레이어. 없으면 모두 켬. */
+  baseHide?: BaseToggleLayer[];
   /** 빼 둔 타일(더할 수 있는 타일). index는 빼기 전 위치 */
   removed: { id: string; index: number }[];
   undoStack: UndoEntry[];
@@ -233,7 +239,9 @@ export type BoardAction =
   | { type: "mapLabels"; id: string; show: boolean }
   | { type: "layer"; id: string; layer: string }
   | { type: "terrainSection"; id: string; section: TerrainSectionId }
-  | { type: "baseTheme"; id: BaseThemeId }
+  | { type: "baseTheme"; ref: BaseThemeRef }
+  | { type: "palette"; ref: DiagramPaletteRef }
+  | { type: "baseHide"; layers: BaseToggleLayer[] }
   | { type: "reportDoc"; doc: ReportDoc };
 
 /** 카드의 현재 면 (편집 중에는 화면이 항상 요약면을 쓴다) */
@@ -822,8 +830,20 @@ export function boardReducer(s: BoardState, a: BoardAction): BoardState {
     case "terrainSection":
       if (a.section !== "A" && a.section !== "B") return s;
       return { ...s, terrainSection: { ...s.terrainSection, [a.id]: a.section } };
-    case "baseTheme":
-      return isBaseThemeId(a.id) ? { ...s, baseTheme: a.id } : s;
+    case "baseTheme": {
+      const ref = normalizeBaseRef(a.ref);
+      return ref === undefined ? s : { ...s, baseTheme: ref };
+    }
+    case "palette": {
+      const ref = normalizePaletteRef(a.ref);
+      return ref === undefined ? s : { ...s, palette: ref };
+    }
+    case "baseHide": {
+      const layers = normalizeHide(a.layers);
+      if (!layers) return s;
+      const { baseHide: _old, ...rest } = s;
+      return layers.length > 0 ? { ...rest, baseHide: layers } : rest;
+    }
   }
 }
 
@@ -860,7 +880,11 @@ export type BoardStateSnapshot = {
   /** v4 보고서 모드 문서. v3 이하 저장본에는 없다. */
   reportDoc?: ReportDoc;
   /** 벡터 바탕지도 테마. 이전 저장본에는 없고 기본(warm)으로 읽는다. */
-  baseTheme?: BaseThemeId;
+  baseTheme?: BaseThemeRef;
+  /** 다이어그램 팔레트. 이전 저장본에는 없고 앱 색으로 읽는다. */
+  palette?: DiagramPaletteRef;
+  /** 끈 바탕 레이어. 이전 저장본에는 없고 모두 켠다. */
+  baseHide?: BaseToggleLayer[];
   removed: { id: string; index: number }[];
 };
 
@@ -895,7 +919,9 @@ export function serializeBoardState(s: BoardState): BoardStateSnapshot {
     instances: { ...s.instances },
     report: cloneReport(s.report),
     reportDoc: cloneReportDoc(s.reportDoc),
-    ...(s.baseTheme ? { baseTheme: s.baseTheme } : {}),
+    ...(s.baseTheme ? { baseTheme: normalizeBaseRef(s.baseTheme) } : {}),
+    ...(s.palette ? { palette: normalizePaletteRef(s.palette) } : {}),
+    ...(s.baseHide?.length ? { baseHide: [...s.baseHide] } : {}),
     removed: s.removed.map((item) => ({ ...item })),
   };
 }
@@ -1054,6 +1080,7 @@ type RestoreReportDocOptions = {
 function restoreReportPage(value: unknown, validTileIds: ReadonlySet<string>, options: RestoreReportDocOptions = {}): ReportPage | null {
   if (!isRecord(value) || typeof value.id !== "string" || value.id.length === 0 || !reportPageIdPattern.test(value.id) || !isReportLayout(value.layout)) return null;
   const fontSizes = clampReportFontSizes(value.fontSizes);
+  const pageMapColors = normalizeMapColors(value.mapColors);
   const layout = value.kind === "tile" && value.layout === "side-by-side" ? "map-summary" : value.layout;
   const base = {
     id: value.id,
@@ -1067,6 +1094,7 @@ function restoreReportPage(value: unknown, validTileIds: ReadonlySet<string>, op
     ...(typeof value.titleOverride === "string" ? { titleOverride: value.titleOverride } : {}),
     ...(typeof value.summaryOverride === "string" ? { summaryOverride: value.summaryOverride } : {}),
     ...(Object.keys(fontSizes).length > 0 ? { fontSizes } : {}),
+    ...(pageMapColors ? { mapColors: pageMapColors } : {}),
   };
   if (value.kind === "cover" || value.kind === "sources" || value.kind === "blank") return { ...base, kind: value.kind };
   if (value.kind === "tile") {
@@ -1102,11 +1130,13 @@ export function restoreReportDoc(value: unknown, validTileIds: ReadonlySet<strin
     : [];
   const legacyFontSizes = reportFontSizesFromLegacyScale(raw.fontScale);
   const fontSizes = { ...(legacyFontSizes ?? {}), ...clampReportFontSizes(raw.fontSizes) };
+  const docMapColors = normalizeMapColors(raw.mapColors);
   return {
     v: 1,
     format: isReportFormat(raw.format) ? raw.format : "wide",
     pages,
     ...(Object.keys(fontSizes).length > 0 ? { fontSizes } : {}),
+    ...(docMapColors ? { mapColors: docMapColors } : {}),
   };
 }
 
@@ -1451,6 +1481,9 @@ export function restoreBoardState(results: TileResult[], raw: unknown, fallbackP
     if (baseIds.has(source)) savedInstances[id] = source;
   }
   const validTileIds = new Set([...baseIds, ...Object.keys(savedInstances)]);
+  const savedBaseTheme = normalizeBaseRef(saved.baseTheme);
+  const savedPalette = normalizePaletteRef(saved.palette);
+  const savedBaseHide = normalizeHide(saved.baseHide);
   const savedStacks: Record<string, string[]> = {};
   for (const [id, layers] of Object.entries(recordOf(saved.stacks))) {
     const valid = unique(stringsOf(layers)).filter((layer) => validTileIds.has(layer));
@@ -1567,7 +1600,9 @@ export function restoreBoardState(results: TileResult[], raw: unknown, fallbackP
     instances: savedInstances,
     report,
     reportDoc,
-    ...(isBaseThemeId(saved.baseTheme) ? { baseTheme: saved.baseTheme } : {}),
+    ...(savedBaseTheme ? { baseTheme: savedBaseTheme } : {}),
+    ...(savedPalette ? { palette: savedPalette } : {}),
+    ...(savedBaseHide?.length ? { baseHide: savedBaseHide } : {}),
     removed,
     undoStack: [],
   };

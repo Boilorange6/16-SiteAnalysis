@@ -88,6 +88,16 @@ function initSchema(db: Database.Database): void {
       created_at REAL NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS user_map_colors (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      kind TEXT NOT NULL CHECK (kind IN ('base','palette')),
+      name TEXT NOT NULL,
+      colors TEXT NOT NULL,
+      created_at REAL NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
     CREATE TABLE IF NOT EXISTS analysis_projects (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL,

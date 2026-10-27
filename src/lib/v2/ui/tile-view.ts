@@ -9,6 +9,8 @@ import type { Metric, TileHeadlinePolicy } from "../tile/types";
 import type { A05Counts, A05Filter } from "../engine/a05-filter";
 import { paletteCalloutLegend, type CalloutLegendSpec, type Complex, type Stat } from "./callout-layout";
 import type { DiagramPaletteRef } from "./map-palette";
+import type { MapColorChoice } from "../report/report-doc";
+import { withMapColors } from "./map-colors";
 import { mapBaseFromScene, type MapBase } from "./basemap";
 import type { MapModel } from "./map-layers";
 import type { MassModel } from "./mass-projection";
@@ -479,6 +481,16 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
   const base = mapBaseFromScene(scene);
   const withBase = (model: MapModel | null | undefined): MapModel | null | undefined => model ? { ...model, base } : model;
   return { ...view, map: withBase(view.map) ?? null, backdrop: { ...view.backdrop, base }, ...(view.callout ? { callout: { ...view.callout, base } } : {}), ...(view.layerSourceMap ? { layerSourceMap: withBase(view.layerSourceMap) } : {}) };
+}
+
+/** view의 모든 지도 모델(지도·배경·원본 지도)과 설명선에 고른 색(바탕 테마·팔레트·끈 레이어)을 붙인다. 고른 것이 없으면 같은 view. */
+export function withPalette(view: TileView, colors: MapColorChoice): TileView {
+  const map = withMapColors(view.map, colors) ?? null;
+  const backdrop = withMapColors(view.backdrop, colors);
+  const layerSourceMap = withMapColors(view.layerSourceMap, colors);
+  const callout = view.callout ? withCalloutPalette(view.callout, colors.palette) : view.callout;
+  if (map === view.map && backdrop === view.backdrop && layerSourceMap === view.layerSourceMap && callout === view.callout) return view;
+  return { ...view, map, backdrop, ...(view.layerSourceMap !== undefined ? { layerSourceMap } : {}), ...(view.callout ? { callout } : {}) };
 }
 
 /** 카드·펼침 창·보고서가 같은 레이어 선택 결과를 사용하도록 지도 입력만 파생한다. */

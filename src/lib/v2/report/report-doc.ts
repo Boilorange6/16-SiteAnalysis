@@ -1,6 +1,9 @@
 import type { TileReportSettings } from "./report-plan";
 import { normalizeA05Filter, type A05Filter } from "../engine/a05-filter";
 import { clonePagePanels as clonePanelRects, type PagePanels } from "./report-geometry";
+import { normalizeMapColors } from "../ui/map-colors";
+import type { DiagramPaletteRef } from "../ui/map-palette";
+import type { BaseThemeRef, BaseToggleLayer } from "../ui/map-theme";
 export type { PagePanelKey, PagePanelRect, PagePanels } from "./report-geometry";
 
 export type ReportFormat = "wide" | "a3" | "a4";
@@ -140,6 +143,9 @@ export function clampTextBox(box: TextBox, maxWidth: number, maxHeight: number):
   const y = Math.max(0, Math.min(Math.max(0, heightLimit - h), Number.isFinite(box.y) ? box.y : 0));
   return { ...box, x, y, w, h };
 }
+/** 지도 색 선택. 없는 필드는 한 단계 위(쪽 → 보고서 → 보드 → 기본)를 따른다. */
+export type MapColorChoice = { base?: BaseThemeRef; palette?: DiagramPaletteRef; hide?: BaseToggleLayer[] };
+
 export type ReportPageBase = {
   id: string;
   layout: ReportLayout;
@@ -151,6 +157,8 @@ export type ReportPageBase = {
   titleOverride?: string;
   summaryOverride?: string;
   fontSizes?: ReportFontSizeOverrides;
+  /** 이 쪽만 덮어쓰는 지도 색 */
+  mapColors?: MapColorChoice;
 };
 export type TilePart =
   | { type: "single" }
@@ -165,7 +173,7 @@ export type ReportPage = ReportPageBase & (
   | { kind: "sources" }
   | { kind: "blank" }
 );
-export type ReportDoc = { v: 1; format: ReportFormat; pages: ReportPage[]; fontSizes?: ReportFontSizeOverrides; /** @deprecated legacy saves are migrated at restore. */ fontScale?: ReportFontScale };
+export type ReportDoc = { v: 1; format: ReportFormat; pages: ReportPage[]; fontSizes?: ReportFontSizeOverrides; /** 보고서 전체의 지도 색 */ mapColors?: MapColorChoice; /** @deprecated legacy saves are migrated at restore. */ fontScale?: ReportFontScale };
 
 export type ReportDocAction =
   | { type: "add"; pages: ReportPage[]; index: number }
@@ -189,6 +197,8 @@ export type ReportDocAction =
   | { type: "clearPageFontSizes"; id: string; key?: FontSizeKey }
   | { type: "resetFontSizes" }
   | { type: "theme"; fontScale: ReportFontScale }
+  /** patch는 필드 단위로 합친다. null은 그 범위의 선택을 모두 지운다. */
+  | { type: "mapColors"; scope: "document" | "page"; id?: string; patch: MapColorChoice | null }
   | { type: "tileCallout"; id: string; pages: ReportPage[] }
   | { type: "calloutShown"; id: string; keys: string[] }
   | { type: "calloutFilter"; id: string; filter: A05Filter | null; keys?: string[] }
@@ -274,6 +284,7 @@ function updateCalloutPart(doc: ReportDoc, id: string, update: (part: Extract<Ti
 
 function cloneBase(page: ReportPage): ReportPageBase {
   const fontSizes = clampReportFontSizes(page.fontSizes);
+  const mapColors = normalizeMapColors(page.mapColors);
   return {
     id: page.id,
     layout: page.layout,
@@ -284,6 +295,7 @@ function cloneBase(page: ReportPage): ReportPageBase {
     ...(page.titleOverride !== undefined ? { titleOverride: page.titleOverride } : {}),
     ...(page.summaryOverride !== undefined ? { summaryOverride: page.summaryOverride } : {}),
     ...(Object.keys(fontSizes).length > 0 ? { fontSizes } : {}),
+    ...(mapColors ? { mapColors } : {}),
   };
 }
 
@@ -322,6 +334,29 @@ function updatePage(doc: ReportDoc, id: string, update: (page: ReportPage) => Re
   const pages = [...doc.pages];
   pages[index] = nextPage;
   return { ...doc, pages };
+}
+
+function patchMapColors(current: MapColorChoice | undefined, patch: MapColorChoice | null): MapColorChoice | undefined {
+  if (patch === null) return undefined;
+  const clean = normalizeMapColors(patch);
+  return clean ? normalizeMapColors({ ...current, ...clean }) : current;
+}
+
+const sameMapColors = (a: MapColorChoice | undefined, b: MapColorChoice | undefined): boolean => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+
+function setMapColors(doc: ReportDoc, scope: "document" | "page", id: string | undefined, patch: MapColorChoice | null): ReportDoc {
+  if (scope === "document") {
+    const next = patchMapColors(doc.mapColors, patch);
+    if (sameMapColors(next, doc.mapColors)) return doc;
+    const { mapColors: _old, ...rest } = doc;
+    return next ? { ...rest, mapColors: next } : rest;
+  }
+  return updatePage(doc, id ?? "", (page) => {
+    const next = patchMapColors(page.mapColors, patch);
+    if (sameMapColors(next, page.mapColors)) return page;
+    const { mapColors: _old, ...rest } = clonePage(page);
+    return (next ? { ...rest, mapColors: next } : rest) as ReportPage;
+  });
 }
 
 function updateFontSizeOverrides(current: ReportFontSizeOverrides | undefined, key: FontSizeKey, value: unknown): ReportFontSizeOverrides {
@@ -611,6 +646,8 @@ export function reportDocReducer(doc: ReportDoc, action: ReportDocAction): Repor
     }
     case "theme":
       return { ...doc, fontSizes: reportFontSizesFromLegacyScale(action.fontScale) };
+    case "mapColors":
+      return setMapColors(doc, action.scope, action.id, action.patch);
     case "tileCallout":
       return replaceTileCalloutPages(doc, action.id, action.pages);
     case "calloutShown":
