@@ -1,6 +1,6 @@
 /** S02는 동지 일조 래스터를 기본으로 내보내고 계절별 래스터를 함께 보존한다. */
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -52,6 +52,24 @@ try {
   assert.ok(!tile.judgment.sentence.includes("법적 일조권 충족"));
 } finally {
   ctx.close();
+}
+
+const terrainDir = mkdtempSync(join(tmpdir(), "v2-s02-terrain-provenance-"));
+await buildEngineFixture(terrainDir, "v1", { buildings: true, parcels: true, terrain: true });
+const terrainManifest = M.readManifest(terrainDir);
+const terrainCtx = new EngineContext(terrainDir, terrainManifest, "s02-terrain-provenance", {
+  address: "경기도 남양주시 다산동 100",
+  center: CENTER,
+  radiusM: 100,
+  analysisDate: "2026-09-30",
+  pnu: PNU_DASAN_100,
+});
+try {
+  const terrainTile = s02(terrainCtx);
+  assert.ok(terrainTile.provenance.sources.some((source) => source.sourceId === "terrain_tiles"), "지형 DEM 원천 provenance");
+} finally {
+  terrainCtx.close();
+  rmSync(terrainDir, { recursive: true, force: true });
 }
 
 console.log("✓ v2 S02 winter raster and seasonal output");

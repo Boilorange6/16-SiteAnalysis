@@ -83,6 +83,7 @@ function priceDetails(ctx: EngineContext): PriceDetails {
   const siteHits = ctx.siteParcelHits();
   const polygonSite = ctx.input.site.kind === "polygon";
   const priceSources = ctx.sources("reference", ["land_price"]);
+  const parcelSources = ctx.db("parcels") ? ctx.sources("parcels", ["parcel_polygon"]) : [];
   const metrics: Metric[] = [];
   const limitations: Limitation[] = [];
 
@@ -191,7 +192,7 @@ function priceDetails(ctx: EngineContext): PriceDetails {
   if (parcelAreaReason) limitations.push({ kind: "not_provided", note: `대상 필지 도형 면적을 표시하지 않습니다(${parcelAreaReason}).` });
   if (polygonSite) limitations.push({ kind: "estimated", note: "직접 그린 구역의 공시지가·면적은 경계와 교차한 필지 면적 비율로 가중한 추정치입니다." });
 
-  return { metrics, limitations, sources: priceSources };
+  return { metrics, limitations, sources: [...priceSources, ...parcelSources] };
 }
 
 function zoningLimitations(ctx: EngineContext, zoning: ZoningCollection, includePrice: Limitation[] = []): Limitation[] {

@@ -29,8 +29,9 @@ function metricValue(tile, id) {
   return item.value;
 }
 
-function makeCanopy() {
+function makeCanopy(radiusM = RADIUS_M) {
   const [x, y] = toUtmk(CENTER);
+  const cells = Math.ceil(radiusM * 2 / 2) + 1;
   const ring = [
     [x - 28, y - 18],
     [x + 28, y - 18],
@@ -39,7 +40,7 @@ function makeCanopy() {
     [x - 28, y - 18],
   ];
   return {
-    grid: { cx: x, cy: y, x0: x - RADIUS_M, y0: y - RADIUS_M, cellM: 2, cols: 801, rows: 801, values: new Float64Array(801 * 801) },
+    grid: { cx: x, cy: y, x0: x - radiusM, y0: y - radiusM, cellM: 2, cols: cells, rows: cells, values: new Float64Array(cells * cells) },
     polygons: [[ring]],
     coveragePct: 100,
     missingTiles: 0,
@@ -97,18 +98,18 @@ function makeWindReader(seasons = SEASONS, ratio = 1, partial = false, solidBloc
   return (code, name) => entries.get(`${code}/${name}`) ?? null;
 }
 
-function makeContext(dataDir, reader, canopy = true) {
+function makeContext(dataDir, reader, canopy = true, radiusM = RADIUS_M) {
   const manifest = JSON.parse(readFileSync(join(dataDir, "manifest.json"), "utf8"));
   const context = new EngineContext(
     dataDir,
     manifest,
     ANALYSIS_ID,
-    { address: "테스트 열쾌적", center: CENTER, radiusM: RADIUS_M, analysisDate: "2025-06-21", pnu: null },
+    { address: "테스트 열쾌적", center: CENTER, radiusM, analysisDate: "2025-06-21", pnu: null },
     {},
     { rasterReader: reader },
   );
   if (canopy) {
-    const value = makeCanopy();
+    const value = makeCanopy(radiusM);
     context.memo("canopy:polygons", () => value);
   }
   return context;
@@ -335,6 +336,18 @@ async function main() {
     }
 
     assert.ok(normal.presentation.rasters.length > 0);
+
+    const provenanceDir = await fixture({ terrain: true });
+    try {
+      const provenanceContext = makeContext(provenanceDir, makeWindReader(), true, 100);
+      const provenance = s04(provenanceContext);
+      provenanceContext.close();
+      assert.ok(provenance.provenance.sources.some((source) => source.sourceId === "terrain_tiles"), "지형 DEM 원천 provenance");
+      assert.ok(provenance.provenance.sources.some((source) => source.sourceId === "vworld_wmts"), "항공영상 원천 provenance");
+    } finally {
+      rmSync(provenanceDir, { recursive: true, force: true });
+    }
+
     if (process.env.S04_VISUAL_OUT) {
       const visual = await renderVisual(process.env.S04_VISUAL_OUT, normalSummerRaster, normalRaw, normal);
       console.log(`S04 visual: ${visual.outPath}${visual.comparisonPath ? `; compare: ${visual.comparisonPath}` : ""}`);

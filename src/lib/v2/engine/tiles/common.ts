@@ -30,7 +30,7 @@ const TILE_CACHE_REVISION: Readonly<Record<string, string>> = {
   A09: "w3-merge-r1+w2b-r1+clip-r1",
   A10: "w3-merge-r1+w2b-r1",
   A11: "w3-merge-r1+w2b-r1+clip-r1",
-  A12: "w3-merge-r1+w2b-r1+clip-r1",
+  A12: "w3-merge-r1+w2b-r1+clip-r1+provenance-r1",
   D02: "w2b-r1+w4-names-r1+clip-r1",
   D03: "w2b-r1+w4-names-r1+clip-r1",
   D04: "w2b-r1+w4-names-r1+clip-r1",
@@ -47,9 +47,9 @@ const TILE_CACHE_REVISION: Readonly<Record<string, string>> = {
   D28: "w2b-r1+clip-r1+composition-r1",
   D29: "height3-r1+w2b-r1+w4-names-r1",
   S01: "height3-r1+w3-r1+composition-r1",
-  S02: "height3-r1+w3-merge-r1+w3-r1",
+  S02: "height3-r1+w3-merge-r1+w3-r1+provenance-r1",
   S03: "height3-r1+w2b-r1",
-  S04: "s04-r2+height3-r1+w2b-r1+clip-r1",
+  S04: "s04-r2+height3-r1+w2b-r1+clip-r1+provenance-r1",
 };
 // A topo-free analysis must retain its historical cache key byte-for-byte. D17
 // has a second representation only when the analysis carries topo data, so the

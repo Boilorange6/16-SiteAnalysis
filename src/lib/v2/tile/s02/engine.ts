@@ -18,6 +18,7 @@ import {
 import { polygonArea } from "../../engine/tiles/geo";
 import { notProvided } from "../../engine/tiles/not-provided";
 import { BUILDING_SOURCES, buildingRetirementLimitations } from "../../engine/tiles/buildings-shared";
+import { demReader, demSources } from "../../engine/tiles/terrain-shared";
 import { S02_DATE_KEYS } from "./dates";
 
 export const S02_INFLUENCE_M = SUN_INFLUENCE_M;
@@ -87,6 +88,7 @@ export function sunFieldBundleFor(ctx: EngineContext): S02Shared | null {
     const grid = sunGridFor(ctx);
     if (!grid) return null;
     const parcel = parcelSite(ctx);
+    const terrainSources = demReader(ctx) ? demSources(ctx) : [];
     const fieldsByDate = sunFieldsFor(ctx);
     const fields: S02RasterField[] = [];
     for (const key of S02_DATE_KEYS) {
@@ -99,7 +101,7 @@ export function sunFieldBundleFor(ctx: EngineContext): S02Shared | null {
       fields,
       site: parcel.site,
       siteKind: parcel.siteKind,
-      sources: [...sunSources(ctx), ...parcel.sources],
+      sources: [...sunSources(ctx), ...terrainSources, ...parcel.sources],
       coverage: coverageFor(ctx, parcel.siteKind),
     };
   });

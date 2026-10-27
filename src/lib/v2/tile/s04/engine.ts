@@ -26,6 +26,8 @@ import { BUILDING_SOURCES, assumedOneFloorLimitation, buildingRetirementLimitati
 import { notProvided } from "../../engine/tiles/not-provided";
 import { SEASON_SUN_DATES, sunDateValue, sunGridFor, sunHourlyShadeFor, sunObstaclesFor } from "../../engine/tiles/sun-shared";
 import { SVF_CELL_M, SVF_MAX_DIST_M, svfFor } from "../../engine/tiles/svf-shared";
+import { demSources } from "../../engine/tiles/terrain-shared";
+import { VWORLD_WMTS_SOURCE } from "../d01/engine";
 
 /** UTCI representative hours are KST wall-clock hours. */
 export const UTCI_HOURS = [10, 14, 18] as const;
@@ -623,7 +625,12 @@ export function s04(ctx: EngineContext): TileResult {
   const shared = calcReady ? svfFor(ctx, canopy?.polygons ?? null) : null;
   if (calcReady ? !shared : buildingRows(ctx, Math.min(5000, ctx.input.radiusM + SVF_MAX_DIST_M + SVF_CELL_M)) === null) return notProvided(ctx, "S04", noBuildings);
 
-  const sources = mergeSources(weather.sources, ctx.sources("buildings", BUILDING_SOURCES));
+  const sources = mergeSources(
+    weather.sources,
+    ctx.sources("buildings", BUILDING_SOURCES),
+    shared?.terrainAvailable ? demSources(ctx) : [],
+    canopy ? [VWORLD_WMTS_SOURCE] : [],
+  );
   const analysisRows = buildingRows(ctx, Math.min(5000, ctx.input.radiusM + SVF_MAX_DIST_M + SVF_CELL_M)) ?? [];
   const assumedLimitation = assumedOneFloorLimitation(analysisRows);
   const limitations = [...fixedLimitations(), ...(assumedLimitation ? [assumedLimitation] : []), ...buildingRetirementLimitations(ctx, Math.min(5000, ctx.input.radiusM + SVF_MAX_DIST_M + SVF_CELL_M))];

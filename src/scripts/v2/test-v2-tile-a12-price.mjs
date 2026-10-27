@@ -122,6 +122,7 @@ async function makeFixture(options, prices = false) {
   assert.deepEqual([metric(tile, "nearby_price_median").numerator, metric(tile, "nearby_price_median").denominator], [3, 8]);
   assert.equal(metric(tile, "parcel_area_m2").value, 1_600);
   assert.ok(tile.provenance.sources.some((source) => source.sourceId === "land_price"), "지가 원천 provenance");
+  assert.ok(tile.provenance.sources.some((source) => source.sourceId === "parcel_polygon"), "필지 도형 원천 provenance");
   assert.ok(!tile.limitations.some((limitation) => limitation.note.includes("개별공시지가를 적재하지 않아")), "지가 제공 시 stale not_provided 문구 없음");
   ctx.close();
 }
