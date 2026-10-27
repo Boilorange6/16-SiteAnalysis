@@ -9,6 +9,7 @@
 import type { MapFeature } from "../tile-result";
 import { unitTypeSummary, unitTypesFromUnknown, type UnitType } from "../unit-types";
 import { layerStyle } from "./map-layers";
+import { paletteLayerStyle, type DiagramPaletteRef } from "./map-palette";
 import { SLIDE } from "./overlay-layout";
 
 export type Complex = {
@@ -223,24 +224,32 @@ export function decadeLayer(year: number | null): (typeof DECADE_LAYERS)[number]
   if (year < 2020) return "bldg_2010s";
   return "bldg_2020s";
 }
-export const decadeColor = (year: number | null) => layerStyle(decadeLayer(year)).color;
+const decadeLayerColor = (layer: string, palette?: DiagramPaletteRef | null) => paletteLayerStyle(layer, layerStyle(layer), palette).color;
+/** 팔레트가 없으면 레이어 원래 색. 있으면 D04 준공 연대 면과 같은 팔레트 색. */
+export const decadeColor = (year: number | null, palette?: DiagramPaletteRef | null) => decadeLayerColor(decadeLayer(year), palette);
 export const STOCK_LEGEND: CalloutLegendSpec = {
   title: "준공 연대",
   items: DECADE_LAYERS.map((k) => ({ label: layerStyle(k).label, color: layerStyle(k).color, hollow: k === "bldg_unknown" })),
   sizeLabel: "크기 = 세대·호실",
 };
+/** 준공 연대 범례의 견본 색을 팔레트로 바꾼다. 준공 연대가 아닌 항목(기타 공동주택·입주 시기)과 팔레트가 없을 때는 그대로. */
+export function paletteCalloutLegend(spec: CalloutLegendSpec, palette?: DiagramPaletteRef | null): CalloutLegendSpec {
+  if (!palette) return spec;
+  const layerByLabel = new Map<string, string>(DECADE_LAYERS.map((k) => [layerStyle(k).label, k]));
+  return { ...spec, items: spec.items.map((item) => { const layer = layerByLabel.get(item.label); return layer ? { ...item, color: decadeLayerColor(layer, palette) } : item; }) };
+}
 export const OTHER_HOUSING_LABEL = "기타 공동주택";
 export const OTHER_HOUSING_COLOR = "#9AA0AA";
-/** 점·번호 원 색: A06은 입주 시기 버킷, A05는 준공 연대 */
-export const dotColor = (c: Complex) => (c.supply ? TIMING_STYLE[c.supply.timing].color : decadeColor(c.approvalYear));
+/** 점·번호 원 색: A06은 입주 시기 버킷, A05는 준공 연대(팔레트가 있으면 그 색) */
+export const dotColor = (c: Complex, palette?: DiagramPaletteRef | null) => (c.supply ? TIMING_STYLE[c.supply.timing].color : decadeColor(c.approvalYear, palette));
 /** A05 준공 연도 미상만 hollow로 그린다. A06 일정 미상은 채운 원이다. */
 export const isHollowComplexMarker = (c: Pick<Complex, "approvalYear" | "supply"> | null | undefined): boolean => Boolean(c && !c.supply && c.approvalYear === null);
-export const calloutLegendMatches = (c: Complex, color: string | null): boolean => color === null || dotColor(c) === color;
+export const calloutLegendMatches = (c: Complex, color: string | null, palette?: DiagramPaletteRef | null): boolean => color === null || dotColor(c, palette) === color;
 
 /** 좁은 지도에서 가장 많이 등장하는 세 가지 범주만 남기는 설명선 범례. */
-export function compactCalloutLegend(spec: CalloutLegendSpec, complexes: Complex[], limit = 3): CalloutLegendItem[] {
+export function compactCalloutLegend(spec: CalloutLegendSpec, complexes: Complex[], limit = 3, palette?: DiagramPaletteRef | null): CalloutLegendItem[] {
   const counts = new Map<string, number>();
-  for (const c of complexes) counts.set(dotColor(c), (counts.get(dotColor(c)) ?? 0) + 1);
+  for (const c of complexes) counts.set(dotColor(c, palette), (counts.get(dotColor(c, palette)) ?? 0) + 1);
   return spec.items
     .map((item, order) => ({ ...item, count: counts.get(item.color) ?? 0, order }))
     .filter((item) => item.count > 0)
@@ -317,11 +326,11 @@ export const isMobileWidth = (w: number) => w <= MOBILE_MAX_W;
 export const STRIP_H = 92;
 export type StripCard = { id: string; rank: number; name: string; fullName: string; nameMissing: boolean; color: string; hollow: boolean; chip: string | null; lines: string[] };
 /** 띠 카드 모델: 순서 = 페이지 순서(번호 순), 카드 값과 타입을 세 줄로 */
-export function stripCards(items: Complex[], analysisYear: number): StripCard[] {
+export function stripCards(items: Complex[], analysisYear: number, palette?: DiagramPaletteRef | null): StripCard[] {
   return items.map((c) => {
     const v = cardRows(c, analysisYear).map((r) => r.value);
     const lines = c.supply ? [`${v[0]} · ${v[1]}`, v[2], `${v[3]} · ${v[4]}`] : [v[0], v[1], `${v[2]} · ${v[3]}`];
-    return { id: c.id, rank: c.rank, name: displayComplexName(c, items), fullName: cardName(c), nameMissing: c.name === null, color: dotColor(c), hollow: isHollowComplexMarker(c), chip: overlapChip(c), lines };
+    return { id: c.id, rank: c.rank, name: displayComplexName(c, items), fullName: cardName(c), nameMissing: c.name === null, color: dotColor(c, palette), hollow: isHollowComplexMarker(c), chip: overlapChip(c), lines };
   });
 }
 /** 띠 모양 프레임: 두 칸이 없으므로 반경 원이 가로를 거의 다 쓴다 */

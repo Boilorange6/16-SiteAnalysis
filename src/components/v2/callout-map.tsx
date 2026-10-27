@@ -18,8 +18,8 @@ import { useMapView, type MapTouchPan, type MapWheelMode } from "./use-map-view"
 
 const INK = "#16181d";
 
-function Card({ c, siblings, p, frame, year, hover, dim, onHover, onPick }: { c: Complex; siblings: readonly Complex[]; p: Placed; frame: CalloutFrame; year: number; hover: boolean; dim?: boolean; onHover: (id: string | null) => void; onPick: (id: string) => void }) {
-  const color = dotColor(c);
+function Card({ c, siblings, p, frame, year, palette, hover, dim, onHover, onPick }: { c: Complex; siblings: readonly Complex[]; p: Placed; frame: CalloutFrame; year: number; palette?: CalloutModel["palette"]; hover: boolean; dim?: boolean; onHover: (id: string | null) => void; onPick: (id: string) => void }) {
+  const color = dotColor(c, palette);
   const rows = cardRows(c, year);
   const full = frame.variant === "full";
   const chip = overlapChip(c);
@@ -87,7 +87,7 @@ function Card({ c, siblings, p, frame, year, hover, dim, onHover, onPick }: { c:
 
 /** 범례: A05 준공 연대 / A06 입주 시기 색 + 크기 = 세대·호실 */
 export function CalloutLegend({ model, compact = false, style, activeLabel = null, pinnedLabel = null, onHover, onPin }: { model: CalloutModel; compact?: boolean; style?: React.CSSProperties; activeLabel?: string | null; pinnedLabel?: string | null; onHover?: (label: string | null) => void; onPin?: (label: string | null) => void }) {
-  const items = compact ? compactCalloutLegend(model.legend, model.complexes, 3) : model.legend.items;
+  const items = compact ? compactCalloutLegend(model.legend, model.complexes, 3, model.palette) : model.legend.items;
   const legendPointerType = useRef<string | null>(null);
   return (
     <div className={`${styles.plate} ${tileStyles.cLegend}`} style={style} role="group" aria-label={compact ? `범례 ${items.length}색` : "범례"}>
@@ -235,7 +235,7 @@ export type CalloutMapProps = {
 };
 
 function calloutLegendStripItems(model: CalloutModel, compact: boolean): MapLegendItem[] {
-  const items = compact ? compactCalloutLegend(model.legend, model.complexes, 3) : model.legend.items;
+  const items = compact ? compactCalloutLegend(model.legend, model.complexes, 3, model.palette) : model.legend.items;
   return items.map((item, index) => ({
     layer: `callout:${model.kind}:${index}:${item.label}`,
     label: item.label,
@@ -367,7 +367,7 @@ function CalloutMap({ model, kind, page = 0, onPage, label, mapInteractive = tru
             {model.complexes
               .filter((c) => !scene.numbered.includes(c))
               .map((c) => (
-                <circle key={c.id} cx={displayPosition(c.id)[0]} cy={displayPosition(c.id)[1]} r={4} fill={dotColor(c)} fillOpacity={0.6} stroke="#fff" strokeWidth={1} />
+                <circle key={c.id} cx={displayPosition(c.id)[0]} cy={displayPosition(c.id)[1]} r={4} fill={dotColor(c, model.palette)} fillOpacity={0.6} stroke="#fff" strokeWidth={1} />
               ))}
             {(showMapLabels || !!active) && displayedPlaced.filter((p) => showMapLabels || p.id === active).map((p) => {
               const on = active === p.id;
@@ -382,9 +382,9 @@ function CalloutMap({ model, kind, page = 0, onPage, label, mapInteractive = tru
             {scene.numbered.map((c) => {
               const [x, y] = displayPosition(c.id);
               const r = dotRadius(c.households, scene.hMax, scene.frame.m.rMin, scene.frame.m.rMax);
-              const color = dotColor(c);
+              const color = dotColor(c, model.palette);
               const hollow = isHollowComplexMarker(c);
-              const legendMatch = calloutLegendMatches(c, activeLegendColor);
+              const legendMatch = calloutLegendMatches(c, activeLegendColor, model.palette);
               const on = activeLegendColor ? legendMatch : active === c.id;
               return (
                   <g
@@ -419,11 +419,11 @@ function CalloutMap({ model, kind, page = 0, onPage, label, mapInteractive = tru
           </svg>
           {(showMapLabels || !!active) && displayedPlaced.filter((p) => showMapLabels || p.id === active).map((p) => {
             const complex = model.complexes.find((c) => c.id === p.id)!;
-            const legendMatch = calloutLegendMatches(complex, activeLegendColor);
-            return <Card key={p.id} c={complex} siblings={model.complexes} p={p} frame={scene.labelFrame} year={model.analysisYear} hover={activeLegendColor ? legendMatch : active === p.id} dim={!!activeLegendColor && !legendMatch} onHover={(id) => { if (!controller.dragging) setHover(id); }} onPick={(id) => setPicked((v) => (v === id ? null : id))} />;
+            const legendMatch = calloutLegendMatches(complex, activeLegendColor, model.palette);
+            return <Card key={p.id} c={complex} siblings={model.complexes} p={p} frame={scene.labelFrame} year={model.analysisYear} palette={model.palette} hover={activeLegendColor ? legendMatch : active === p.id} dim={!!activeLegendColor && !legendMatch} onHover={(id) => { if (!controller.dragging) setHover(id); }} onPick={(id) => setPicked((v) => (v === id ? null : id))} />;
           })}
           {detail && <Pager model={model} page={page} onPage={(p) => onPage?.(Math.max(0, Math.min(pages, p)))} />}
-          {showMapLabels && scene.strip && page > 0 && <Strip cards={stripCards(scene.withCards, model.analysisYear)} active={active} onPick={(id) => setPicked((v) => (v === id ? null : id))} top={scene.stripTop} />}
+          {showMapLabels && scene.strip && page > 0 && <Strip cards={stripCards(scene.withCards, model.analysisYear, model.palette)} active={active} onPick={(id) => setPicked((v) => (v === id ? null : id))} top={scene.stripTop} />}
           {detail && page === 0 && !empty && (
             <div className={styles.ovBL}>
               <CalloutValueCard model={model} />

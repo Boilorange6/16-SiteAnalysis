@@ -31,8 +31,8 @@ function projector(p: PlannedSlide & { kind: "tile" }, model: CalloutModel, site
   };
 }
 
-function numberDot(s: Slide, c: Complex, at: Pt, r: number, labelsScale = 1, numbered = true) {
-  const color = dotColor(c);
+function numberDot(s: Slide, c: Complex, at: Pt, r: number, labelsScale = 1, numbered = true, palette?: CalloutModel["palette"]) {
+  const color = dotColor(c, palette);
   const hollow = isHollowComplexMarker(c);
   s.addShape("ellipse", { x: at[0] - r - 0.025, y: at[1] - r - 0.025, w: 2 * r + 0.05, h: 2 * r + 0.05, fill: { color: "FFFFFF", transparency: 8 }, line: { color: "FFFFFF", width: 0, transparency: 100 }, objectName: cTag(c, "dot-halo") });
   s.addShape("ellipse", { x: at[0] - r, y: at[1] - r, w: 2 * r, h: 2 * r, fill: { color: hollow ? "FFFFFF" : hex(color), transparency: hollow ? 100 : 0 }, line: { color: hex(color), width: 0.7, transparency: 0 }, objectName: cTag(c, "dot") });
@@ -63,9 +63,9 @@ function fitUnitTypeValue(value: string, maxPt: number, width: number, minPt = 6
   return { fontSize: minPt, lines: unitTypeLines(value, minPt, width) };
 }
 
-function calloutCard(s: Slide, c: Complex, p: Placed, f: CalloutFrame, year: number, labelsScale = 1) {
+function calloutCard(s: Slide, c: Complex, p: Placed, f: CalloutFrame, year: number, labelsScale = 1, palette?: CalloutModel["palette"]) {
   const { m } = f;
-  const color = dotColor(c);
+  const color = dotColor(c, palette);
   const hollow = isHollowComplexMarker(c);
   const chip = overlapChip(c);
   s.addShape("roundRect", { x: p.x, y: p.y, w: f.cardW, h: f.cardH, fill: { color: "FFFFFF", transparency: 8 }, line: { color: INK, width: 0.5, transparency: 88 }, rectRadius: 0.08, objectName: cTag(c, "card") });
@@ -118,7 +118,7 @@ function calloutOverview(s: Slide, p: PlannedSlide & { kind: "tile" }) {
   const labelsScale = fontSizeForStyle(style, "labels") / 10;
   const proj = projector(p, cm, slideSiteX(style, style.summary !== false), SLIDE_OVERVIEW_FILL);
   const hMax = Math.max(0, ...cm.complexes.map((c) => c.households ?? 0));
-  cm.complexes.forEach((c) => numberDot(s, c, proj(c), dotRadius(c.households, hMax, INCH.rMin / 2, INCH.rMax / 2), labelsScale, false));
+  cm.complexes.forEach((c) => numberDot(s, c, proj(c), dotRadius(c.households, hMax, INCH.rMin / 2, INCH.rMax / 2), labelsScale, false, cm.palette));
   if (cm.complexes.length === 0) {
     const w = 4.6;
     const h = 1.2;
@@ -162,7 +162,7 @@ function calloutPage(s: Slide, p: PlannedSlide & { kind: "tile" }) {
   const at = new Map(cm.complexes.map((c) => [c.key, proj(c)]));
   cm.complexes.filter((c) => !shownKeys.has(c.key)).forEach((c) => {
     const [x, y] = at.get(c.key)!;
-    s.addShape("ellipse", { x: x - 0.045, y: y - 0.045, w: 0.09, h: 0.09, fill: { color: hex(dotColor(c)), transparency: 40 }, line: { color: "FFFFFF", width: 0.5 }, objectName: cTag(c, "mini") });
+    s.addShape("ellipse", { x: x - 0.045, y: y - 0.045, w: 0.09, h: 0.09, fill: { color: hex(dotColor(c, cm.palette)), transparency: 40 }, line: { color: "FFFFFF", width: 0.5 }, objectName: cTag(c, "mini") });
   });
   const labelsScale = fontSizeForStyle(p.style ?? {}, "labels") / 10;
   const { placed } = layoutCallouts(f, items.map((c) => ({ id: c.key, rank: c.rank, x: at.get(c.key)![0], y: at.get(c.key)![1] })));
@@ -174,8 +174,8 @@ function calloutPage(s: Slide, p: PlannedSlide & { kind: "tile" }) {
     seg(s, pl.dot, pl.knee, INK, 1, 0, cTag(c, "leader-1"));
     seg(s, pl.knee, pl.edge, INK, 1, 0, cTag(c, "leader-2"));
   }
-  for (const pl of placed) numberDot(s, byId.get(pl.id)!, pl.dot, dotRadius(byId.get(pl.id)!.households, hMax, INCH.rMin, INCH.rMax), labelsScale);
-  for (const pl of placed) calloutCard(s, byId.get(pl.id)!, pl, f, cm.analysisYear, labelsScale);
+  for (const pl of placed) numberDot(s, byId.get(pl.id)!, pl.dot, dotRadius(byId.get(pl.id)!.households, hMax, INCH.rMin, INCH.rMax), labelsScale, true, cm.palette);
+  for (const pl of placed) calloutCard(s, byId.get(pl.id)!, pl, f, cm.analysisYear, labelsScale, cm.palette);
   calloutLegend(s, cm, f.left.x1 + 0.35, L.legendBottom, f.right.x0 - f.left.x1 - 0.7, p.style ?? {}, frame?.legend);
 }
 

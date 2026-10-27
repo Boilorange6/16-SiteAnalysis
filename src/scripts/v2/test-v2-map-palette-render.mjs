@@ -65,8 +65,8 @@ const tilePlan = (map, suffix) => ({
   kind: "tile", view: viewFor("D03", map, suffix), body: { kind: "result", face: "single" }, faceLabel: null, map, muted: false, pinnedKeys: [],
   footer: "출처 구조 회귀 fixture · 기준일 2026-10-14", no: 1, total: 1,
 });
-async function slideXml(plan) {
-  const zip = await JSZip.loadAsync(await renderReportPptx([plan], {}, { basemap: "vector" }));
+async function slideXml(plan, options = {}) {
+  const zip = await JSZip.loadAsync(await renderReportPptx([plan], {}, { basemap: "vector", ...options }));
   return zip.file("ppt/slides/slide1.xml").async("string");
 }
 const spBlocks = (xml) => [...xml.matchAll(/<p:sp>[\s\S]*?<\/p:sp>/g)].map((m) => m[0]);
@@ -145,11 +145,18 @@ assert.notEqual(original, vivid);
   assert.ok(shapes.length >= 1, `주거 지물 도형 ${shapes.length}`);
   assert.ok(shapes.some((b) => fillOf(b) === "F2A900"), "지물 도형 fill F2A900");
   assert.ok(!shapes.some((b) => fillOf(b) === origHex), "원래 색 지물 도형이 남지 않음");
-  // 오른쪽 범례 판의 견본: 지물 도형 말고도 같은 색 칠이 하나 더 있다.
-  const hexCount = (s, hex) => (s.match(new RegExp(`srgbClr val="${hex}"`, "g")) ?? []).length;
-  assert.ok(hexCount(xml, "F2A900") >= 2, `범례 견본도 F2A900 (${hexCount(xml, "F2A900")})`);
-  assert.equal(hexCount(xml, origHex), 0, "원래 주거 색이 슬라이드에 남지 않음");
-  assert.ok(hexCount(baseline, origHex) >= 2, "팔레트 없으면 지물·범례가 원래 색");
+  // 범례 판(GRP|panel-legend)의 견본: 항목 글자 도형 바로 앞 도형이 견본이다.
+  const legendSwatch = (slide, label) => {
+    const blocks = spBlocks(slide);
+    const at = blocks.findIndex((b) => b.includes("GRP|panel-legend|") && b.match(/<a:t>([^<]*)/)?.[1] === label);
+    assert.ok(at > 0, `범례 항목 "${label}"`);
+    assert.ok(blocks[at - 1].includes("GRP|panel-legend|"), "견본도 범례 판 도형");
+    return fillOf(blocks[at - 1]);
+  };
+  assert.equal(legendSwatch(xml, "주거"), "F2A900", "범례 견본도 F2A900");
+  assert.equal(legendSwatch(baseline, "주거"), origHex, "팔레트 없으면 범례 견본은 원래 색");
+  assert.notEqual(legendSwatch(xml, "버스정류장"), "F2A900", "다른 항목 견본은 그대로");
+  assert.ok(!xml.includes(`srgbClr val="${origHex}"`), "원래 주거 색이 슬라이드에 남지 않음");
 
   // 조판 칸
   const sheet = {
@@ -182,6 +189,15 @@ assert.notEqual(original, vivid);
   const custom = { name: "내 바탕", colors: { bg: "#102030", building: "#203040", parcel: "#304050", road: "#405060", green: "#506070", water: "#607080", site: "#ffcc00" } };
   const mine = await slideXml(tilePlan(modelOf({ baseTheme: custom }), "custom"));
   assert.equal(fillOf(named(mine, /map-base-bg/)[0]), "102030", "만든 바탕색");
+  for (const r of named(mine, /map-D03-radius/)) assert.ok(r.includes('val="CFCFCF"'), "어두운 만든 바탕의 PPT 반경 원은 CFCFCF");
+  // 대지 표식(addSite): 모델 테마가 옵션 테마보다 앞. 필지 대지가 있어야 테마색 면이 그려진다.
+  const siteOf = (xml) => named(xml, /map-D03-site\|분석 대지\|outline/)[0];
+  const withSite = (extra) => modelOf({ siteParcel: [{ layer: "site_parcel", fid: "s", rings: [ring] }], ...extra });
+  const modelWins = siteOf(await slideXml(tilePlan(withSite({ baseTheme: "ink" }), "site-model"), { baseTheme: "sand" }));
+  assert.equal(fillOf(modelWins), BASE_THEMES.ink.site.fill.slice(1).toUpperCase(), "모델 테마(ink)의 대지 면색이 옵션(sand)보다 앞");
+  assert.ok(modelWins.includes(`val="${BASE_THEMES.ink.site.line.slice(1).toUpperCase()}"`), "모델 테마의 대지 선색");
+  const optionOnly = siteOf(await slideXml(tilePlan(withSite({}), "site-option"), { baseTheme: "sand" }));
+  assert.equal(fillOf(optionOnly), BASE_THEMES.sand.site.fill.slice(1).toUpperCase(), "모델 테마가 없으면 옵션 테마");
   // 대지 표식은 테마 site 색을 따른다(모델 테마 기준). 이 모델은 필지 대지가 없어 십자 표식이라 화면 쪽 site 색만 확인한다.
   assert.ok(svgOf(modelOf({ baseTheme: "ink", siteParcel: [{ layer: "site_parcel", fid: "s", rings: [ring] }] })).includes(BASE_THEMES.ink.site.fill), "화면 대지 표식이 모델 테마 색");
 }
@@ -198,6 +214,64 @@ assert.notEqual(original, vivid);
   assert.ok(!green.includes("<a:t>개나리공원</a:t>"), "공원 라벨 없음");
   const shown = await slideXml(tilePlan(modelOf(), "shown"));
   assert.ok(shown.includes("<a:t>개나리공원</a:t>") && shown.includes("<a:t>테헤란로</a:t>"), "숨기지 않으면 라벨 있음");
+}
+
+// ── A05 설명선: 준공 연대 점·범례 견본도 팔레트를 따른다(D04 면과 같은 bldg_* 칸) ──
+{
+  const C = await import("../../lib/v2/ui/callout-layout.ts");
+  const O = await import("../../lib/v2/ui/overlay-layout.ts");
+  const { calloutForA05 } = await import("../../lib/v2/tile/a05/view.ts");
+  const { withCalloutPalette } = await import("../../lib/v2/ui/tile-view.ts");
+  const { paletteLayerStyle } = await import("../../lib/v2/ui/map-palette.ts");
+  const { layerStyle } = await import("../../lib/v2/ui/map-layers.ts");
+  const result = {
+    status: "complete",
+    conditions: { center: [127, 37], radiusM: 800, analysisDate: "2026-09-30" },
+    metrics: [],
+    presentation: { features: [
+      { layer: "apt", lng: 127, lat: 37, name: "옛 단지", households: 300, approvalYear: 1975 },
+      { layer: "apt", lng: 127.001, lat: 37, name: "새 단지", households: 200, approvalYear: 2022 },
+      { layer: "apt", lng: 127.002, lat: 37, name: "미상 단지", households: 100, approvalYear: null },
+    ] },
+  };
+  const app = calloutForA05(result, "출처");
+  const [old, fresh, unknown] = app.complexes;
+  const want = (layer, palette) => paletteLayerStyle(layer, layerStyle(layer), palette).color;
+  const swatch = (model, label) => model.legend.items.find((item) => item.label === label).color;
+
+  // 팔레트가 없으면 오늘 색 그대로, 모델도 같은 객체
+  assert.equal(C.dotColor(old), layerStyle("bldg_pre1980").color);
+  assert.equal(C.dotColor(old, "app"), layerStyle("bldg_pre1980").color);
+  assert.equal(C.decadeColor(1975), layerStyle("bldg_pre1980").color);
+  assert.equal(withCalloutPalette(app, undefined), app, "팔레트 없음 → 같은 모델");
+  assert.equal(C.paletteCalloutLegend(C.STOCK_LEGEND), C.STOCK_LEGEND);
+  assert.equal(swatch(app, "1970년대 이전"), layerStyle("bldg_pre1980").color);
+
+  // vivid: 점 색 = 범례 견본 = 팔레트가 정한 bldg_* 색
+  const vividOld = want("bldg_pre1980", "vivid");
+  const vividNew = want("bldg_2020s", "vivid");
+  assert.notEqual(vividOld, layerStyle("bldg_pre1980").color, "팔레트가 실제로 색을 바꾼다");
+  assert.equal(C.dotColor(old, "vivid"), vividOld, "1970년대 이전 점");
+  assert.equal(C.dotColor(fresh, "vivid"), vividNew, "2020년 이후 점");
+  assert.equal(C.dotColor(unknown, "vivid"), layerStyle("bldg_unknown").color, "미상은 팔레트 대상이 아님");
+  const painted = withCalloutPalette(app, "vivid");
+  assert.equal(painted.palette, "vivid");
+  assert.equal(swatch(painted, "1970년대 이전"), vividOld, "범례 견본 = 점 색");
+  assert.equal(swatch(painted, "2020년 이후"), vividNew);
+  assert.equal(swatch(painted, "미상"), layerStyle("bldg_unknown").color);
+  assert.equal(swatch(app, "1970년대 이전"), layerStyle("bldg_pre1980").color, "원래 모델은 바뀌지 않음(불변)");
+  // 범례 활성(색 일치), 좁은 범례, 띠 카드, 보고서 범례 항목이 같은 색을 쓴다
+  assert.ok(C.calloutLegendMatches(old, vividOld, "vivid") && !C.calloutLegendMatches(fresh, vividOld, "vivid"));
+  assert.deepEqual(C.compactCalloutLegend(painted.legend, painted.complexes, 3, "vivid").map((i) => i.color).sort(), [vividOld, vividNew, layerStyle("bldg_unknown").color].sort());
+  assert.deepEqual(C.stripCards(painted.complexes, 2026, "vivid").map((c) => c.color), [vividOld, vividNew, layerStyle("bldg_unknown").color]);
+  const entries = O.calloutLegendEntries(painted);
+  assert.equal(entries.find((e) => e.text === "1970년대 이전").color, vividOld, "보고서 범례 견본");
+  // 만든 팔레트도 같은 경로
+  const mine = { name: "내 색", colors: paletteColors("vivid") };
+  assert.equal(C.dotColor(old, mine), vividOld);
+  // A06 입주 시기 점은 팔레트와 무관
+  const supplyDot = C.dotColor({ ...old, supply: { timing: "past" } }, "vivid");
+  assert.equal(supplyDot, C.TIMING_STYLE.past.color);
 }
 
 console.log("map palette render: ok");

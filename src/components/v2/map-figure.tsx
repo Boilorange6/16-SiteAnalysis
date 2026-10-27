@@ -741,7 +741,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseT
       };
     });
     return [...featureCandidates, ...lineCandidates, ...polygonCandidates];
-  }, [model.center, previewInteraction, previewLabelByKey, previewLegendByLayer, scene.features, scene.lines, scene.polygons]);
+  }, [model, previewInteraction, previewLabelByKey, previewLegendByLayer, scene.features, scene.lines, scene.polygons]);
   const candidateByKey = useMemo(() => new Map(previewCandidates.map((candidate) => [candidate.key, candidate])), [previewCandidates]);
   const isLabelVisible = useCallback((key: string) => !hiddenSet.has(key) && (
     scene.labelPlacements.some((placement) => placement.entry.key === key)

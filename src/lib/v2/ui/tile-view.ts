@@ -7,7 +7,8 @@ import type { Scene } from "../scene";
 import { tileClientModuleFor } from "../tile/client";
 import type { Metric, TileHeadlinePolicy } from "../tile/types";
 import type { A05Counts, A05Filter } from "../engine/a05-filter";
-import type { CalloutLegendSpec, Complex, Stat } from "./callout-layout";
+import { paletteCalloutLegend, type CalloutLegendSpec, type Complex, type Stat } from "./callout-layout";
+import type { DiagramPaletteRef } from "./map-palette";
 import { mapBaseFromScene, type MapBase } from "./basemap";
 import type { MapModel } from "./map-layers";
 import type { MassModel } from "./mass-projection";
@@ -118,7 +119,13 @@ export type CalloutModel = {
   filterLine?: string | null;
   /** 설명선 지도의 벡터 바탕 자료(다른 타일과 같은 객체) */
   base?: MapBase | null;
+  /** 다이어그램 팔레트. 있으면 준공 연대 점 색을 `dotColor(c, palette)`가 따른다(범례는 `withCalloutPalette`가 같이 바꾼다). */
+  palette?: DiagramPaletteRef;
 };
+
+/** 설명선 모델에 팔레트를 싣는다: `palette`와 준공 연대 범례 견본 색을 함께 바꾼다. 팔레트가 없으면 같은 객체. */
+export const withCalloutPalette = (model: CalloutModel, palette: DiagramPaletteRef | undefined): CalloutModel =>
+  palette ? { ...model, palette, legend: paletteCalloutLegend(model.legend, palette) } : model;
 
 const KIND_LABEL = { analysis: "분석", diagram: "도판", simulation: "시뮬레이션" } as const;
 function mapNotesFor(r: TileResult): string[] {

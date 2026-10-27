@@ -1524,7 +1524,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     occupiedBoxes,
     polygonOpacity: sat ? 0.45 : 0.35,
     lineColor,
-    ringColor: sat ? lineColor : theme ? theme.ring : lineColor,
+    ringColor: theme?.ring ?? lineColor,
     isLayerHighlighted,
     isElementDimmed,
     isElementStrong,

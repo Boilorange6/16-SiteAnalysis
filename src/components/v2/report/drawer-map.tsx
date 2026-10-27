@@ -135,7 +135,7 @@ function CalloutSettings({ config }: { config: CalloutDrawerConfig }) {
         return <div key={complex.key} className={styles.calloutLabelRow} role="listitem">
           <label className={styles.calloutLabelCheck}>
             <input type="checkbox" checked={enabled} onChange={() => toggle(complex)} aria-label={`${name} 설명선 ${enabled ? "끄기" : "켜기"}`} />
-            <span className={styles.calloutLabelDot} style={{ background: hollow ? "#fff" : dotColor(complex), borderColor: dotColor(complex) }} aria-hidden="true" />
+            <span className={styles.calloutLabelDot} style={{ background: hollow ? "#fff" : dotColor(complex, config.model.palette), borderColor: dotColor(complex, config.model.palette) }} aria-hidden="true" />
             <span className={styles.calloutLabelText}><span className={styles.calloutLabelName}>{name}{number !== null ? ` · ${number}번` : ""}{otherPageLabel ? ` · ${otherPageLabel}` : ""}</span><span className={styles.calloutLabelMeta}>{calloutMeta(complex)}</span></span>
           </label>
           {enabled && <span className={styles.calloutLabelOrder}><button type="button" className={styles.tinyButton} disabled={index <= 0} onClick={() => move(complex.key, -1)} aria-label={`${name} 라벨 위로`}>↑</button><button type="button" className={styles.tinyButton} disabled={index < 0 || index >= config.shownKeys.length - 1} onClick={() => move(complex.key, 1)} aria-label={`${name} 라벨 아래로`}>↓</button></span>}
