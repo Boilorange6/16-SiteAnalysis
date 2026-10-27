@@ -34,7 +34,7 @@ const BASELINE_HASHES = {
   D10: "d6713c1843d3eb6bf270ba51a18573d8afa2cb786dd3650b34be15c1d204585c",
   D16: "61edc5ebc98a921c31de55b381f14f2a954f00e9e6bcab48188b543ebfae8317",
   S01: "aff5b8d52517cf3355f406d7b96dbe42b27f6eda07de8f9ba8049d78d4966a2e",
-  scene: "5b65b2ce8f6341e9b980bdf4619f202888c93b6d8db258b89e1abcbc773f8640",
+  scene: "12e75a01c3f44974f33d7c12aa146616a16b6f17fe122ceacc3892a324ec39c1", // 2026-10-27 벡터 바탕지도 Task 1: 장면 맥락층 optional 필드 추가로 갱신
 };
 
 const TILE_FACTORIES = { D02: d02, D03: d03, D04: d04, D05: d05, D06: d06, D07: d07, D10: d10, D16: d16, S01: s01 };

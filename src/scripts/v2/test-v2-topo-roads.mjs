@@ -25,7 +25,7 @@ const { LAYER_STYLES } = await import("../../lib/v2/ui/map-layers.ts");
 const BASELINE_HASHES = {
   D13: "849aa2e3c8ff423b31022383476b9c409c69db79f72b63d2ad1136214f73865a",
   D15: "25a6b0d25cb9466815d35bd64555e3996ff9b0b37f87e3d639c6b83bf8c11e75",
-  scene: "3af281821dc56b03707b691a1926b5c8e116f6da7697523318155415c866567d",
+  scene: "0d7a34371e9744dfc0bf63c6054d3e8456a9d7f65723f3b7957ef2d53a658147", // 2026-10-27 벡터 바탕지도 Task 1: 장면 맥락층 optional 필드(name·greenKinds·places) 추가로 갱신
 };
 
 const RADIUS_M = 800;

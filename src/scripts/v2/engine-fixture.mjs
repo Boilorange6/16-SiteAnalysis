@@ -86,6 +86,7 @@ export async function buildEngineFixture(dataDir, version, options = {}) {
   const hc = (id, dx, releaseId, props, name = id) =>
     insertFeature(db, { stableId: id, kind: "housing_complex", sourceKey: id, releaseId, geometry: pt(dx, 100), name, properties: props });
   // 실제 대장 행 모양(고덕역 1km): 총괄표제부 "아파트, 상가", 표제부 "공동주택" 300세대, 총괄표제부 "아파트" 세대 미상
+  if (options.basemap) insertFeature(db, { stableId: "emd:41360118", kind: "legal_emd", sourceKey: "41360118", releaseId: legal, geometry: rect(-500, 500, -500, 500), name: "다산동", legalCode: "4136011800" });
   hc("recap:apt1", 100, recap, { source: "recap", mainUse: "공동주택", otherUse: "아파트, 상가", units: 480, households: 500, parking: 600, approvalDate: "1996-09-30" });
   hc("title-housing:apt2", 200, title, { source: "title", mainUse: "공동주택", otherUse: "공동주택", units: 300, households: null, parking: null, approvalDate: "2010-05-01" });
   hc("recap:apt3", 300, recap, { source: "recap", mainUse: "공동주택", otherUse: "아파트", units: null, households: null, parking: null, approvalDate: null });
@@ -284,17 +285,20 @@ export async function buildEngineFixture(dataDir, version, options = {}) {
   const park = rel(db, "park", null);
   if (options.roads) {
     const road = rel(db, "osm_roads", "2026-09-30", { rights: { attribution: "© OpenStreetMap contributors" } });
-    const line = (stableId, points, hierarchy = "국지") => insertFeature(db, {
+    const line = (stableId, points, hierarchy = "국지", name = null) => insertFeature(db, {
       stableId: `road:${stableId}`,
       kind: "road",
       sourceKey: stableId,
       releaseId: road,
       geometry: { type: "LineString", coordinates: points.map(([dx, dy]) => at(dx, dy)) },
-      properties: { osmId: stableId, fclass: "residential", hierarchy, name: null },
+      name,
+      properties: { osmId: stableId, fclass: "residential", hierarchy, name },
     });
     for (const dy of [-200, 0, 200]) line(`h${dy}`, [[-600, dy], [600, dy]]);
     for (const dx of [-200, 0, 200]) line(`v${dx}`, [[dx, -600], [dx, 600]]);
     line("walk", [[-100, -200], [-100, 0]], "보행·자전거");
+    // basemap: 이름 있는 도로 1개를 더한다(기본 7개 도로는 이름 없음).
+    if (options.basemap) line("named", [[-600, 100], [600, 100]], "국지", "도곡로77길");
     run(db, "osm_roads", road, { byRegion: { "41": 7 }, byType: { 국지: 6, "보행·자전거": 1 }, fillRates: {}, unlocated: 0 }, 0, 7);
   }
   // P4-T6: landuse/water fixture — 녹지 3면(중첩 grass 포함)과 수계 1면.
@@ -349,6 +353,11 @@ export async function buildEngineFixture(dataDir, version, options = {}) {
       en("다온역", "다온1", 0, 650);
     }
     insertFeature(db, { stableId: "rail_line:5", kind: "rail_line", sourceKey: "5", releaseId: osm, geometry: { type: "LineString", coordinates: [at(-3000, 300), at(3000, 300)] }, name: "5호선", properties: { lineRef: "5", color: null } });
+    // basemap: 실제 자료처럼 색·노선 이름이 채워진 3호선 선과 역 1개(MultiLineString).
+    if (options.basemap) {
+      insertFeature(db, { stableId: "rail_line:3", kind: "rail_line", sourceKey: "3", releaseId: osm, geometry: { type: "MultiLineString", coordinates: [[at(-3000, -100), at(3000, -100)]] }, name: "수도권 전철 3호선: 대화 → 오금", properties: { lineRef: "3", color: "#ED6C00" } });
+      insertFeature(db, { stableId: "rail_station:대치", kind: "rail_station", sourceKey: "대치", releaseId: osm, geometry: pt(-150, -100), name: "대치", properties: { lineRefs: ["3"], lineNames: ["수도권 전철 3호선"], lineColors: ["#ED6C00"], stationAxes: [] } });
+    }
     run(db, "rail_station", osm, { byRegion: { 41: 4 }, byType: {}, fillRates: {}, unlocated: 0 });
   }
   if (options.planned) {

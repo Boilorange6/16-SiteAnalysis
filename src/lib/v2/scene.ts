@@ -51,6 +51,33 @@ export interface SceneRoad {
   points: [number, number][];
   widthM: number;
   hierarchy: string;
+  /** 도로 이름(예: "도곡로77길"). 이름 없는 도로는 null, 옛 장면은 없음. */
+  name?: string | null;
+}
+
+/** OSM 녹지 분류(`ingest/sources/osm-landuse.ts`의 GREEN_CLASSES와 같은 값). */
+export const GREEN_KINDS = ["forest", "park", "grass", "orchard"] as const;
+export type GreenKind = (typeof GREEN_KINDS)[number];
+
+export interface SceneRail {
+  points: [number, number][];
+  color: string;
+  lineRef: string;
+  name: string;
+}
+
+export interface SceneStation {
+  name: string;
+  x: number;
+  y: number;
+  color: string;
+}
+
+export interface ScenePlace {
+  name: string;
+  kind: "dong" | "park";
+  x: number;
+  y: number;
 }
 
 /** 장면 중심에서 반경 안에 잘라 둔 도로·녹지·수계 맥락층. */
@@ -58,6 +85,13 @@ export interface SceneContext {
   roads: SceneRoad[];
   green: Ring[][];
   water: Ring[][];
+  /** `green`과 같은 길이·순서의 녹지 분류. 옛 장면은 없음. */
+  greenKinds?: GreenKind[];
+  /** 원 안으로 자른 지하철·철도 노선. 원천이 없으면 없음. */
+  rail?: SceneRail[];
+  stations?: SceneStation[];
+  /** 법정동(면의 무게중심)·공원(점) 지명. */
+  places?: ScenePlace[];
   /** 수관은 무거운 분석 타일이 채울 자리이며 장면 생성 때는 생략한다. */
   canopy?: Ring[][];
 }
@@ -144,12 +178,22 @@ const SceneRoadSchema: z.ZodType<SceneRoad> = z.object({
   points: z.array(PointSchema).min(2),
   widthM: z.number().finite().positive(),
   hierarchy: z.string().min(1),
+  name: z.string().nullable().optional(),
 });
 
 const SceneContextSchema: z.ZodType<SceneContext> = z.object({
   roads: z.array(SceneRoadSchema),
   green: z.array(z.array(RingSchema)),
   water: z.array(z.array(RingSchema)),
+  greenKinds: z.array(z.enum(GREEN_KINDS)).optional(),
+  rail: z.array(z.object({
+    points: z.array(PointSchema).min(2),
+    color: z.string(),
+    lineRef: z.string(),
+    name: z.string(),
+  })).optional(),
+  stations: z.array(z.object({ name: z.string(), x: z.number().finite(), y: z.number().finite(), color: z.string() })).optional(),
+  places: z.array(z.object({ name: z.string(), kind: z.enum(["dong", "park"]), x: z.number().finite(), y: z.number().finite() })).optional(),
   canopy: z.array(z.array(RingSchema)).optional(),
 });
 

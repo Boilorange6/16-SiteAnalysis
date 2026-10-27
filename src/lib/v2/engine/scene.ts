@@ -1,7 +1,8 @@
 import { toLngLat, toUtmk } from "../crs";
 import type { FeatureHit } from "../data/features";
-import { booleanIntersects, feature } from "@turf/turf";
+import { booleanIntersects, centerOfMass, feature, polygon } from "@turf/turf";
 import {
+  GREEN_KINDS,
   SCENE_VERSION,
   SCENE_MAX_BUILDINGS,
   SCENE_MAX_PARCELS,
@@ -9,11 +10,13 @@ import {
   parseScene,
   sceneBuildingSublabel,
   toLocalRing,
+  type GreenKind,
   type Ring,
   type Scene,
   type SceneBuilding,
   type SceneContext,
   type SceneParcel,
+  type ScenePlace,
 } from "../scene";
 import type { EngineContext, SourceRef } from "./context";
 import { assumedOneFloorLimitation, buildingRows, buildingRetirementLimitations, BUILDING_SOURCES } from "./tiles/buildings-shared";
@@ -21,7 +24,7 @@ import { areaInCircle, clipLineToCircle, linePathLength, polygonArea, polygonPar
 import { hitPoint } from "./tiles/common";
 import { demReader, demSources, DEM_LIMITATION } from "./tiles/terrain-shared";
 import type { LocalGrid } from "./tiles/raster-grid";
-import { mergedRoadLines } from "./tiles/topo-roads";
+import { mergedRoadLines, roadLineMeta } from "./tiles/topo-roads";
 
 function localRings(hit: FeatureHit, origin: { x: number; y: number }): Ring[] {
   return polygonParts(hit.geometry).flatMap((rings) => rings.map((ring) => toLocalRing(ring, origin)));
@@ -201,7 +204,85 @@ function localContextPolygons(
 }
 
 type RoadCandidate = { road: SceneContext["roads"][number]; lengthM: number; order: number };
-type PolygonCandidate = { kind: "green" | "water"; polygon: Ring[]; areaM2: number; order: number };
+type PolygonCandidate = { kind: "green" | "water"; polygon: Ring[]; areaM2: number; order: number; greenKind?: GreenKind };
+
+function nonEmptyText(value: unknown): string | null {
+  return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
+}
+
+function greenKindOf(hit: FeatureHit): GreenKind {
+  const cls = hit.properties.cls;
+  return GREEN_KINDS.find((kind) => kind === cls) ?? "park";
+}
+
+const DEFAULT_RAIL_COLOR = "#555555";
+
+/**
+ * 철도 노선·역·지명(법정동 면의 무게중심, 공원 점). 원천이 적재되지 않은 필드는 아예 넣지 않는다.
+ * 노선·역 수는 반경 안 지물만 있어 수십 개 수준이라 SCENE_MAX_* 상한을 두지 않는다.
+ */
+function buildBasemapExtras(ctx: EngineContext, origin: { x: number; y: number }): { fields: Pick<SceneContext, "rail" | "stations" | "places">; sources: SourceRef[] } {
+  const fields: Pick<SceneContext, "rail" | "stations" | "places"> = {};
+  const railSources = ctx.sources("reference", ["osm_subway"]);
+  const parkSources = ctx.sources("reference", ["park"]);
+  const legalSources = ctx.sources("core", ["legal_areas"]);
+  const radiusM = ctx.input.radiusM;
+  const insideCircle = (x: number, y: number) => Math.hypot(x, y) <= radiusM;
+  const pointOf = (hit: FeatureHit): [number, number] | null => {
+    if (hit.geometry.type !== "Point") return null;
+    const [x, y] = localContextPoint(hit.geometry.coordinates, origin);
+    return Number.isFinite(x) && Number.isFinite(y) && insideCircle(x, y) ? [x, y] : null;
+  };
+
+  if (railSources.length > 0) {
+    fields.rail = [];
+    for (const hit of ctx.hits("reference", ["rail_line"])) {
+      for (const path of clipLineToCircle(ctx.input.center, radiusM, hit.geometry)) {
+        const points = localContextPath(path, origin);
+        if (points.length < 2) continue;
+        fields.rail.push({
+          points,
+          color: nonEmptyText(hit.properties.color) ?? DEFAULT_RAIL_COLOR,
+          lineRef: nonEmptyText(hit.properties.lineRef) ?? "",
+          name: nonEmptyText(hit.name) ?? "",
+        });
+      }
+    }
+    fields.stations = [];
+    for (const hit of ctx.hits("reference", ["rail_station"])) {
+      const name = nonEmptyText(hit.name);
+      const xy = pointOf(hit);
+      if (!name || !xy) continue;
+      const colors = hit.properties.lineColors;
+      fields.stations.push({ name, x: xy[0], y: xy[1], color: (Array.isArray(colors) ? nonEmptyText(colors[0]) : null) ?? DEFAULT_RAIL_COLOR });
+    }
+  }
+
+  const places: ScenePlace[] = [];
+  if (legalSources.length > 0) {
+    for (const hit of ctx.hits("core", ["legal_emd"])) {
+      const name = nonEmptyText(hit.name);
+      if (!name) continue;
+      const largest = localContextPolygons(hit, ctx.input.center, radiusM, origin)
+        .sort((a, b) => polygonArea(b) - polygonArea(a))[0];
+      if (!largest) continue;
+      try {
+        const [x, y] = centerOfMass(polygon(largest)).geometry.coordinates;
+        places.push({ name, kind: "dong", x: roundCentimeter(x), y: roundCentimeter(y) });
+      } catch { /* 퇴화 면은 지명을 만들지 않는다 */ }
+    }
+  }
+  if (parkSources.length > 0) {
+    for (const hit of ctx.hits("reference", ["park"])) {
+      const name = nonEmptyText(hit.name);
+      const xy = pointOf(hit);
+      if (name && xy) places.push({ name, kind: "park", x: xy[0], y: xy[1] });
+    }
+  }
+  if (legalSources.length > 0 || parkSources.length > 0) fields.places = places;
+
+  return { fields, sources: uniqueSources(railSources, parkSources, legalSources) };
+}
 
 interface SceneContextBuild {
   context?: SceneContext;
@@ -227,7 +308,7 @@ function buildSceneContext(ctx: EngineContext, origin: { x: number; y: number })
         const points = localContextPath(path, origin);
         if (points.length < 2) continue;
         roadCandidates.push({
-          road: { points, widthM: roadWidthM(hierarchy), hierarchy },
+          road: { points, widthM: roadWidthM(hierarchy), hierarchy, name: nonEmptyText(hit.name) },
           lengthM: linePathLength(path),
           order: roadOrder++,
         });
@@ -241,7 +322,7 @@ function buildSceneContext(ctx: EngineContext, origin: { x: number; y: number })
     if (!sourceReady) return;
     for (const hit of hits) {
       for (const polygon of localContextPolygons(hit, ctx.input.center, ctx.input.radiusM, origin)) {
-        polygonCandidates.push({ kind, polygon, areaM2: Math.max(0, polygonArea(polygon)), order: polygonOrder++ });
+        polygonCandidates.push({ kind, polygon, areaM2: Math.max(0, polygonArea(polygon)), order: polygonOrder++, ...(kind === "green" ? { greenKind: greenKindOf(hit) } : {}) });
       }
     }
   };
@@ -257,6 +338,8 @@ function buildSceneContext(ctx: EngineContext, origin: { x: number; y: number })
     .slice(0, SCENE_MAX_CONTEXT_POLYGONS);
   const green = polygons.filter((candidate) => candidate.kind === "green").map((candidate) => candidate.polygon);
   const water = polygons.filter((candidate) => candidate.kind === "water").map((candidate) => candidate.polygon);
+  const greenKinds = polygons.filter((candidate) => candidate.kind === "green").map((candidate) => candidate.greenKind ?? "park");
+  const extras = buildBasemapExtras(ctx, origin);
 
   const limitations: Scene["limitations"] = [];
   if (roadCandidates.length > SCENE_MAX_ROADS) {
@@ -269,7 +352,11 @@ function buildSceneContext(ctx: EngineContext, origin: { x: number; y: number })
   if (greenSources.length === 0) limitations.push({ kind: "not_provided", note: "OSM 녹지 면 자료 미적재 — 장면 녹지 맥락층 없음" });
   if (waterSources.length === 0) limitations.push({ kind: "not_provided", note: "OSM 수계 면 자료 미적재 — 장면 수계 맥락층 없음" });
 
-  return { context: { roads, green, water }, sources, limitations };
+  return {
+    context: { roads, green, water, ...(greenSources.length > 0 ? { greenKinds } : {}), ...extras.fields },
+    sources: uniqueSources(sources, extras.sources),
+    limitations,
+  };
 }
 
 function buildTopoSceneContext(ctx: EngineContext, origin: { x: number; y: number }): SceneContextBuild {
@@ -286,7 +373,7 @@ function buildTopoSceneContext(ctx: EngineContext, origin: { x: number; y: numbe
       const points = localContextPath(path, origin);
       if (points.length < 2) continue;
       roadCandidates.push({
-        road: { points, widthM: roadWidthM(hierarchy, line.widthM), hierarchy },
+        road: { points, widthM: roadWidthM(hierarchy, line.widthM), hierarchy, name: roadLineMeta(line)?.name ?? null },
         lengthM: linePathLength(path),
         order: roadOrder++,
       });
@@ -299,7 +386,7 @@ function buildTopoSceneContext(ctx: EngineContext, origin: { x: number; y: numbe
     if (!sourceReady) return;
     for (const hit of hits) {
       for (const polygon of localContextPolygons(hit, ctx.input.center, ctx.input.radiusM, origin)) {
-        polygonCandidates.push({ kind, polygon, areaM2: Math.max(0, polygonArea(polygon)), order: polygonOrder++ });
+        polygonCandidates.push({ kind, polygon, areaM2: Math.max(0, polygonArea(polygon)), order: polygonOrder++, ...(kind === "green" ? { greenKind: greenKindOf(hit) } : {}) });
       }
     }
   };
@@ -315,6 +402,8 @@ function buildTopoSceneContext(ctx: EngineContext, origin: { x: number; y: numbe
     .slice(0, SCENE_MAX_CONTEXT_POLYGONS);
   const green = polygons.filter((candidate) => candidate.kind === "green").map((candidate) => candidate.polygon);
   const water = polygons.filter((candidate) => candidate.kind === "water").map((candidate) => candidate.polygon);
+  const greenKinds = polygons.filter((candidate) => candidate.kind === "green").map((candidate) => candidate.greenKind ?? "park");
+  const extras = buildBasemapExtras(ctx, origin);
 
   const limitations: Scene["limitations"] = [];
   if (roadCandidates.length > SCENE_MAX_ROADS) {
@@ -326,7 +415,11 @@ function buildTopoSceneContext(ctx: EngineContext, origin: { x: number; y: numbe
   if (greenSources.length === 0) limitations.push({ kind: "not_provided", note: "OSM 녹지 면 자료 미적재 — 장면 녹지 맥락층 없음" });
   if (waterSources.length === 0) limitations.push({ kind: "not_provided", note: "OSM 수계 면 자료 미적재 — 장면 수계 맥락층 없음" });
 
-  return { context: { roads, green, water }, sources, limitations };
+  return {
+    context: { roads, green, water, ...(greenSources.length > 0 ? { greenKinds } : {}), ...extras.fields },
+    sources: uniqueSources(sources, extras.sources),
+    limitations,
+  };
 }
 
 /** 건물·필지 도형을 내보내기와 S01이 함께 쓰는 대지 중심 로컬 장면으로 만든다. */
