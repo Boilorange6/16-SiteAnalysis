@@ -45,6 +45,8 @@ assert.throws(() => parseTileResult(result({}, {}, { label: "", unit: "층", cou
 // 결과 → 모델
 const view = toTileView(parseTileResult(result({ value: 4 }, { value: 4 }, axis)));
 assert.deepEqual(view.map?.valueAxis, axis);
+assert.equal(view.map?.polygons?.[0]?.value, 4, "면 value가 모델까지 간다");
+assert.equal(view.map?.features?.[0]?.value, 4, "점 value가 모델까지 간다");
 assert.equal(toTileView(parseTileResult(result({}, {}, undefined))).map?.valueAxis, undefined);
 
 console.log("✓ v2 chart value contract");

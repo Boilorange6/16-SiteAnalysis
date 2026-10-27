@@ -98,7 +98,7 @@ try {
   }
   assert.equal(towerBase.value, 30, "b_tower 30층");
   assert.equal(floorPolygons.filter((polygon) => polygon.value === null).length, 2);
-  assert.equal(toTileView(d05Tile).chart.length, 15,"D05 카드 차트에 층수·고층·저층 지표를 함께 보존");
+  assert.equal(toTileView(d05Tile).chart.length, 15, "D05 카드 차트에 층수·고층·저층 지표를 함께 보존");
   assert.equal(toTileView(d05Tile).chart.some((item) => item.label.includes("미터")), false);
 
   assert.equal(metric(d05Tile, "tall_buildings").value, 1);
