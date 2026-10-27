@@ -2,6 +2,7 @@ import type PptxGenJS from "pptxgenjs";
 import { PPT_FONT_MAIN as FONT } from "../../ppt-design-config";
 import { DEFAULT_REPORT_FONT_SIZES, type FontSizeKey } from "./report-doc";
 import type { PageStyle } from "../ui/board-state";
+import { VECTOR_ATTRIBUTION, type BasemapChoice } from "../ui/map-projection";
 import { OV, SLIDE, slideLayout, slidePanelRects, slidePanelScale, slideSize, stripText, layoutRects, type Rect, type SlideFormat } from "../ui/overlay-layout";
 
 export { SLIDE, layoutRects, slideSize };
@@ -153,8 +154,11 @@ function oneLineAt(value: string, pt: number, width: number): boolean {
 }
 
 /** 출처 띠는 최소 7pt 한 줄을 우선하고, 그래도 길면 출처 장 참조로 요약한다. */
-export function fitFooterText(sourceLine: string, credit: boolean, width = SLIDE.w - E - 1.7, startPt = 9): FooterFit {
-  const full = stripText(sourceLine, credit);
+export function fitFooterText(sourceLine: string, credit: boolean, width = SLIDE.w - E - 1.7, startPt = 9, basemaps: readonly BasemapChoice[] = []): FooterFit {
+  // 쪽에 그려진 바탕이 모두 벡터면 벡터 출처만, 벡터와 VWorld가 섞이면(조판) 둘 다 적는다.
+  const vector = basemaps.filter((layer) => layer === "vector").length;
+  const allVector = vector > 0 && vector === basemaps.length;
+  const full = stripText(sourceLine, credit, allVector ? "vector" : undefined) + (credit && vector > 0 && !allVector ? ` · ${VECTOR_ATTRIBUTION}` : "");
   const ceiling = Math.max(7, Number.isFinite(startPt) ? startPt : 9);
   for (let pt = ceiling; pt >= 7; pt -= 0.5) {
     if (oneLineAt(full, pt, width)) return { text: full, fontSize: pt, lines: 1 };

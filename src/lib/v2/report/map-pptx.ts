@@ -3,13 +3,14 @@ import { buildingStyleForRaster, isBuildingLayer, layerStyle, legendItems, legen
 import { isSiteParcelLayer } from "../ui/site-parcel";
 import { calloutLegendEntries, SLIDE, slideCalloutAvoidance, slideGeometry, slideLayout, slideLegend, slidePanelRects, slideReserved, slideSiteX, terrainSectionLayout, type SlideFormat } from "../ui/overlay-layout";
 import { SLIDE_OVERVIEW_FILL, slideCalloutFrame } from "../ui/callout-layout";
-import { buildMapScene, locatorBox, mapLabelEntries, northArrowBox, RAIL_EXIT_COLOR, RAIL_EXIT_DOT_RADIUS, RAIL_EXIT_DOT_STROKE, scaleBarBox, scaleChromeScaleForBox, type MapScene, type MapSceneBox } from "../ui/map-scene";
+import { buildMapScene, locatorBox, mapLabelEntries, northArrowBox, RAIL_EXIT_COLOR, RAIL_EXIT_DOT_RADIUS, RAIL_EXIT_DOT_STROKE, scaleBarBox, scaleChromeScaleForBox, type MapScene, type MapSceneBaseBucket, type MapSceneBox } from "../ui/map-scene";
+import type { BaseThemeId } from "../ui/map-theme";
 import { badgeTextColor } from "../ui/map-labels";
 import { terrainSectionMapStyle } from "../ui/terrain-section";
 import { FONT, fontSizeForStyle, INK, hex, textIn, type Slide } from "./pptx-kit";
 import type { PlannedSlide } from "./report-plan";
 import type { PageStyle } from "../ui/board-state";
-import { metersPerPixel, slideViewport } from "../ui/map-projection";
+import { metersPerPixel, slideViewport, type BasemapChoice } from "../ui/map-projection";
 import { scaleOptionsForFrame, zoomForScale } from "../ui/report-scale";
 import { DEFAULT_REPORT_FONT_SIZES, type MapFrameState, type PagePanelRect, type ReportLayout } from "./report-doc";
 import { mapLayoutUnitForFrame } from "./report-geometry";
@@ -57,6 +58,12 @@ export type NativeMapOptions = {
   reportFrame?: MapFrameState;
   /** report page layout, used for shared map geometry. */
   layout?: ReportLayout;
+  /** 이 지도가 실제로 그리는 바탕(`exportBasemap` 결과). "vector"이면 장면의 바탕 묶음을 도형으로 그린다. */
+  basemap?: BasemapChoice;
+  /** 벡터 바탕 색 테마(보드 선택). 없으면 기본 테마. */
+  baseTheme?: BaseThemeId;
+  /** 벡터 바탕 도형 다음, 주제 도형 앞에서 불린다. 값 래스터 그림을 이 자리에 넣는다. */
+  underlay?: () => void;
 };
 
 export type NativeMapStatus = {
@@ -344,10 +351,41 @@ function legendTag(model: MapModel, code: string, layer: string, part: string, e
   return tag(code, `legend-${safeKey(label)}`, `범례 ${label}`, part);
 }
 
+/** Douglas-Peucker. 닫힌 고리는 첫 점을 끝에 한 번 더 붙여 돌린 뒤 떼어 낸다. */
+function simplifyPath(path: PixelPath, tolerance: number, closed: boolean): PixelPath {
+  const source: PixelPoint[] = closed ? [...path, path[0]!] : [...path];
+  if (source.length <= 2) return path;
+  const keep = new Uint8Array(source.length);
+  keep[0] = 1;
+  keep[source.length - 1] = 1;
+  const stack: Array<[number, number]> = [[0, source.length - 1]];
+  while (stack.length > 0) {
+    const [a, b] = stack.pop()!;
+    const [ax, ay] = source[a]!;
+    const [bx, by] = source[b]!;
+    const dx = bx - ax;
+    const dy = by - ay;
+    const length = Math.hypot(dx, dy);
+    let far = -1;
+    let farDistance = tolerance;
+    for (let index = a + 1; index < b; index += 1) {
+      const [px, py] = source[index]!;
+      const distance = length === 0 ? Math.hypot(px - ax, py - ay) : Math.abs(dy * (px - ax) - dx * (py - ay)) / length;
+      if (distance > farDistance) { farDistance = distance; far = index; }
+    }
+    if (far >= 0) {
+      keep[far] = 1;
+      stack.push([a, far], [far, b]);
+    }
+  }
+  const kept = source.filter((_, index) => keep[index] === 1);
+  return closed ? kept.slice(0, -1) : kept;
+}
+
 function addCustom(
   slide: Slide,
   paths: readonly PixelPath[],
-  options: { fill?: string; fillOpacity?: number; line?: string; lineWidth?: number; lineOpacity?: number; dash?: string; objectName: string; closed?: boolean },
+  options: { fill?: string; fillOpacity?: number; line?: string; lineWidth?: number; lineOpacity?: number; dash?: string; objectName: string; closed?: boolean; simplify?: number },
 ): void {
   // 면·선 모두 출처 띠 위의 지도 프레임 안으로 잘라낸 뒤 PPT에 넘긴다.
   const clippedPaths = options.closed
@@ -356,15 +394,27 @@ function addCustom(
       return clipped ? [clipped] : [];
     })
     : paths.flatMap((path) => clipOpenPath(path));
-  const nativePaths = options.closed ? clippedPaths : clippedPaths.map(capNativePath);
+  // simplify가 있으면(벡터 바탕) 꼭짓점 상한 없이 그 허용오차(px)로만 줄인다. 아니면 기존 균등 샘플링 상한.
+  const nativePaths = options.simplify !== undefined
+    ? clippedPaths.map((path) => simplifyPath(path, options.simplify!, !!options.closed)).filter((path) => path.length >= (options.closed ? 3 : 2))
+    : options.closed ? clippedPaths : clippedPaths.map(capNativePath);
   const points = nativePaths.flatMap((path) => path);
   if (points.length < 2) return;
   const hasFill = !!options.fill && options.fill !== "none";
   const hasLine = !!options.line && options.line !== "none";
-  const minX = Math.min(...points.map(([x]) => pxX(x)));
-  const minY = Math.min(...points.map(([, y]) => pxY(y)));
-  const maxX = Math.max(...points.map(([x]) => pxX(x)));
-  const maxY = Math.max(...points.map(([, y]) => pxY(y)));
+  // 바탕 묶음은 점이 수만 개일 수 있어 Math.min(...배열) 대신 한 번 훑는다.
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const [x, y] of points) {
+    const px = pxX(x);
+    const py = pxY(y);
+    if (px < minX) minX = px;
+    if (px > maxX) maxX = px;
+    if (py < minY) minY = py;
+    if (py > maxY) maxY = py;
+  }
   const parts: ShapePart[] = [];
   for (const path of nativePaths) {
     if (path.length < 2) continue;
@@ -422,7 +472,7 @@ function lineTickSegments(points: readonly PixelPoint[], size: number): Array<[P
   return ticks;
 }
 
-function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "tile" }; mode?: NativeMapMode; style?: PageStyle; format?: SlideFormat; reportFrame?: MapFrameState; layout?: ReportLayout }): MapScene {
+function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "tile" }; mode?: NativeMapMode; style?: PageStyle; format?: SlideFormat; reportFrame?: MapFrameState; layout?: ReportLayout; basemap?: BasemapChoice; baseTheme?: BaseThemeId }): MapScene {
   const mode = options.mode ?? "tile";
   const format = options.format ?? activeFormat;
   const reportFrame = options.reportFrame;
@@ -449,7 +499,8 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
       model: displayModel,
       width,
       height,
-      activeLayer: displayModel.basemap ?? "white",
+      activeLayer: options.basemap === "vector" ? "vector" : displayModel.basemap ?? "white",
+      baseTheme: options.baseTheme,
       siteX: 0.5,
       bottomInset: cellLegend ? cellLegend.h + 32 : 0,
       scale: true,
@@ -544,7 +595,8 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
     model: displayModel,
     width: VIEW_W,
     height,
-    activeLayer: displayModel.basemap ?? "white",
+    activeLayer: options.basemap === "vector" ? "vector" : displayModel.basemap ?? "white",
+    baseTheme: options.baseTheme,
     fill,
     siteX,
     bottomInset,
@@ -586,6 +638,62 @@ function addBuckets(slide: Slide, code: string, buckets: Map<string, Bucket>, cl
       closed,
       objectName: tag(code, bucket.key, bucket.display, "geometry"),
     });
+  }
+}
+
+const BASE_LAYER_NAME: Record<MapSceneBaseBucket["layer"], string> = { water: "물", green: "녹지", parcel: "필지선", road: "도로", rail: "철도", building: "건물", station: "역" };
+/** 바탕 도형은 0.25px보다 작은 편차의 꼭짓점만 줄인다(1000 m 장면에서 0.25px는 약 1 m 미만). */
+const BASE_SIMPLIFY_PX = 0.25;
+const BASE_MUTED_OPACITY = 0.55;
+
+/**
+ * 벡터 바탕을 PPT 도형으로 옮긴다: 프레임 안 바탕색 사각형 1개 + 묶음마다 custGeom 1개 + 이름 라벨.
+ * 화면(MapFigure)과 같은 scene.base를 쓰므로 층 순서·색·굵기가 같다. 도형 이름은 `GRP|map-<code>-<layer>|바탕 · <층>|<묶음>`.
+ * code는 슬라이드 안에서 지도마다 다른 값("base", 조판 칸은 "cell-N-base").
+ */
+function addBaseMap(slide: Slide, code: string, scene: MapScene, muted: boolean): void {
+  const base = scene.base;
+  if (!base) return;
+  const fade = muted ? BASE_MUTED_OPACITY : 1;
+  const bg = { x: activeFrame.x, y: activeFrame.y, w: activeFrame.w, h: activeFrame.h, fill: { color: color(base.bg) }, line: { color: color(base.bg), width: 0, transparency: 100 }, objectName: tag(code, "bg", "바탕 · 바탕색", "rect") };
+  if (activeMode === "cell") slide.addShape("roundRect", { ...bg, rectRadius: 0.08 });
+  else slide.addShape("rect", bg);
+  for (const bucket of base.buckets) {
+    addCustom(slide, bucket.paths, {
+      fill: bucket.fill ?? undefined,
+      fillOpacity: fade,
+      line: bucket.stroke ?? undefined,
+      lineWidth: bucket.strokeWidth,
+      lineOpacity: (bucket.opacity ?? 1) * fade,
+      dash: bucket.dash,
+      closed: bucket.closed,
+      simplify: BASE_SIMPLIFY_PX,
+      objectName: tag(code, bucket.layer, `바탕 · ${BASE_LAYER_NAME[bucket.layer]}`, bucket.key),
+    });
+  }
+  for (const label of base.labels) {
+    const pt = fontPt(label.fontSize, 6);
+    const w = textIn(label.text, pt) + 0.12;
+    const h = (pt / 72) * 1.5;
+    const key = `label-${label.key.replace(/^base-/, "")}`;
+    const display = `바탕 라벨 · ${label.text}`;
+    const common = {
+      x: pxX(label.x) - w / 2,
+      y: pxY(label.y) - h / 2,
+      w,
+      h,
+      align: "center" as const,
+      valign: "middle" as const,
+      fontFace: FONT,
+      fontSize: pt,
+      bold: label.kind === "station",
+      margin: 0,
+      wrap: false,
+      ...(label.angle ? { rotate: label.angle } : {}),
+    };
+    // 화면의 paint-order 후광: 같은 글자를 후광색 윤곽선으로 한 번 더 깔고 그 위에 글자를 얹는다.
+    slide.addText(label.text, { ...common, color: color(label.halo), outline: { size: Math.max(1.2, pxPt(Math.max(2, label.fontSize * 0.3))), color: color(label.halo) }, objectName: tag(code, key, display, "halo") });
+    slide.addText(label.text, { ...common, color: color(label.color), objectName: tag(code, key, display, "text") });
   }
 }
 
@@ -956,9 +1064,13 @@ export function addEditableMap(slide: Slide, plan: (PlannedSlide & { kind: "tile
       format: activeFormat,
       reportFrame: options.reportFrame,
       layout: options.layout,
+      basemap: options.basemap,
+      baseTheme: options.baseTheme,
     });
     const baseCode = model.tileCode ?? "map";
     const code = options.scope ? `${options.scope}-${baseCode}` : baseCode;
+    if (scene.base) addBaseMap(slide, options.scope ? `${options.scope}-base` : "base", scene, !!plan?.muted);
+    options.underlay?.();
     addPolygons(slide, code, scene, visibleModel);
     addLines(slide, code, scene, visibleModel);
     addRadius(slide, code, scene);

@@ -6,6 +6,7 @@ import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import type { BaseThemeId } from "@/lib/v2/ui/map-theme";
 import { BaseThemeContext } from "../base-theme-context";
 import { metersPerPixel, slideViewport, zoomViewAt, type MapView } from "@/lib/v2/ui/map-projection";
+import { frameBasemap } from "@/lib/v2/ui/basemap";
 import { mapFrameScaleOptions, scaleOptionsForFrame, zoomForScale } from "@/lib/v2/ui/report-scale";
 import { SLIDE_LEGEND, calloutLegendEntries, layoutRects, slideCalloutAvoidance, slideCalloutLegendLayout, slideGeometry, slideLayout, slideLegend, slideLegendGeometry, slidePanelRects, slidePanelScale, slideReserved, slideSize, slideSiteX, terrainSectionLayout, type Rect, type SlideFormat, type TerrainSectionLayout } from "@/lib/v2/ui/overlay-layout";
 import { coverLayout, fitBlock, fitFooterText, fontSizeForStyle, sourceLayout, titlePlateRect, type Slide } from "@/lib/v2/report/pptx-kit";
@@ -594,7 +595,7 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
   const savedNorthBox = panelRectInMap(style.panels?.north, format, unit, frame, panelBasis, width, height);
   const savedScaleBox = panelRectInMap(style.panels?.scaleBar, format, unit, frame, panelBasis, width, height);
   const savedLocatorBox = panelRectInMap(style.panels?.locator, format, unit, frame, panelBasis, width, height);
-  const displayBasemap: BasemapChoice = reportFrame?.basemap === "air" ? "Satellite" : reportFrame?.basemap === "none" ? "white" : reportFrame?.basemap === "road" ? "Base" : reportFrame?.basemap === "base" ? (model.base ? "vector" : "Base") : basemap;
+  const displayBasemap: BasemapChoice = reportFrame ? frameBasemap(reportFrame, model) : basemap;
   const baseViewport = useMemo(() => slideViewport(model, undefined, { width, height, siteX, siteY: mapSiteY, fill: mapFill }), [height, mapFill, mapSiteY, model, siteX, width]);
   const viewport = useMemo(() => slideViewport(model, style, { width, height, siteX, siteY: mapSiteY, fill: mapFill }), [height, mapFill, mapSiteY, model, siteX, style, width]);
   const focusedLabel = useMemo(() => legendLabelOf(model, style.legendFocus), [model, style.legendFocus]);

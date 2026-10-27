@@ -17,13 +17,15 @@ import type { RoseSeason } from "../tile-result";
 import type { Scene } from "../scene";
 import { renderMass3dPng } from "../ui/mass-3d-runtime";
 import { calloutLegendEntries, SLIDE, slideCalloutAvoidance, slideLayout, slidePanelRects, slideReserved, slideSiteX, slideLegend, terrainSectionLayout } from "../ui/overlay-layout";
+import { exportBasemap, resolveBasemap } from "../ui/basemap";
+import type { BaseThemeId } from "../ui/map-theme";
 import { BASEMAP_STACK, metersPerPixel, slideViewport, tilesFor, tileUrl, type BasemapChoice, type Viewport } from "../ui/map-projection";
 import { inflateRaster, paintRaster } from "../ui/raster-image";
 import { RASTER_STYLES } from "../ui/map-layers";
 import { SLIDE_OVERVIEW_FILL, slideCalloutFrame } from "../ui/callout-layout";
 import { sheetCells, type SheetGrid } from "../ui/sheet";
 import { mapKeyOf, type PlannedSlide } from "./report-plan";
-import type { MapImages } from "./render-pptx";
+import type { MapImages, PptxMapDrawing } from "./render-pptx";
 import { nativeMapStatus } from "./map-pptx";
 import type { PageStyle } from "../ui/board-state";
 import { mapFrameScaleOptions, scaleOptionsForFrame, zoomForScale, type ReportScaleOptions } from "../ui/report-scale";
@@ -38,7 +40,7 @@ const VIEW_H = 540;
 const OUT_W = 1920;
 const OUT_H = 1080;
 const PX_PER_INCH = VIEW_W / SLIDE.w;
-type Extra = Partial<Pick<MapFigureProps, "muted" | "siteX" | "avoid" | "fill" | "siteY" | "calloutTop" | "calloutLeftBottom" | "scale" | "legend" | "bare" | "pinnedKeys" | "hiddenKeys" | "deletedElementKeys" | "labelBoxes" | "showAutomaticLabels" | "north" | "credit" | "label" | "rightInset" | "backgroundOnly" | "terrainSection" | "layoutUnit">> & {
+type Extra = Partial<Pick<MapFigureProps, "muted" | "siteX" | "avoid" | "fill" | "siteY" | "calloutTop" | "calloutLeftBottom" | "scale" | "legend" | "bare" | "baseTheme" | "transparent" | "pinnedKeys" | "hiddenKeys" | "deletedElementKeys" | "labelBoxes" | "showAutomaticLabels" | "north" | "credit" | "label" | "rightInset" | "backgroundOnly" | "terrainSection" | "layoutUnit">> & {
   size?: { width: number; height: number };
   bottomInset?: number;
   style?: PageStyle;
@@ -51,15 +53,11 @@ const TILE_TIMEOUT_MS = 8000;
 
 const rasterKey = (analysisId: string, code: string, name: string) => `${analysisId}/${code}/${name}`;
 
-/** 결과 타일이 지정한 배경을 PPT·화면 공통으로 우선한다(D01은 항상 Satellite). */
-export const effectiveLayer = (model: MapModel, layer: BasemapChoice): BasemapChoice => model.basemap ?? layer;
-
-function frameLayer(frame: MapFrameState): BasemapChoice {
-  if (frame.basemap === "air") return "Satellite";
-  if (frame.basemap === "road") return "Base";
-  if (frame.basemap === "none") return "white";
-  return "Base";
-}
+/**
+ * 그림·타일 내보내기의 바탕. 화면과 같은 `resolveBasemap`: 결과가 지정한 배경(D01은 항상 Satellite) > 고른 배경 >
+ * 쓸 수 있는 바탕 자료가 있으면 벡터 > 일반지도. 바탕 자료 없는 모델이 vector를 받아도 빈 격자가 아니라 일반지도 타일을 쓴다.
+ */
+export const effectiveLayer = (model: MapModel, layer?: BasemapChoice): BasemapChoice => resolveBasemap(model, layer);
 
 function reportFrameStyle(frame: MapFrameState, style: PageStyle, model: MapModel, scaleOptions: ReportScaleOptions): PageStyle {
   return {
@@ -189,7 +187,7 @@ export function svgOfRose(model: RoseModel, width: number, height: number, seaso
   }
 }
 
-async function toImage(svg: string, mime: "image/png" | "image/jpeg", quality?: number, width = OUT_W, height = OUT_H): Promise<string> {
+async function toImage(svg: string, mime: "image/png" | "image/jpeg", quality?: number, width = OUT_W, height = OUT_H, opaque = true): Promise<string> {
   const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }));
   try {
     const img = new Image();
@@ -199,8 +197,10 @@ async function toImage(svg: string, mime: "image/png" | "image/jpeg", quality?: 
     canvas.width = width;
     canvas.height = height;
     const g = canvas.getContext("2d")!;
-    g.fillStyle = "#fff";
-    g.fillRect(0, 0, width, height);
+    if (opaque) {
+      g.fillStyle = "#fff";
+      g.fillRect(0, 0, width, height);
+    }
     g.drawImage(img, 0, 0, width, height);
     // 지도(사진에 가까운 래스터)는 JPEG로 충분하지만 S01 매스는 새 WebGL PNG를 보존한다.
     return quality === undefined ? canvas.toDataURL(mime) : canvas.toDataURL(mime, quality);
@@ -212,6 +212,8 @@ async function toImage(svg: string, mime: "image/png" | "image/jpeg", quality?: 
 /** true PNG path; JPEG quality 0.82 belongs only to toJpeg below. */
 export const toPng = (svg: string, width = OUT_W, height = OUT_H): Promise<string> => toImage(svg, "image/png", undefined, width, height);
 const toJpeg = (svg: string, width = OUT_W, height = OUT_H): Promise<string> => toImage(svg, "image/jpeg", 0.82, width, height);
+/** 알파를 보존하는 PNG: 벡터 바탕 위에 얹는 값 래스터 그림용(흰 바탕을 깔지 않는다). */
+const toTransparentPng = (svg: string, width = OUT_W, height = OUT_H): Promise<string> => toImage(svg, "image/png", undefined, width, height, false);
 
 /** 타일 저장용 SVG → PNG. scale=2이면 1600×1200 SVG가 3200×2400 PNG가 된다. */
 export const svgToPng = (svg: string, width: number, height: number, scale = 2): Promise<string> => toPng(svg, Math.round(width * scale), Math.round(height * scale));
@@ -242,7 +244,10 @@ export async function rasterizeMap(
     if (d) got.set(u, d);
   }
   await loadRasters(model, rasterCache);
-  return toJpeg(svgOf(model, got, activeLayer, { ...extra, viewport: vp }, rasterCache, width, height), Math.max(1, Math.round(width * 2)), Math.max(1, Math.round(height * 2)));
+  const svg = svgOf(model, got, activeLayer, { ...extra, viewport: vp }, rasterCache, width, height);
+  const outW = Math.max(1, Math.round(width * 2));
+  const outH = Math.max(1, Math.round(height * 2));
+  return extra.transparent ? toTransparentPng(svg, outW, outH) : toJpeg(svg, outW, outH);
 }
 
 type SheetCell = NonNullable<Extract<PlannedSlide, { kind: "sheet" }>["cells"][number]>;
@@ -352,7 +357,13 @@ function extraFor(p: PlannedSlide, model: MapModel): Extra {
 }
 
 /** 계획의 모든 지도 자리에 대한 PNG. 실패한 장은 빠진다(렌더러가 자리표시를 넣는다). */
-export async function buildMapImages(plan: PlannedSlide[], layer: BasemapChoice = "white"): Promise<MapImages> {
+export async function buildMapImages(plan: PlannedSlide[], layer?: BasemapChoice, options: { baseTheme?: BaseThemeId; mapDrawing?: PptxMapDrawing } = {}): Promise<MapImages> {
+  const { baseTheme } = options;
+  // 편집 가능한 도형이면 PPT가 지도를 도형으로 그리므로 그림은 값 래스터·밀집 층만 담는다. "image"면 지도 전체가 한 장이다.
+  const editable = options.mapDrawing !== "image";
+  // 벡터 바탕은 PPT가 도형으로 그린다. 그림에는 바탕을 빼고(투명 PNG), 값 래스터·밀집 층이 없으면 그림 자체를 만들지 않는다.
+  const rasterOnly = (status: ReturnType<typeof nativeMapStatus>, drawn: BasemapChoice) => editable && status.native && drawn === "vector";
+  const hasRasterContent = (status: ReturnType<typeof nativeMapStatus>) => status.rasterValues.length > 0 || status.rasterLayers.length > 0;
   const cache = new Map<string, string | null>();
   const rasterCache = await prefetchRasters(plan, "");
   const out: MapImages = {};
@@ -376,13 +387,18 @@ export async function buildMapImages(plan: PlannedSlide[], layer: BasemapChoice 
             const cellScaleOptions = frame ? scaleOptionsForFrame(rect.w * 25.4, { width: cellWidth, height: cellHeight, siteX: 0.5, fill: 0.8 }) : null;
             const cellStyle = frame && cellScaleOptions ? reportFrameStyle(frame, cell.style ?? p.style ?? {}, model, cellScaleOptions) : cell.style;
             const status = nativeMapStatus(model);
-            out[cell.mapKey] = await rasterizeMap(renderModel, cache, frame ? frameLayer(frame) : effectiveLayer(model, layer), {
+            const drawn = exportBasemap(model, layer, frame);
+            const vectorLayers = rasterOnly(status, drawn);
+            if (vectorLayers && !hasRasterContent(status)) continue;
+            out[cell.mapKey] = await rasterizeMap(renderModel, cache, drawn, {
               siteX: 0.5,
               avoid: [],
               legend: false,
               bare: false,
+              baseTheme,
+              transparent: vectorLayers,
               pinnedKeys: cell.pinnedKeys,
-              backgroundOnly: status.native ? status.rasterLayers : false,
+              backgroundOnly: editable && status.native ? status.rasterLayers : false,
               hiddenKeys: [...new Set([...(cellStyle?.hiddenKeys ?? []), ...(frame?.hiddenLabelKeys ?? [])])],
               deletedElementKeys: frame?.deletedElementKeys,
               labelBoxes: frame?.labelBoxes,
@@ -426,10 +442,13 @@ export async function buildMapImages(plan: PlannedSlide[], layer: BasemapChoice 
     try {
       const extra = extraFor(p, model);
       const status = nativeMapStatus(model);
-      const nativeBackground = p.kind === "tile" && status.native;
+      const nativeBackground = editable && p.kind === "tile" && status.native;
       const frame = p.kind === "tile" && p.page?.kind === "tile" ? p.page.frame : undefined;
       const renderModel = frame ? { ...model, basemap: undefined } : model;
-      out[key] = await rasterizeMap(renderModel, cache, frame ? frameLayer(frame) : effectiveLayer(model, layer), { ...extra, backgroundOnly: nativeBackground ? status.rasterLayers : false }, rasterCache);
+      const drawn = exportBasemap(model, layer, frame);
+      const vectorLayers = p.kind === "tile" && rasterOnly(status, drawn);
+      if (vectorLayers && !hasRasterContent(status)) continue;
+      out[key] = await rasterizeMap(renderModel, cache, drawn, { ...extra, baseTheme, transparent: vectorLayers, backgroundOnly: nativeBackground ? status.rasterLayers : false }, rasterCache);
     } catch (e) {
       console.warn(`지도 이미지 생성 실패 (${key})`, e);
     }

@@ -224,8 +224,9 @@ export default function ExportPanel({ plan, format, basemap, currentPageId, sele
             import("@/lib/v2/report/render-pptx"),
             import("@/lib/v2/report/map-image"),
           ]);
-          const images = await buildMapImages(exportPlan, basemap).catch(() => ({}));
-          return renderReportPptx(exportPlan, images, { mapDrawing: drawing });
+          // 그림과 PPT 도형이 같은 바탕·테마를 쓰도록 같은 값을 둘 다에 넘긴다.
+          const images = await buildMapImages(exportPlan, basemap, { baseTheme: baseThemeId, mapDrawing: drawing }).catch(() => ({}));
+          return renderReportPptx(exportPlan, images, { mapDrawing: drawing, basemap, baseTheme: baseThemeId });
         },
         rasterize,
         pngToJpeg: pngBlobToJpeg,

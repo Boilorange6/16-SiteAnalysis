@@ -1,6 +1,7 @@
 import { toLngLat, type LngLat } from "../crs";
 import type { GreenKind, Scene } from "../scene";
 import { publicRailLine, railLineColor } from "../tile/rail-presentation";
+import type { MapFrameState } from "../report/report-doc";
 import type { BasemapChoice } from "./map-projection";
 
 /** 벡터 바탕이 그리는 층. 묶음(`MapSceneBaseBucket.layer`)과 타일별 생략(`BASE_SUPPRESS`)이 같은 이름을 쓴다. */
@@ -68,3 +69,18 @@ export function resolveBasemap(model: { basemap?: BasemapChoice; base?: MapBase 
   if (chosen && (chosen !== "vector" || usable)) return chosen;
   return usable ? "vector" : "white";
 }
+
+/**
+ * 보고서 지도 프레임의 배경 선택 -> 실제 바탕. 화면(SlideSurface)과 PPT·그림이 같은 함수를 쓴다.
+ * "base"는 쓸 수 있는 바탕 자료가 있으면 벡터, 없으면 VWorld 기본 지도.
+ */
+export function frameBasemap(frame: { basemap: MapFrameState["basemap"] }, model: { base?: MapBase | null }): BasemapChoice {
+  if (frame.basemap === "air") return "Satellite";
+  if (frame.basemap === "none") return "white";
+  if (frame.basemap === "base" && baseUsable(model.base)) return "vector";
+  return "Base";
+}
+
+/** 내보내기(PPT·그림)의 바탕: 프레임이 있으면 프레임 선택, 없으면 결과 지정 > 보드 선택 > 벡터 > 일반지도. */
+export const exportBasemap = (model: { basemap?: BasemapChoice; base?: MapBase | null }, chosen?: BasemapChoice, frame?: { basemap: MapFrameState["basemap"] }): BasemapChoice =>
+  frame ? frameBasemap(frame, model) : resolveBasemap(model, chosen);

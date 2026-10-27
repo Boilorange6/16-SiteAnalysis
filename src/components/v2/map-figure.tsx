@@ -44,6 +44,8 @@ export type MapFigureProps = {
   bare?: boolean;
   /** 배경 타일·래스터만 남긴다. 문자열 배열이면 해당 벡터 층만 래스터에 남긴다. */
   backgroundOnly?: boolean | readonly string[];
+  /** true면 바탕색·격자·배경 타일·벡터 바탕을 그리지 않아 투명 PNG가 된다(PPT가 바탕을 도형으로 따로 그릴 때의 값 래스터 그림). */
+  transparent?: boolean;
   /** 직렬화용: width/height 속성을 붙인다. 아니면 부모를 채운다 */
   fixed?: boolean;
   /** 보고서 미리보기와 PPT가 공유하는 논리 크기 단위. 일반 지도는 자동 단위를 쓴다. */
@@ -387,7 +389,7 @@ function backgroundTransform(from: Viewport, to: Viewport, width: number, height
   return `matrix(${scale},0,0,${scale},${e},${f})`;
 }
 
-function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseTheme: baseThemeProp, tileHref, rasterHref, rasterName, bare, backgroundOnly = false, fixed, layoutUnit, labelScale = 1, compact = false, label, legend, legendY, north: northOpt, northX, northScale, scale = true, showRadius = true, showSiteMarker = true, credit = true, bottomInset = 0, avoid = EMPTY_BOXES, siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, scaleY, scaleBoxOverride, scaleChromeScale, scaleFontScale, siteY = 0.5, calloutTop: calloutTopOpt, calloutLeftBottom, selectedFids = EMPTY_KEYS, terrainSection = "A", highlightLabel = null, legendFocus = null, highlightPinnedLabel = null, hoverKey = null, emphasisKey = null, pinnedKeys = EMPTY_KEYS, showAutomaticLabels = true, onFeatureClick, onFeatureHover, onFeatureSelect, onLabelSelect, onFeaturePin, onLegendHover, onLegendPin, path = EMPTY_PATH, onMapClick, view, viewport, dragging = false, previewInteraction = false, preserveShortCalloutLabels = false, hiddenKeys = EMPTY_KEYS, deletedElementKeys = EMPTY_KEYS, labelBoxes = EMPTY_LABEL_BOXES, onLabelBoxChange, onLabelBoxReset, selectedElementKey = null, selectedLabelKey = null }: MapFigureProps) {
+function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseTheme: baseThemeProp, tileHref, rasterHref, rasterName, bare, backgroundOnly = false, transparent = false, fixed, layoutUnit, labelScale = 1, compact = false, label, legend, legendY, north: northOpt, northX, northScale, scale = true, showRadius = true, showSiteMarker = true, credit = true, bottomInset = 0, avoid = EMPTY_BOXES, siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, scaleY, scaleBoxOverride, scaleChromeScale, scaleFontScale, siteY = 0.5, calloutTop: calloutTopOpt, calloutLeftBottom, selectedFids = EMPTY_KEYS, terrainSection = "A", highlightLabel = null, legendFocus = null, highlightPinnedLabel = null, hoverKey = null, emphasisKey = null, pinnedKeys = EMPTY_KEYS, showAutomaticLabels = true, onFeatureClick, onFeatureHover, onFeatureSelect, onLabelSelect, onFeaturePin, onLegendHover, onLegendPin, path = EMPTY_PATH, onMapClick, view, viewport, dragging = false, previewInteraction = false, preserveShortCalloutLabels = false, hiddenKeys = EMPTY_KEYS, deletedElementKeys = EMPTY_KEYS, labelBoxes = EMPTY_LABEL_BOXES, onLabelBoxChange, onLabelBoxReset, selectedElementKey = null, selectedLabelKey = null }: MapFigureProps) {
   if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
     const target = window as Window & { __V2_PREVIEW_METRICS__?: Record<string, number> };
     const metrics = target.__V2_PREVIEW_METRICS__ ?? (target.__V2_PREVIEW_METRICS__ = {});
@@ -627,7 +629,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseT
   const scaleUnit = scene.unit * scene.scaleChromeScale;
   const scaleTextUnit = scene.unit * scene.scaleChromeScale * scene.scaleFontScale;
 
-  const tiles = basemap === "tiles" && activeLayer !== "vector" ? scene.tiles : [];
+  const tiles = basemap === "tiles" && activeLayer !== "vector" && !transparent ? scene.tiles : [];
   // 묶음 경로 문자열은 묶음 배열(장면·뷰포트·테마별 캐시)이 바뀔 때만 다시 만든다. 지물마다 DOM 노드를 만들지 않는다.
   const baseBuckets = scene.base?.buckets;
   const baseBucketPaths = useMemo(() => (baseBuckets ?? []).map((bucket) => ({
@@ -1340,8 +1342,8 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseT
         })}
       </defs>
       <g clipPath={`url(#c${uid})`}>
-        <rect width={W} height={H} fill={scene.base?.bg ?? "#f2f2ef"} />
-        {basemap === "none" && !scene.base && (
+        {!transparent && <rect width={W} height={H} fill={scene.base?.bg ?? "#f2f2ef"} />}
+        {!transparent && basemap === "none" && !scene.base && (
           <g stroke="#dcdde1" strokeWidth={1}>
             {Array.from({ length: Math.ceil(W / grid) + 1 }, (_, i) => (
               <line key={`v${i}`} x1={(cx % grid) + i * grid} y1={0} x2={(cx % grid) + i * grid} y2={H} />
@@ -1372,7 +1374,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseT
         {tiles.length > 0 && sat && !muted && <rect width={W} height={H} fill="#000" fillOpacity={0.12} />}
 
         {/* 벡터 바탕: 층별 묶음(경로 하나씩)과 그 바로 위의 이름 라벨. 주제 레이어보다 아래, 선택·hover 대상이 아니다. */}
-        {scene.base && (
+        {scene.base && !transparent && (
           <g data-map-base="vector" pointerEvents="none" opacity={muted ? 0.55 : undefined}>
             {baseBucketPaths.map(({ bucket, d }) => (
               <path

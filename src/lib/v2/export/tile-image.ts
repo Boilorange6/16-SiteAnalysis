@@ -86,7 +86,7 @@ function resolveHref<T>(resolver: HrefResolver<T> | undefined, value: T, mapKey:
 }
 
 function layoutForMap(model: MapModel, layout: TileLayout, requestedLayer?: BasemapChoice): { layer: BasemapChoice; urls: string[] } {
-  const layer = effectiveLayer(model, requestedLayer ?? model.basemap ?? "white");
+  const layer = effectiveLayer(model, requestedLayer);
   const viewport = framedViewport(model.center, model.radiusM, layout.visualWidth, layout.visualHeight);
   const urls = BASEMAP_STACK[layer].flatMap((mapLayer) => tilesFor(viewport).map((tile) => tileUrl(mapLayer, tile.z, tile.x, tile.y)));
   return { layer, urls };

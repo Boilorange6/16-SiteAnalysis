@@ -7,6 +7,7 @@ import { A05FilterPanel } from "@/lib/v2/tile/a05/Panel";
 import type { A05Filter } from "@/lib/v2/engine/a05-filter";
 import { formatScaleDenominator, parseScaleInput, SCALE_PRESETS, scaleForFrame, siteAnchoredZoomPatch, siteFitPatch, zoomForScale, type ReportScaleOptions } from "@/lib/v2/ui/report-scale";
 import { legendItemsForModel } from "@/lib/v2/ui/map-layers";
+import { baseUsable } from "@/lib/v2/ui/basemap";
 import type { TileView } from "@/lib/v2/ui/tile-view";
 import styles from "./report-mode.module.css";
 
@@ -274,10 +275,14 @@ export default function DrawerMap({ page, frame, view, cell, scaleOptions, sameE
         <section className={styles.mapSection} aria-labelledby="map-basemap-heading">
           <h3 id="map-basemap-heading" className={styles.mapSectionTitle}>배경지도</h3>
           <div className={styles.basemapGrid}>
-            {BASEMAPS.map((item) => <button key={item.value} type="button" className={frame.basemap === item.value ? styles.basemapActive : styles.basemapCell} aria-pressed={frame.basemap === item.value} onClick={() => onFrame({ basemap: item.value })}>
-              <span className={`${styles.basemapPreview} ${styles["basemap" + item.value]}`} aria-hidden="true" />
-              <span>{item.label}</span>
-            </button>)}
+            {BASEMAPS.map((item) => {
+              // 기본 지도(벡터)는 바탕 자료가 있는 분석에서만 고를 수 있다. 보드의 바탕 선택과 같은 규칙.
+              const unavailable = item.value === "base" && !baseUsable(model?.base);
+              return <button key={item.value} type="button" className={frame.basemap === item.value ? styles.basemapActive : styles.basemapCell} aria-pressed={frame.basemap === item.value} aria-disabled={unavailable || undefined} title={unavailable ? "이 분석에는 기본 지도 자료가 없습니다" : undefined} style={unavailable ? { opacity: 0.45, cursor: "not-allowed" } : undefined} onClick={() => { if (!unavailable) onFrame({ basemap: item.value }); }}>
+                <span className={`${styles.basemapPreview} ${styles["basemap" + item.value]}`} aria-hidden="true" />
+                <span>{item.label}</span>
+              </button>;
+            })}
           </div>
         </section>
 
