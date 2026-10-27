@@ -1,7 +1,9 @@
 import type { MapFeature, MapLine, MapPolygon, RasterRef, TileResult } from "../tile-result";
 import { railLineBadgeText } from "../tile/rail-presentation";
 import type { MapBase } from "./basemap";
+import { paletteLayerStyle, type DiagramPaletteRef } from "./map-palette";
 import type { BasemapChoice } from "./map-projection";
+import type { BaseThemeRef, BaseToggleLayer } from "./map-theme";
 
 /** MapFigure가 그리는 입력. 카드·상세·PPT가 같은 것을 쓴다. */
 export type MapModel = {
@@ -35,6 +37,12 @@ export type MapModel = {
   notes: string[];
   /** 선택한 모드에 표시할 지물이 없을 때 지도 위에 보여 주는 안내 */
   emptyMessage?: string;
+  /** 지도 바탕 테마. 없으면 기본 테마. */
+  baseTheme?: BaseThemeRef;
+  /** 다이어그램 팔레트. 없거나 `app`이면 레이어 원래 색. */
+  palette?: DiagramPaletteRef;
+  /** 끈 바탕 레이어. */
+  baseHide?: BaseToggleLayer[];
 };
 
 /** 지도 레이어 id → 라벨·색·표현 (엔진의 legend 라벨과 MapFigure가 함께 쓴다). 색은 화면 쪽에서 정한다. */
@@ -112,7 +120,7 @@ export type RasterStyle = {
  */
 export const STRIP_COLORS = ["#440154", "#414487", "#2A788E", "#22A884", "#7AD151", "#FDE725", "#94A3B8"];
 
-const LEGEND_GROUPS = {
+export const LEGEND_GROUPS = {
   tradeQuantiles: "trade:quantiles",
   tradeDistrict: "trade:district",
   rentJeonseQuantiles: "rent:quantiles:jeonse",
@@ -545,7 +553,7 @@ export const legendItems = (model: MapModel): MapLegendLayerItem[] => {
     }
     if (layer === "rail_station_axis" && dynamicRailInserted) return [];
     if (!present.has(layer)) return [];
-    const style = LAYER_STYLES[layer];
+    const style = modelLayerStyle(model, layer);
     if (seenLabels.has(style.label)) return [];
     seenLabels.add(style.label);
     const colors = lineColorsByLabel.get(style.label) ?? [];
@@ -650,7 +658,7 @@ export function legendItemsForModel(model: MapModel, limit = Number.POSITIVE_INF
   const itemForLayer = (layer: string): MapLegendLayerItem | undefined => {
     const existing = staticItems.find((item) => item.layer === layer);
     if (existing) return existing;
-    const style = LAYER_STYLES[layer];
+    const style = LAYER_STYLES[layer] ? modelLayerStyle(model, layer) : undefined;
     return style ? { layer, label: style.label, color: style.color, ...lineLegendStyleForModel(style, layer, model), highlight: false } : undefined;
   };
   const seenDisplayLabels = new Set<string>();
@@ -761,6 +769,10 @@ export function compactLegendItems(model: MapModel, limit = 3) {
 }
 
 export const layerStyle =(layer: string): LayerStyle => LAYER_STYLES[layer] ?? FALLBACK;
+
+/** 모델의 다이어그램 팔레트를 입힌 레이어 스타일. 팔레트가 없으면 layerStyle과 같은 객체. */
+export const modelLayerStyle = (model: Pick<MapModel, "palette"> | null | undefined, layer: string): LayerStyle =>
+  paletteLayerStyle(layer, layerStyle(layer), model?.palette);
 
 export const isBuildingLayer = (layer: string): boolean => layer === "building" || layer === "svf_building" || layer.startsWith("bldg_") || layer.includes("building");
 

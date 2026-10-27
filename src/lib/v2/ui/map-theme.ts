@@ -91,6 +91,12 @@ export const BASE_THEME_IDS = Object.keys(BASE_THEMES) as readonly BaseThemeId[]
 
 export const DEFAULT_BASE_THEME: BaseThemeId = "warm";
 
+/** 사용자가 지도에서 끄고 켤 수 있는 바탕 레이어. */
+export type BaseToggleLayer = "building" | "parcel" | "road" | "green" | "water";
+export const BASE_TOGGLE_LAYERS: readonly BaseToggleLayer[] = ["building", "parcel", "road", "green", "water"];
+export const isBaseToggleLayer = (value: unknown): value is BaseToggleLayer =>
+  typeof value === "string" && (BASE_TOGGLE_LAYERS as readonly string[]).includes(value);
+
 export const isBaseThemeId = (value: unknown): value is BaseThemeId =>
   typeof value === "string" && Object.prototype.hasOwnProperty.call(BASE_THEMES, value);
 

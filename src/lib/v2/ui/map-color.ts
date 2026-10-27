@@ -1,14 +1,15 @@
 /** 지도 색 계산(순수 함수): 대비·명도 이동, 만든 색 생성기, 바탕 테마 경고. */
+import type { DiagramPaletteColors } from "./map-palette";
 import type { BaseTheme, BaseThemeColors } from "./map-theme";
 
 export type Mood = "자동" | "부드럽게" | "선명하게" | "따뜻하게" | "차갑게" | "밝게" | "어둡게" | "파스텔";
 export const MOODS: readonly Mood[] = ["자동", "부드럽게", "선명하게", "따뜻하게", "차갑게", "밝게", "어둡게", "파스텔"];
 
-const h2r = (h: string): [number, number, number] => {
+export const h2r = (h: string): [number, number, number] => {
   const s = h.replace("#", "");
   return [parseInt(s.slice(0, 2), 16), parseInt(s.slice(2, 4), 16), parseInt(s.slice(4, 6), 16)];
 };
-const r2h = (r: number[]) =>
+export const r2h = (r: number[]) =>
   "#" + r.map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join("");
 
 export function hsl(h: number, s: number, l: number): string {
@@ -103,6 +104,84 @@ export function generateBaseColors(
     if (only ? k === only : !locks[k]) out[k] = c[k];
   }
   return out;
+}
+
+type PaletteLocks = Partial<Record<number | "seq", boolean>>;
+
+function paletteCatColor(i: number, mood: Mood, h0: number, rnd: (a: number, b: number) => number): string {
+  let h = h0 + i * 137.5;
+  let s = rnd(55, 68);
+  let l = rnd(52, 62) + (i % 2 ? 6 : -4);
+  if (mood === "부드럽게") { s = rnd(35, 45); l = rnd(66, 74); }
+  if (mood === "선명하게") { s = rnd(72, 85); l = rnd(48, 56); }
+  if (mood === "따뜻하게") { h = (h0 % 50) - 10 + i * 22; s = rnd(55, 70); l = 50 + (i % 3) * 8; }
+  if (mood === "차갑게") { h = 150 + (h0 % 30) + i * 17; s = rnd(40, 60); l = 45 + (i % 3) * 10; }
+  if (mood === "밝게") { s = rnd(55, 65); l = rnd(70, 78); }
+  if (mood === "어둡게") { s = rnd(45, 60); l = rnd(32, 40); }
+  if (mood === "파스텔") { s = rnd(50, 65); l = rnd(80, 86); }
+  return hsl(h, s, l);
+}
+
+/** 첫 범주색의 색상으로 밝음(L 92) → 어두움(L 28) 5점을 만든다. */
+function paletteSeq(cat0: string): string[] {
+  const [h, s] = toHsl(cat0);
+  return [92, 76, 60, 44, 28].map((l) => hsl(h, Math.max(30, Math.min(80, s)), l));
+}
+
+/** 분위기에 맞춰 다이어그램 팔레트(범주 8색 + 순서 5색)를 만든다. 잠근 칸·`only` 밖의 칸은 current 그대로. */
+export function generatePaletteColors(
+  mood: Mood,
+  current: DiagramPaletteColors,
+  locks: PaletteLocks,
+  only?: number | "seq",
+  rng: () => number = Math.random,
+): DiagramPaletteColors {
+  const rnd = (a: number, b: number) => a + rng() * (b - a);
+  const h0 = rnd(0, 360);
+  const cat = current.cat.map((c, i) => {
+    if (only !== undefined) return only === i ? paletteCatColor(i, mood, rnd(0, 360), rnd) : c;
+    return locks[i] ? c : paletteCatColor(i, mood, h0, rnd);
+  });
+  const regenSeq = only === "seq" || (only === undefined && !locks.seq);
+  return { cat, seq: regenSeq ? paletteSeq(cat[0]) : current.seq };
+}
+
+const labOf = (rgbLin: number[]): [number, number, number] => {
+  const [r, g, b] = rgbLin;
+  const x = (r * 0.4124 + g * 0.3576 + b * 0.1805) / 0.95047;
+  const y = r * 0.2126 + g * 0.7152 + b * 0.0722;
+  const z = (r * 0.0193 + g * 0.1192 + b * 0.9505) / 1.08883;
+  const f = (t: number) => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116);
+  return [116 * f(y) - 16, 500 * (f(x) - f(y)), 200 * (f(y) - f(z))];
+};
+const deutan = (l: number[]): number[] =>
+  [
+    0.367322 * l[0] + 0.860646 * l[1] - 0.227968 * l[2],
+    0.280085 * l[0] + 0.672501 * l[1] + 0.047413 * l[2],
+    -0.01182 * l[0] + 0.04294 * l[1] + 0.968881 * l[2],
+  ].map((v) => Math.max(0, Math.min(1, v)));
+const deltaE = (a: number[], b: number[]) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+
+/** 팔레트 경고: 범주색끼리 ΔE 14 미만, 녹색약 시뮬레이션에서 ΔE 11 미만. */
+export function paletteWarnings(colors: DiagramPaletteColors): { level: "bad" | "ok"; text: string }[] {
+  const L = colors.cat.map((c) => h2r(c).map(lin));
+  let mn = Infinity;
+  let mnD = Infinity;
+  let pa = [0, 1];
+  let pd = [0, 1];
+  for (let i = 0; i < L.length; i++) {
+    for (let j = i + 1; j < L.length; j++) {
+      const e = deltaE(labOf(L[i]), labOf(L[j]));
+      const d = deltaE(labOf(deutan(L[i])), labOf(deutan(L[j])));
+      if (e < mn) { mn = e; pa = [i, j]; }
+      if (d < mnD) { mnD = d; pd = [i, j]; }
+    }
+  }
+  const w: { level: "bad" | "ok"; text: string }[] = [];
+  if (mn < 14) w.push({ level: "bad", text: `비슷한 색: ${pa[0] + 1}번·${pa[1] + 1}번` });
+  if (mnD < 11) w.push({ level: "bad", text: `녹색약에서 구분 어려움: ${pd[0] + 1}번·${pd[1] + 1}번` });
+  if (!w.length) w.push({ level: "ok", text: "색 구분 충분 (색약 포함)" });
+  return w;
 }
 
 /** 바탕 테마 경고: 라벨 대비 4.5:1, 건물과 바탕이 거의 같은 색. */
