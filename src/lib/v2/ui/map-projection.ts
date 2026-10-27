@@ -194,9 +194,10 @@ export function tilesFor(v: Viewport): MapTile[] {
 
 /** 배경지도 종류: 일반(white)·지도(Base)·항공(Satellite 위에 Hybrid 글자). 서버 프록시의 레이어 이름과 같다. */
 export type BasemapLayer = "white" | "Base" | "Satellite" | "Hybrid";
-export type BasemapChoice = "white" | "Base" | "Satellite";
+/** "vector"는 분석 장면으로 직접 그리는 기본 지도(타일 없음). */
+export type BasemapChoice = "vector" | "white" | "Base" | "Satellite";
 /** 선택 하나가 겹쳐 그리는 레이어(아래→위) */
-export const BASEMAP_STACK: Record<BasemapChoice, BasemapLayer[]> = { white: ["white"], Base: ["Base"], Satellite: ["Satellite", "Hybrid"] };
+export const BASEMAP_STACK: Record<BasemapChoice, BasemapLayer[]> = { vector: [], white: ["white"], Base: ["Base"], Satellite: ["Satellite", "Hybrid"] };
 
 /**
  * 배경 타일 주소 = 우리 서버 프록시(같은 출처, basePath /site). VWorld 키는 서버에만 있다.

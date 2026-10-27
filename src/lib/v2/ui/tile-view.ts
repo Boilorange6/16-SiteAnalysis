@@ -8,6 +8,7 @@ import { tileClientModuleFor } from "../tile/client";
 import type { Metric, TileHeadlinePolicy } from "../tile/types";
 import type { A05Counts, A05Filter } from "../engine/a05-filter";
 import type { CalloutLegendSpec, Complex, Stat } from "./callout-layout";
+import { mapBaseFromScene } from "./basemap";
 import type { MapModel } from "./map-layers";
 import type { MassModel } from "./mass-projection";
 import { catalogEntry, sourceName, TILE_CODES, type TileCode } from "./tile-catalog";
@@ -462,7 +463,13 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
     layerOptions,
     defaultLayer,
   };
-  return module?.view?.(baseView, r) ?? baseView;
+  const view = module?.view?.(baseView, r) ?? baseView;
+  // `results.map(toTileView)`는 scene 자리에 배열 인덱스를 넘긴다 — origin이 없으면 장면이 아니다.
+  if (!scene?.origin) return view;
+  // 한 장면의 모든 타일이 같은 바탕 객체를 공유한다(타일별 생략은 model.tileCode로 그리는 쪽이 정한다).
+  const base = mapBaseFromScene(scene);
+  const withBase = (model: MapModel | null | undefined): MapModel | null | undefined => model ? { ...model, base } : model;
+  return { ...view, map: withBase(view.map) ?? null, backdrop: { ...view.backdrop, base }, ...(view.layerSourceMap ? { layerSourceMap: withBase(view.layerSourceMap) } : {}) };
 }
 
 /** 카드·펼침 창·보고서가 같은 레이어 선택 결과를 사용하도록 지도 입력만 파생한다. */
@@ -498,7 +505,7 @@ export function formatSiteZoning(zoning: string | null | undefined): string {
   return value || "용도지역 미확인";
 }
 
-export function toSummaryView(s: SiteSummary, results: TileResult[]): SummaryView {
+export function toSummaryView(s: SiteSummary, results: TileResult[], scene?: Scene | null): SummaryView {
   const dates = results.flatMap((r) => r.provenance.sources.map((x) => x.sourceAsOf)).filter((d): d is string => !!d).sort();
   const weakStatuses = new Set<TileResult["status"]>(["failed", "not_provided", "no_data", "cancelled"]);
   const weak = results.filter((r) => weakStatuses.has(r.status));
@@ -521,6 +528,6 @@ export function toSummaryView(s: SiteSummary, results: TileResult[]): SummaryVie
     asOfLine: dates.length ? `자료 기준일 ${dates[0]}${dates.length > 1 && dates[0] !== dates[dates.length - 1] ? ` ~ ${dates[dates.length - 1]}` : ""}` : "자료 기준일 미확인",
     incomplete: weak.length > 0,
     incompleteCount: weak.length,
-    map: results[0] ? { center: results[0].conditions.center, radiusM: s.radiusM, features: [], total: 0, notes: [], siteParcel } : null,
+    map: results[0] ? { center: results[0].conditions.center, radiusM: s.radiusM, features: [], total: 0, notes: [], siteParcel, ...(scene ? { base: mapBaseFromScene(scene) } : {}) } : null,
   };
 }

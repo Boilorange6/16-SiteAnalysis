@@ -9,8 +9,41 @@ import { tileClientModuleFor } from "../tile/client";
 import { canonicalRailLineLabel, railLineColor, railLineIsLightRail, railStationMatchKey } from "../tile/rail-presentation";
 import { terrainSectionLabelAnchor } from "./terrain-section";
 import type { MapLabelBox } from "../report/report-doc";
+import type { LngLat } from "../crs";
+import { BASE_SUPPRESS, resolveBasemap, type BaseLayerKind, type MapBase } from "./basemap";
+import { baseTheme, type BaseTheme, type BaseThemeId } from "./map-theme";
 
 export type MapSceneBox = { x0: number; y0: number; x1: number; y1: number };
+
+/** 바탕 한 층의 도형 묶음. 화면은 묶음마다 경로 하나, PPT는 묶음마다 편집 도형 하나로 그린다. */
+export type MapSceneBaseBucket = {
+  key: string;
+  layer: BaseLayerKind;
+  /** 사용자에게 보이는 묶음 이름(PPT 도형 이름 등) */
+  display: string;
+  /** 면(고리)이면 true, 선이면 false */
+  closed: boolean;
+  paths: Array<Array<[number, number]>>;
+  fill: string | null;
+  stroke: string | null;
+  strokeWidth: number;
+  dash?: string;
+  opacity?: number;
+};
+
+/** 바탕의 이름 라벨. (x, y)는 글자 중심이고 angle(-90~90도)만큼 돌려 쓴다. */
+export type MapSceneBaseLabel = {
+  key: string;
+  kind: "road" | "place" | "park" | "station";
+  text: string;
+  x: number;
+  y: number;
+  angle: number;
+  fontSize: number;
+  color: string;
+  halo: string;
+  box: MapSceneBox;
+};
 
 type ScaleBarLayout = {
   bar: ReturnType<typeof scaleBar>;
@@ -355,7 +388,10 @@ export type MapSceneOptions = {
   model: MapModel;
   width: number;
   height: number;
+  /** 사용자가 고른 바탕. 없으면 바탕 자료가 있는 모델은 벡터, 아니면 일반지도. */
   activeLayer?: BasemapChoice;
+  /** 벡터 바탕의 색 테마(없으면 기본 테마). */
+  baseTheme?: BaseThemeId | null;
   fill?: number;
   siteX?: number;
   siteY?: number;
@@ -424,6 +460,8 @@ export type MapScene = {
   radiusPx: number;
   terrainSection: "A" | "B";
   tiles: ReturnType<typeof tilesFor>;
+  /** 벡터 바탕(아래→위 순서의 묶음과 이름 라벨). 벡터 바탕이 아니면 null. */
+  base: { bg: string; buckets: MapSceneBaseBucket[]; labels: MapSceneBaseLabel[] } | null;
   features: MapSceneFeature[];
   lines: MapSceneLine[];
   polygons: MapScenePolygon[];
@@ -953,6 +991,181 @@ function buildRailScene(args: {
   return { routes, axes, routeLabels, axisLabels, stationLabels, exits, exitVisible, exitReferenceMpp: RAIL_EXIT_REFERENCE_MPP, occupiedBoxes };
 }
 
+// ── 벡터 바탕: 층별 묶음(경로 하나씩)과 겹치지 않는 이름 라벨 ──
+
+type BaseProjection = {
+  buckets: MapSceneBaseBucket[];
+  /** 이름별로 화면 안에서 가장 긴 도로 구간 */
+  roadRuns: Array<{ name: string; rank: number; run: Array<[number, number]>; length: number }>;
+  stations: Array<{ name: string; p: [number, number] }>;
+  places: Array<{ name: string; kind: "dong" | "park"; p: [number, number] }>;
+};
+
+const BASE_ROAD_RANK = ["고속도로", "간선", "보조간선", "집산", "국지", "보행·자전거", "기타"];
+const BASE_VIEW_MARGIN = 24;
+const BASE_STATION_SIDES = 12;
+const BASE_LABEL_MIN_WIDTH = 600;
+const BASE_LABEL_GAP = 1;
+const baseProjectionCache = new WeakMap<MapBase, Map<string, BaseProjection>>();
+const BASE_PROJECTION_CACHE_SIZE = 12;
+
+const round2 = (value: number): number => Math.round(value * 100) / 100;
+const baseRoadRank = (hierarchy: string): number => { const index = BASE_ROAD_RANK.indexOf(hierarchy); return index < 0 ? BASE_ROAD_RANK.length : index; };
+
+/** 한 장면·뷰포트·테마·생략 조합의 묶음은 33개 타일이 한 번만 계산한다. */
+function baseProjection(base: MapBase, theme: BaseTheme, vp: Viewport, width: number, height: number, mpp: number, suppress: ReadonlySet<BaseLayerKind>): BaseProjection {
+  const key = `${theme.id}|${vp.center[0]},${vp.center[1]},${vp.zoom}|${width}x${height}|${[...suppress].sort().join()}`;
+  let byKey = baseProjectionCache.get(base);
+  if (!byKey) baseProjectionCache.set(base, byKey = new Map());
+  const cached = byKey.get(key);
+  if (cached) return cached;
+  const project = makeProjector(vp);
+  const inFrame = (x: number, y: number, margin = 0) => x >= -margin && x <= width + margin && y >= -margin && y <= height + margin;
+  const visible = (points: ReadonlyArray<readonly [number, number]>, margin: number) => {
+    let x0 = Infinity; let y0 = Infinity; let x1 = -Infinity; let y1 = -Infinity;
+    for (const [x, y] of points) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    return x1 >= -margin && x0 <= width + margin && y1 >= -margin && y0 <= height + margin;
+  };
+  const toPx = (points: readonly LngLat[]): Array<[number, number]> => points.map(([lng, lat]) => { const [x, y] = project(lng, lat); return [round2(x), round2(y)]; });
+  /** 화면 밖 지물은 버리고, 안에 걸치는 면은 모든 고리를 함께 낸다(구멍 보존). */
+  const polygonRings = (polygons: readonly (readonly (readonly LngLat[])[])[]): Array<Array<[number, number]>> => polygons.flatMap((rings) => {
+    const projected = rings.map(toPx).filter((ring) => ring.length >= 3);
+    return projected.length > 0 && visible(projected[0]!, BASE_VIEW_MARGIN) ? projected : [];
+  });
+  const buckets: MapSceneBaseBucket[] = [];
+  const add = (bucket: Omit<MapSceneBaseBucket, "strokeWidth"> & { strokeWidth?: number }) => { if (bucket.paths.length > 0) buckets.push({ strokeWidth: 0, ...bucket }); };
+
+  if (!suppress.has("water")) add({ key: "water", layer: "water", display: "물", closed: true, paths: polygonRings(base.water), fill: theme.water, stroke: null });
+  if (!suppress.has("green")) {
+    for (const [kind, display] of [["forest", "숲"], ["park", "공원"], ["grass", "잔디"]] as const) {
+      const rings = base.green.filter((item) => (item.kind === "orchard" ? "grass" : item.kind) === kind).map((item) => item.rings);
+      add({ key: `green-${kind}`, layer: "green", display, closed: true, paths: polygonRings(rings), fill: theme.green[kind], stroke: null });
+    }
+  }
+  if (!suppress.has("parcel") && mpp <= theme.parcel.maxMPerPx) {
+    add({ key: "parcel", layer: "parcel", display: "필지선", closed: true, paths: polygonRings(base.parcels), fill: null, stroke: theme.parcel.line, strokeWidth: theme.parcel.lineWidthPx, opacity: theme.parcel.opacity });
+  }
+
+  const roadRuns = new Map<string, BaseProjection["roadRuns"][number]>();
+  if (!suppress.has("road")) {
+    const groups = new Map<string, { hierarchy: string; widthM: number; paths: Array<Array<[number, number]>> }>();
+    for (const road of base.roads) {
+      const widthM = Math.round(road.widthM);
+      const groupKey = `${road.hierarchy}|${widthM}`;
+      let group = groups.get(groupKey);
+      if (!group) groups.set(groupKey, group = { hierarchy: road.hierarchy, widthM, paths: [] });
+      const points = toPx(road.points);
+      if (points.length < 2) continue;
+      if (visible(points, BASE_VIEW_MARGIN + (widthM * theme.road.widthScale) / mpp)) group.paths.push(points);
+      if (!road.name) continue;
+      // 이름이 붙을 구간: 화면 안 연속 점들 중 가장 긴 것
+      let run: Array<[number, number]> = [];
+      let runLength = 0;
+      const close = () => {
+        const best = roadRuns.get(road.name!);
+        if (run.length >= 2 && (!best || runLength > best.length)) roadRuns.set(road.name!, { name: road.name!, rank: baseRoadRank(road.hierarchy), run, length: runLength });
+        run = []; runLength = 0;
+      };
+      for (const point of points) {
+        if (!inFrame(point[0], point[1])) { close(); continue; }
+        const previous = run.at(-1);
+        if (previous) runLength += Math.hypot(point[0] - previous[0], point[1] - previous[1]);
+        run.push(point);
+      }
+      close();
+    }
+    const ordered = [...groups.values()].filter((group) => group.paths.length > 0).sort((a, b) => a.widthM - b.widthM || baseRoadRank(a.hierarchy) - baseRoadRank(b.hierarchy));
+    const fillPx = (group: { widthM: number }) => Math.max(theme.road.minWidthPx, (group.widthM * theme.road.widthScale) / mpp);
+    for (const group of ordered) add({ key: `road-casing-${group.hierarchy}-${group.widthM}`, layer: "road", display: "도로 테두리", closed: false, paths: group.paths, fill: null, stroke: theme.road.casing, strokeWidth: round2(fillPx(group) + theme.road.casingM / mpp) });
+    for (const group of ordered) add({ key: `road-fill-${group.hierarchy}-${group.widthM}`, layer: "road", display: "도로", closed: false, paths: group.paths, fill: null, stroke: theme.road.fill, strokeWidth: round2(fillPx(group)) });
+  }
+  if (!suppress.has("rail")) {
+    const byColor = new Map<string, Array<Array<[number, number]>>>();
+    for (const line of base.rail) {
+      const points = toPx(line.points);
+      if (points.length < 2 || !visible(points, BASE_VIEW_MARGIN)) continue;
+      byColor.set(line.color, [...(byColor.get(line.color) ?? []), points]);
+    }
+    for (const [color, paths] of byColor) add({ key: `rail-${color}`, layer: "rail", display: "철도", closed: false, paths, fill: null, stroke: color, strokeWidth: theme.rail.widthPx, dash: theme.rail.dash, opacity: theme.rail.opacity });
+  }
+  if (!suppress.has("building")) add({ key: "building", layer: "building", display: "건물", closed: true, paths: polygonRings(base.buildings), fill: theme.building.fill, stroke: theme.building.line, strokeWidth: theme.building.lineWidthPx });
+  const stations: BaseProjection["stations"] = [];
+  if (!suppress.has("station")) {
+    const circles: Array<Array<[number, number]>> = [];
+    for (const station of base.stations) {
+      const [x, y] = project(station.p[0], station.p[1]);
+      if (!inFrame(x, y, theme.station.radiusPx)) continue;
+      stations.push({ name: station.name, p: [x, y] });
+      circles.push(Array.from({ length: BASE_STATION_SIDES }, (_, i) => [round2(x + theme.station.radiusPx * Math.cos((2 * Math.PI * i) / BASE_STATION_SIDES)), round2(y + theme.station.radiusPx * Math.sin((2 * Math.PI * i) / BASE_STATION_SIDES))]));
+    }
+    add({ key: "station", layer: "station", display: "역", closed: true, paths: circles, fill: theme.station.fill, stroke: theme.station.line, strokeWidth: 1.2 });
+  }
+  const places = base.places.flatMap((place) => { const [x, y] = project(place.p[0], place.p[1]); return inFrame(x, y) ? [{ name: place.name, kind: place.kind, p: [x, y] as [number, number] }] : []; });
+  const result: BaseProjection = { buckets, roadRuns: [...roadRuns.values()], stations, places };
+  if (byKey.size >= BASE_PROJECTION_CACHE_SIZE) byKey.delete(byKey.keys().next().value!);
+  byKey.set(key, result);
+  return result;
+}
+
+/** 역 > 동 > 공원 > 도로 순으로 놓고, 점유 상자·이미 놓은 라벨과 겹치거나 지도 밖이면 버린다. */
+function baseLabels(projection: BaseProjection, theme: BaseTheme, width: number, height: number, labelScale: number, occupied: readonly MapSceneBox[]): MapSceneBaseLabel[] {
+  const fontSize = theme.label.fontPx * labelScale;
+  const textHeight = fontSize * 1.3;
+  const placed: MapSceneBaseLabel[] = [];
+  const blockers: MapSceneBox[] = [...occupied];
+  const fits = (box: MapSceneBox) => box.x0 >= 0 && box.y0 >= 0 && box.x1 <= width && box.y1 <= height
+    && !blockers.some((other) => boxesOverlap({ x0: box.x0 - BASE_LABEL_GAP, y0: box.y0 - BASE_LABEL_GAP, x1: box.x1 + BASE_LABEL_GAP, y1: box.y1 + BASE_LABEL_GAP }, other));
+  const place = (label: Omit<MapSceneBaseLabel, "fontSize" | "halo" | "color" | "box">, color: string, box: MapSceneBox): boolean => {
+    if (!fits(box)) return false;
+    placed.push({ ...label, fontSize, color, halo: theme.label.halo, box });
+    blockers.push(box);
+    return true;
+  };
+  const boxAround = (cx: number, cy: number, w: number, h: number): MapSceneBox => ({ x0: cx - w / 2, y0: cy - h / 2, x1: cx + w / 2, y1: cy + h / 2 });
+
+  projection.stations.forEach(({ name, p }, index) => {
+    const w = mapTextWidth(name, fontSize);
+    const gap = theme.station.radiusPx + 3;
+    const label = { key: `base-station-${index}`, kind: "station" as const, text: name, angle: 0 };
+    for (const cx of [p[0] + gap + w / 2, p[0] - gap - w / 2]) {
+      if (place({ ...label, x: cx, y: p[1] }, theme.label.station, boxAround(cx, p[1], w, textHeight))) break;
+    }
+  });
+  projection.places.filter((item) => item.kind === "dong").forEach(({ name, p }, index) => {
+    place({ key: `base-place-${index}`, kind: "place", text: name, x: p[0], y: p[1], angle: 0 }, theme.label.place, boxAround(p[0], p[1], mapTextWidth(name, fontSize), textHeight));
+  });
+  projection.places.filter((item) => item.kind === "park").forEach(({ name, p }, index) => {
+    place({ key: `base-park-${index}`, kind: "park", text: name, x: p[0], y: p[1], angle: 0 }, theme.label.park, boxAround(p[0], p[1], mapTextWidth(name, fontSize), textHeight));
+  });
+  const roads = [...projection.roadRuns].sort((a, b) => a.rank - b.rank || b.length - a.length);
+  for (const road of roads) {
+    const w = mapTextWidth(road.name, fontSize);
+    if (road.length < w * 1.2) continue;
+    // 구간 가운데에서 글자 폭만큼의 현을 잡아 그 방향으로 쓴다. 글자가 뒤집히지 않게 -90~90도로 접는다.
+    const at = (distance: number): [number, number] => {
+      let rest = distance;
+      for (let i = 1; i < road.run.length; i += 1) {
+        const a = road.run[i - 1]!; const b = road.run[i]!;
+        const segment = Math.hypot(b[0] - a[0], b[1] - a[1]);
+        if (rest <= segment || i === road.run.length - 1) { const t = segment === 0 ? 0 : Math.min(1, rest / segment); return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]; }
+        rest -= segment;
+      }
+      return road.run[0]!;
+    };
+    const from = at(road.length / 2 - w / 2);
+    const to = at(road.length / 2 + w / 2);
+    let angle = (Math.atan2(to[1] - from[1], to[0] - from[0]) * 180) / Math.PI;
+    if (angle > 90) angle -= 180;
+    if (angle < -90) angle += 180;
+    const cx = (from[0] + to[0]) / 2;
+    const cy = (from[1] + to[1]) / 2;
+    const cos = Math.abs(Math.cos((angle * Math.PI) / 180));
+    const sin = Math.abs(Math.sin((angle * Math.PI) / 180));
+    place({ key: `base-road-${road.name}`, kind: "road", text: road.name, x: cx, y: cy, angle: round2(angle) }, theme.label.road, boxAround(cx, cy, w * cos + textHeight * sin, w * sin + textHeight * cos));
+  }
+  return placed;
+}
+
 /** MapFigure의 투영·표식·말풍선·철도 표현 배치를 하나의 순수 장면으로 계산한다. */
 export function buildMapScene(options: MapSceneOptions): MapScene {
   recordMapSceneBuild();
@@ -960,7 +1173,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     model,
     width: W,
     height: H,
-    activeLayer = "white",
+    activeLayer,
     fill = 0.8,
     siteX = 0.5,
     siteY = 0.5,
@@ -1004,7 +1217,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     scaleChromeScale: scaleChromeScaleOpt = 1,
     scaleFontScale: scaleFontScaleOpt = 1,
   } = options;
-  const layer = model.basemap ?? activeLayer;
+  const layer = resolveBasemap(model, activeLayer);
   const sat = layer === "Satellite";
   const lineColor = sat ? "#fff" : "#16181d";
   const u = layoutUnit ?? Math.min(1.5, Math.max(1, H / 360));
@@ -1259,6 +1472,15 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
   ];
   const rail = buildRailScene({ model, features: drawn, lines: linePaths, width: W, height: H, mpp, compact, labelScale, hiddenKeys: hidden, occupied: occupiedBoxes, inFrame });
   occupiedBoxes.push(...rail.occupiedBoxes);
+  let baseScene: MapScene["base"] = null;
+  if (layer === "vector" && model.base) {
+    const theme = baseTheme(options.baseTheme);
+    const suppress = new Set<BaseLayerKind>(BASE_SUPPRESS[model.tileCode ?? ""] ?? []);
+    const projection = baseProjection(model.base, theme, vp, W, H, mpp, suppress);
+    // 바탕 라벨은 가장 낮은 우선순위: 방위표·축척·범례·대지 표식·철도 라벨·주제 라벨이 먼저 자리를 잡는다.
+    const labelOccupied = [...(legendBox ? [legendBox] : []), ...calloutAvoid, ...(showSiteMarker && !muted ? [siteBounds] : []), ...labelPlacements.map((placement) => placement.box), ...rail.occupiedBoxes];
+    baseScene = { bg: theme.bg, buckets: projection.buckets, labels: compact || W < BASE_LABEL_MIN_WIDTH ? [] : baseLabels(projection, theme, W, H, labelScale, labelOccupied) };
+  }
   return {
     width: W,
     height: H,
@@ -1270,6 +1492,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     radiusPx,
     terrainSection,
     tiles,
+    base: baseScene,
     features: drawn,
     lines: linePaths,
     polygons: visiblePolygons,

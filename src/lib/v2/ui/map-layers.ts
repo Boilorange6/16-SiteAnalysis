@@ -1,5 +1,6 @@
 import type { MapFeature, MapLine, MapPolygon, RasterRef, TileResult } from "../tile-result";
 import { railLineBadgeText } from "../tile/rail-presentation";
+import type { MapBase } from "./basemap";
 import type { BasemapChoice } from "./map-projection";
 
 /** MapFigure가 그리는 입력. 카드·상세·PPT가 같은 것을 쓴다. */
@@ -12,6 +13,8 @@ export type MapModel = {
   tileCode?: string;
   /** 결과가 지정한 고정 배경(D01은 Satellite). */
   basemap?: BasemapChoice;
+  /** 분석 장면에서 만든 벡터 바탕 자료. 같은 장면의 모든 타일이 같은 객체를 공유한다. */
+  base?: MapBase | null;
   /** 지도에 겹칠 압축 래스터 참조. */
   rasters?: RasterRef[];
   /** 엔진이 계산한 범례 경계. 있으면 정적 레이어명보다 우선해 표시한다. */
