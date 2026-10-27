@@ -270,17 +270,20 @@ const sheetPlanOf = (models, images = {}) => ({
   const plain = modelOf("A04", { base });
   const withRaster = modelOf("A04", { base, rasters: RASTER });
   const status = nativeMapStatus(plain);
-  assert.deepEqual(mapDrawPlan(status, "vector", "editable"), { baseShapes: true, image: "none", thematicShapes: true });
-  assert.deepEqual(mapDrawPlan(nativeMapStatus(withRaster), "vector", "editable"), { baseShapes: true, image: "transparent", thematicShapes: true });
-  assert.deepEqual(mapDrawPlan(status, "Base", "editable"), { baseShapes: false, image: "background", thematicShapes: true });
-  assert.deepEqual(mapDrawPlan(status, "vector", "image"), { baseShapes: false, image: "full", thematicShapes: false });
-  assert.deepEqual(mapDrawPlan(nativeMapStatus({ ...plain, tileCode: undefined }), "vector", "editable"), { baseShapes: false, image: "full", thematicShapes: false });
+  assert.deepEqual(mapDrawPlan(status, "vector", "editable"), { image: "none", thematicShapes: true });
+  assert.deepEqual(mapDrawPlan(nativeMapStatus(withRaster), "vector", "editable"), { image: "transparent", thematicShapes: true });
+  assert.deepEqual(mapDrawPlan(status, "Base", "editable"), { image: "background", thematicShapes: true });
+  assert.deepEqual(mapDrawPlan(status, "vector", "image"), { image: "full", thematicShapes: false });
+  assert.deepEqual(mapDrawPlan(nativeMapStatus({ ...plain, tileCode: undefined }), "vector", "editable"), { image: "full", thematicShapes: false });
+  // 타일은 "이미지 한 장"이면 그림 한 장, 조판 칸은 어느 방식이든 편집 도형(칸 범례·위치도가 도형 쪽에 있다)
   const expectations = {
-    "editable/vector": { base: true, thematic: true, pics: 1 },
-    "editable/Base": { base: false, thematic: true, pics: 1 },
-    "image/vector": { base: false, thematic: false, pics: 1 },
-    "image/Base": { base: false, thematic: false, pics: 1 },
+    "editable/vector": { base: true, thematic: true, pics: 1, cell: { base: true, thematic: true } },
+    "editable/Base": { base: false, thematic: true, pics: 1, cell: { base: false, thematic: true } },
+    "image/vector": { base: false, thematic: false, pics: 1, cell: { base: true, thematic: true } },
+    "image/Base": { base: false, thematic: false, pics: 1, cell: { base: false, thematic: true } },
   };
+  const cellNames = (xml) => [...new Set(xml.match(/map-cell-0-[^"|]*/g) ?? [])].sort();
+  const sheetNamesBy = {};
   for (const [name, want] of Object.entries(expectations)) {
     const [mapDrawing, basemap] = name.split("/");
     const model = withRaster;
@@ -293,9 +296,14 @@ const sheetPlanOf = (models, images = {}) => ({
     // 조판 칸
     const sheet = sheetPlanOf([model]);
     const { xml: [sheetXml] } = await slidesOf([sheet], { "fix-c0": PNG }, { mapDrawing, basemap });
-    assert.equal(sheetXml.includes("GRP|map-cell-0-base-"), want.base, `칸 ${name} 바탕 도형`);
-    assert.equal(sheetXml.includes("GRP|map-cell-0-A04-"), want.thematic, `칸 ${name} 주제 도형 (이미지 한 장이면 칸 위에 도형을 또 얹지 않는다)`);
-    assert.equal(count(sheetXml, /<p:pic>/g), want.pics, `칸 ${name} 그림 수`);
+    assert.equal(sheetXml.includes("GRP|map-cell-0-base-"), want.cell.base, `칸 ${name} 바탕 도형`);
+    assert.equal(sheetXml.includes("GRP|map-cell-0-A04-"), want.cell.thematic, `칸 ${name} 주제 도형`);
+    assert.equal(count(sheetXml, /<p:pic>/g), want.pics, `칸 ${name} 그림 수 (그림 위에 같은 지도를 또 얹지 않는다)`);
+    sheetNamesBy[name] = cellNames(sheetXml);
+  }
+  for (const basemap of ["vector", "Base"]) {
+    assert.ok(sheetNamesBy[`editable/${basemap}`].length > 0);
+    assert.deepEqual(sheetNamesBy[`image/${basemap}`], sheetNamesBy[`editable/${basemap}`], `이미지 한 장 조판 칸도 범례·위치도 등 칸 도형이 같다 (${basemap})`);
   }
   // 값 래스터가 없는 벡터 칸·타일은 그림을 만들지 않으므로 그림이 와도 쓰지 않는다
   const plainTile = tilePlan("A04", plain, "matrix-none");

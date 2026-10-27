@@ -592,7 +592,7 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
   strip(s, p, !chart, format, look.basemap);
 }
 
-function sheet(pptx: PptxGenJS, p: PlannedSlide & { kind: "sheet" }, images: MapImages, mapDrawing: PptxMapDrawing, look: PptxMapLook) {
+function sheet(pptx: PptxGenJS, p: PlannedSlide & { kind: "sheet" }, images: MapImages, look: PptxMapLook) {
   const format = formatOf(p);
   const g = slideGeometry(format);
   const s = pptx.addSlide();
@@ -611,7 +611,8 @@ function sheet(pptx: PptxGenJS, p: PlannedSlide & { kind: "sheet" }, images: Map
     const cellStatus = cellMap ? nativeMapStatus(cellMap) : null;
     const cellLayer = cellMap ? exportBasemap(cellMap, look.basemap, cell.reportFrame) : null;
     // 그림 만들기(buildMapImages)와 같은 판정. 벡터 바탕 칸은 바탕이 도형이라 그림은 값 래스터·밀집 층이 있을 때만 바탕 위(addEditableMap 안)에 놓는다.
-    const cellDraw = cellMap && cellStatus && cellLayer ? mapDrawPlan(cellStatus, cellLayer, mapDrawing) : null;
+    // 조판 칸은 "이미지 한 장"에서도 편집 도형으로 그린다: 칸 범례·위치도가 addEditableMap 안에 있다.
+    const cellDraw = cellMap && cellStatus && cellLayer ? mapDrawPlan(cellStatus, cellLayer, "editable") : null;
     const cellImage = images[cell.mapKey];
     if (cellDraw && (cellDraw.image === "transparent" || cellDraw.image === "none")) {
       // 아래 addEditableMap이 바탕·그림·주제를 차례로 그린다
@@ -724,7 +725,7 @@ export async function renderReportPptx(plan: PlannedSlide[], images: MapImages =
     if (p.page?.kind === "blank") blank(pptx, p);
     else if (p.kind === "cover") cover(pptx, p, images, look);
     else if (p.kind === "tile") tile(pptx, p, images, mapDrawing, look);
-    else if (p.kind === "sheet") sheet(pptx, p, images, mapDrawing, look);
+    else if (p.kind === "sheet") sheet(pptx, p, images, look);
     else sources(pptx, p, images, look);
   }
   const bytes = (await pptx.write({ outputType: "uint8array" })) as Uint8Array;

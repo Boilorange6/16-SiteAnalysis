@@ -121,13 +121,13 @@ export function nativeMapStatus(model: MapModel): NativeMapStatus {
  * - image "transparent": 벡터 바탕 위에 얹는 값 래스터·밀집 층만 담은 투명 PNG.
  * - image "none": 그림 없음(벡터 바탕이고 값 래스터·밀집 층도 없다).
  */
-export type MapDrawPlan = { baseShapes: boolean; image: "none" | "transparent" | "background" | "full"; thematicShapes: boolean };
+export type MapDrawPlan = { image: "none" | "transparent" | "background" | "full"; thematicShapes: boolean };
 
 export function mapDrawPlan(status: NativeMapStatus, drawn: BasemapChoice, mapDrawing: "editable" | "image"): MapDrawPlan {
-  if (mapDrawing === "image" || !status.native) return { baseShapes: false, image: "full", thematicShapes: false };
-  if (drawn !== "vector") return { baseShapes: false, image: "background", thematicShapes: true };
+  if (mapDrawing === "image" || !status.native) return { image: "full", thematicShapes: false };
+  if (drawn !== "vector") return { image: "background", thematicShapes: true };
   const hasRaster = status.rasterValues.length > 0 || status.rasterLayers.length > 0;
-  return { baseShapes: true, image: hasRaster ? "transparent" : "none", thematicShapes: true };
+  return { image: hasRaster ? "transparent" : "none", thematicShapes: true };
 }
 
 export function isEditableMap(model: MapModel | null | undefined): boolean {

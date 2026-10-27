@@ -384,7 +384,8 @@ export async function buildMapImages(plan: PlannedSlide[], layer?: BasemapChoice
             const cellStyle = frame && cellScaleOptions ? reportFrameStyle(frame, cell.style ?? p.style ?? {}, model, cellScaleOptions) : cell.style;
             const status = nativeMapStatus(model);
             const drawn = exportBasemap(model, layer, frame);
-            const draw = mapDrawPlan(status, drawn, mapDrawing);
+            // 조판 칸은 그리기 방식과 상관없이 편집 도형(render-pptx sheet()와 같은 판정)
+            const draw = mapDrawPlan(status, drawn, "editable");
             if (draw.image === "none") continue;
             out[cell.mapKey] = await rasterizeMap(model, cache, drawn, {
               siteX: 0.5,
