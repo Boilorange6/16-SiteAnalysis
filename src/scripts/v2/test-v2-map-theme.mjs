@@ -1,7 +1,7 @@
 /** 바탕 테마 토큰: 색 형식, 기본값, 라벨 대비 4.5:1, 보드 선택 왕복. */
 import assert from "node:assert/strict";
 
-const { BASE_THEMES, DEFAULT_BASE_THEME, baseTheme } = await import("../../lib/v2/ui/map-theme.ts");
+const { BASE_THEMES, BASE_THEME_IDS, DEFAULT_BASE_THEME, baseTheme, themeFromColors, isBaseThemeRef } = await import("../../lib/v2/ui/map-theme.ts");
 const { GODEOK_RESULTS } = await import("../../lib/v2/ui/fixtures/godeok.ts");
 const { initBoard, boardReducer, serializeBoardState, restoreBoardState } = await import("../../lib/v2/ui/board-state.ts");
 
@@ -19,7 +19,8 @@ const contrast = (a, b) => {
 };
 const colorsOf = (v) => (typeof v === "string" ? (HEX.test(v) ? [v] : []) : v && typeof v === "object" ? Object.values(v).flatMap(colorsOf) : []);
 
-assert.deepEqual(Object.keys(BASE_THEMES), ["warm", "cool", "paper"]);
+assert.deepEqual(Object.keys(BASE_THEMES), ["warm", "cool", "paper", "sage", "sand", "blue", "mono", "ink"]);
+assert.deepEqual([...BASE_THEME_IDS], Object.keys(BASE_THEMES));
 assert.equal(DEFAULT_BASE_THEME, "warm");
 assert.equal(baseTheme("x").id, "warm");
 assert.equal(baseTheme(null).id, "warm");
@@ -33,7 +34,10 @@ for (const [id, t] of Object.entries(BASE_THEMES)) {
   // 색 문자열 필드는 모두 #rrggbb (dash 같은 비색 문자열은 제외)
   const colorKeys = { building: ["fill", "line"], parcel: ["line"], road: ["fill", "casing"], green: ["forest", "park", "grass"], station: ["fill", "line"], label: ["road", "place", "park", "station", "halo"], site: ["fill", "line"] };
   for (const [group, keys] of Object.entries(colorKeys)) for (const k of keys) assert.match(t[group][k], HEX, `${id}.${group}.${k}`);
-  assert.ok(colorsOf(t).length === 19, `${id} 색 개수`);
+  assert.ok(colorsOf(t).length === 20, `${id} 색 개수(ring 포함)`);
+  assert.match(t.ring, HEX, `${id}.ring`);
+  assert.equal(t.dark, id === "ink", `${id}.dark`);
+  assert.equal(t.ring, id === "ink" ? "#cfcfcf" : "#16181d", `${id}.ring`);
   assert.equal(t.label.halo, t.bg, `${id} halo = bg`);
   for (const k of ["road", "place", "park", "station"]) {
     const ratio = contrast(t.label[k], t.bg);
@@ -49,6 +53,40 @@ assert.equal(BASE_THEMES.paper.road.fill, "#f0eee9");
 assert.equal(BASE_THEMES.paper.parcel.maxMPerPx, 2.5);
 assert.equal(BASE_THEMES.cool.rail.dash, "6 5");
 assert.equal(BASE_THEMES.warm.label.fontPx, 11);
+
+assert.ok(contrast(BASE_THEMES.ink.ring, BASE_THEMES.ink.bg) >= 3, "ink ring 대비 3:1");
+assert.equal(BASE_THEMES.ink.label.road, "#bdb7ac");
+assert.equal(BASE_THEMES.ink.label.station, "#f2f2f2");
+assert.equal(BASE_THEMES.sage.bg, "#eef1ea");
+assert.equal(BASE_THEMES.mono.site.fillOpacity, 0.08);
+// 기존 3개 값 고정
+assert.equal(BASE_THEMES.warm.bg, "#f6f4ef");
+assert.equal(BASE_THEMES.cool.site.line, "#111111");
+assert.equal(BASE_THEMES.paper.green.park, "#e6eddc");
+
+// 만든 색
+{
+  const colors = { bg: "#f6f4ef", building: "#e4ddd0", parcel: "#d6cebf", road: "#ffffff", green: "#dfe8d2", water: "#cfe1ea", site: "#f2b6b8" };
+  const made = themeFromColors("내 테마 1", colors);
+  assert.equal(made.name, "내 테마 1");
+  assert.equal(made.dark, false);
+  assert.equal(made.site.line, "#c9404a", "알려진 대지색은 프리셋 선");
+  assert.equal(made.green.park, colors.green);
+  assert.equal(made.label.halo, colors.bg);
+  assert.deepEqual(baseTheme({ name: "내 테마 1", colors }), made);
+  assert.ok(isBaseThemeRef({ name: "x", colors }));
+  assert.ok(isBaseThemeRef("ink"));
+  assert.ok(!isBaseThemeRef("nope"));
+  assert.ok(!isBaseThemeRef({ name: "x", colors: { ...colors, bg: "red" } }));
+  const dark = themeFromColors("어둠", { ...colors, bg: "#22252a" });
+  assert.equal(dark.dark, true);
+  assert.equal(dark.ring, "#cfcfcf");
+  assert.equal(dark.label.road, "#bdb7ac");
+  assert.equal(made.ring, "#16181d");
+  assert.equal(baseTheme("nope").id, "warm");
+  assert.equal(baseTheme({ colors: { bg: "red" } }).id, "warm");
+  assert.equal(baseTheme("ink").id, "ink");
+}
 
 // 보드 선택: 액션 → 직렬화 → 복원 왕복, 없거나 모르는 값은 기본
 {
