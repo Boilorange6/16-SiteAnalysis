@@ -522,6 +522,7 @@ function preserveCalloutPageEdits(next: ReportPage, previous: Extract<ReportPage
     ...(clonedPrevious.titleOverride !== undefined ? { titleOverride: clonedPrevious.titleOverride } : {}),
     ...(clonedPrevious.summaryOverride !== undefined ? { summaryOverride: clonedPrevious.summaryOverride } : {}),
     ...(clonedPrevious.fontSizes !== undefined ? { fontSizes: clonedPrevious.fontSizes } : {}),
+    ...(clonedPrevious.mapColors !== undefined ? { mapColors: clonedPrevious.mapColors } : {}),
     frame: clonedPrevious.frame,
   };
 }

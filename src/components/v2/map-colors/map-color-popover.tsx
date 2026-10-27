@@ -19,8 +19,12 @@ export type MapColorScopeProps = {
   pageAvailable: boolean;
   /** 그 쪽이 보고서 전체와 다른 색을 따로 갖고 있는가 */
   pageOverridden: boolean;
+  /** 보고서 전체가 보드와 다른 색을 따로 갖고 있는가 */
+  documentOverridden: boolean;
   onChange(scope: "document" | "page"): void;
   onClearPage(): void;
+  /** 보고서 전체 색을 지우고 다시 보드 색을 따른다 */
+  onClearDocument(): void;
 };
 
 export type MapColorPopoverProps = {
@@ -45,6 +49,8 @@ export type MapColorPopoverProps = {
 const PREVIEW_DELAY_MS = 150;
 const DELETE_FAILED_MESSAGE = "내 테마를 지우지 못했습니다";
 const MAKER_MARGIN = 8;
+/** 종류마다 저장할 수 있는 개수(서버 MAX_SAVED_PER_KIND와 같다). 가장 오래된 것부터 밀려난다. */
+const MAX_MINE = 12;
 
 type Row = { key: string; kind: "mine" | "preset"; name: string; ref: BaseThemeRef | DiagramPaletteRef; strip: string[]; savedId?: number };
 
@@ -246,11 +252,11 @@ export default function MapColorPopover({ value, scope, onPreview, onApply, onCl
   const saved = (kind: MapColorKind, item: SavedBase | SavedPalette) => {
     if (kind === "base") {
       const s = item as SavedBase;
-      setMine((cur) => ({ base: [s, ...(cur?.base ?? [])], palette: cur?.palette ?? [] }));
+      setMine((cur) => ({ base: [s, ...(cur?.base ?? [])].slice(0, MAX_MINE), palette: cur?.palette ?? [] }));
       applyFromMaker({ base: { name: s.name, colors: { ...s.colors } } });
     } else {
       const s = item as SavedPalette;
-      setMine((cur) => ({ base: cur?.base ?? [], palette: [s, ...(cur?.palette ?? [])] }));
+      setMine((cur) => ({ base: cur?.base ?? [], palette: [s, ...(cur?.palette ?? [])].slice(0, MAX_MINE) }));
       applyFromMaker({ palette: { name: s.name, colors: { cat: [...s.colors.cat], seq: [...s.colors.seq] } } });
     }
   };
@@ -348,6 +354,9 @@ export default function MapColorPopover({ value, scope, onPreview, onApply, onCl
       </button>
       {scope?.pageOverridden && (
         <button type="button" className={styles.secondary} onClick={scope.onClearPage}>보고서 전체 색으로</button>
+      )}
+      {scope?.value === "document" && scope.documentOverridden && (
+        <button type="button" className={styles.secondary} onClick={scope.onClearDocument}>보드 색 따르기</button>
       )}
       {makerOpen && (
         <div ref={makerSlotRef} className={styles.makerSlot} data-side={makerSide}>

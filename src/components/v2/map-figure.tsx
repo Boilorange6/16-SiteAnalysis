@@ -8,7 +8,7 @@ import type { MapFeature, MapLine, MapPolygon, RasterRef } from "@/lib/v2/tile-r
 import { maxOf, minOf } from "@/lib/v2/extent";
 import { isSiteParcelLayer } from "@/lib/v2/ui/site-parcel";
 import { calloutFrame, layoutCallouts, PX, PX_NARROW, type Placed } from "@/lib/v2/ui/callout-layout";
-import { buildMapScene, mapCalloutTextLayout, mapElementKey, mapFeatureKey, mapLabelEntries, mapTextWidth, RAIL_EXIT_COLOR, RAIL_EXIT_DOT_RADIUS, RAIL_EXIT_DOT_STROKE, type MapCalloutTextLayout, type MapSceneLabel } from "@/lib/v2/ui/map-scene";
+import { buildMapScene, mapCalloutTextLayout, mapElementKey, mapFeatureKey, mapLabelEntries, mapTextWidth, nearestLineStroke, RAIL_EXIT_COLOR, RAIL_EXIT_DOT_RADIUS, RAIL_EXIT_DOT_STROKE, type MapCalloutTextLayout, type MapSceneLabel } from "@/lib/v2/ui/map-scene";
 import { terrainSectionMapStyle } from "@/lib/v2/ui/terrain-section";
 import { resolveBasemap } from "@/lib/v2/ui/basemap";
 import { baseTheme, type BaseThemeRef } from "@/lib/v2/ui/map-theme";
@@ -406,8 +406,6 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseT
   const themeId = model.baseTheme ?? baseThemeProp ?? themeFromContext;
   const theme = baseTheme(themeId);
   const sat = activeLayer === "Satellite";
-  // 항공 사진 위에서는 어두운 선·점 테두리가 묻히므로 흰색으로 바꾼다
-  const line = sat ? "#fff" : INK;
   const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
   const svgRef = useRef<SVGSVGElement>(null);
   useEffect(() => {
@@ -1501,7 +1499,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseT
             if (d.f.highlight && d.f.distanceM != null) {
              const featureKey = mapFeatureKey(d.f.layer, d.f.fid, d.index);
              const strong = isElementStrong(d.f.layer, featureKey);
-             return <line key={`nearest-${i}-${d.f.fid ?? d.f.layer}`} x1={cx} y1={cy} x2={d.p[0]} y2={d.p[1]} stroke={strong ? INK : line} strokeWidth={(strong ? 1.6 : 1.4) * u} strokeOpacity={isElementDimmed(d.f.layer, featureKey) ? 0.2 : undefined} strokeDasharray={`${3 * u} ${3 * u}`} />;
+             return <line key={`nearest-${i}-${d.f.fid ?? d.f.layer}`} x1={cx} y1={cy} x2={d.p[0]} y2={d.p[1]} stroke={nearestLineStroke(scene, strong)} strokeWidth={(strong ? 1.6 : 1.4) * u} strokeOpacity={isElementDimmed(d.f.layer, featureKey) ? 0.2 : undefined} strokeDasharray={`${3 * u} ${3 * u}`} />;
            }
           return null;
         })}

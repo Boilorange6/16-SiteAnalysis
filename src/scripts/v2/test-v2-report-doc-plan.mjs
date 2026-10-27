@@ -161,6 +161,17 @@ const oldDetailSlide = planReportDoc({ ...EMPTY_REPORT_DOC, pages: [oldDetailPag
 assert.equal(oldDetailSlide?.callout.numberStart, 11, "shownKeys 없는 옛 장은 기존 전역 순위를 유지한다");
 assert.equal(historyUndo(allHistory).present.pages[0].id, editedTop10Pages[0].id, "tileCallout은 history undo 대상");
 
+// 「이 쪽만」 지도 색은 자동 구성으로 장이 다시 만들어져도 같은 번호 장에 남는다(복사본).
+const coloredDoc = reportDocReducer(editedTop10Doc, { type: "mapColors", scope: "page", id: editedTop10Pages[1].id, patch: { base: "ink" } });
+const coloredBefore = coloredDoc.pages.find((page) => page.id === editedTop10Pages[1].id).mapColors;
+assert.ok(coloredBefore, "고른 쪽에 mapColors가 있다");
+const coloredPages = historyApply({ past: [], present: coloredDoc, future: [] }, { type: "tileCallout", id: editedTop10Pages[1].id, pages: generatedPages })
+  .present.pages.filter((page) => page.kind === "tile" && page.tileId === "t-A05" && page.part.type === "callout");
+assert.deepEqual(coloredPages[1].mapColors, coloredBefore, "같은 page의 지도 색 보존");
+assert.notEqual(coloredPages[1].mapColors, coloredBefore, "원본 객체를 공유하지 않는다");
+assert.equal(coloredPages[0].mapColors, undefined, "색을 고르지 않은 개요 장은 그대로");
+assert.equal(coloredPages[2].mapColors, undefined, "새로 생긴 장에는 색이 없다");
+
 const a05OverviewPages = [calloutPageFor(allHistory.present, a05View, a05AllSettings, tileContext, 0)];
 const overviewDoc = reportDocReducer(allHistory.present, { type: "tileCallout", id: allCalloutPages.at(-1).id, pages: a05OverviewPages });
 assert.equal(overviewDoc.pages.filter((page) => page.kind === "tile" && page.tileId === "t-A05" && page.part.type === "callout").length, 1, "all → overview는 1장");

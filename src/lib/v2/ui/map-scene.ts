@@ -596,6 +596,13 @@ export function railTextContrastRatio(foreground: string, background: string): n
   return (lighter + 0.05) / (darker + 0.05);
 }
 
+/** 최근접 지시선 색. 일반선은 반경 고리색, 강조선은 잉크색(어두운 바탕에서는 고리색 — 잉크는 먹 바탕에서 1.1:1이라 안 보인다). */
+export function nearestLineStroke(scene: Pick<MapScene, "base" | "ringColor">, strong: boolean): string {
+  const ink = "#16181d";
+  if (!strong) return scene.ringColor;
+  return scene.base && railTextContrastRatio(ink, scene.base.bg) < 3 ? scene.ringColor : ink;
+}
+
 function railTextColor(color: string): string {
   const dark = "#172033";
   const light = "#FFFFFF";

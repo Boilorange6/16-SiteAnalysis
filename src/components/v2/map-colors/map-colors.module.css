@@ -63,7 +63,7 @@
 
 /* 목록 */
 .list { display: grid; gap: 2px; max-height: min(420px, calc(100vh - 340px)); min-height: 0; overflow: auto; overscroll-behavior: contain; }
-.list:focus { outline: none; }
+.list:focus-visible { outline: 2px solid #2f6fdb; outline-offset: 1px; }
 .groupLabel { padding: 2px 8px 0; color: #5b616c; font-size: 11px; font-weight: 700; }
 .divider { height: 1px; margin: 4px 8px; background: #e1e4e9; }
 .skeleton { height: 34px; border-radius: 8px; background: #eceef1; }
@@ -185,11 +185,8 @@
   border: 0;
   border-radius: 6px;
   cursor: pointer;
-  opacity: 0.75;
 }
-.crow button:hover { background: rgba(127, 127, 127, 0.18); opacity: 1; }
-.crow button[aria-pressed="true"] { opacity: 1; }
-.crow button:focus-visible { opacity: 1; }
+.crow button:hover { background: rgba(127, 127, 127, 0.18); }
 .pick { position: relative; display: grid; }
 .pick input { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; opacity: 0; pointer-events: none; }
 

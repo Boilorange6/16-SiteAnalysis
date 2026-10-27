@@ -189,7 +189,22 @@ assert.notEqual(original, vivid);
   const custom = { name: "내 바탕", colors: { bg: "#102030", building: "#203040", parcel: "#304050", road: "#405060", green: "#506070", water: "#607080", site: "#ffcc00" } };
   const mine = await slideXml(tilePlan(modelOf({ baseTheme: custom }), "custom"));
   assert.equal(fillOf(named(mine, /map-base-bg/)[0]), "102030", "만든 바탕색");
-  for (const r of named(mine, /map-D03-radius/)) assert.ok(r.includes('val="CFCFCF"'), "어두운 만든 바탕의 PPT 반경 원은 CFCFCF");
+  const mineRings = named(mine, /map-D03-radius/);
+  assert.ok(mineRings.length >= 1, "어두운 만든 바탕의 반경 원 도형이 있다");
+  for (const r of mineRings) assert.ok(r.includes('val="CFCFCF"'), "어두운 만든 바탕의 PPT 반경 원은 CFCFCF");
+
+  // 최근접 지시선: 어두운 바탕에서는 고리 색(잉크색은 먹 바탕에서 1.1:1이라 안 보인다), 밝은 바탕은 그대로.
+  const nearest = { layer: "bus_stop", fid: "near", lng: ORIGIN_LNG + 0.0004, lat: ORIGIN_LAT + 0.0003, name: "가까운 정류장", label: "가까운 정류장", labelPriority: 1, highlight: true, distanceM: 60 };
+  const nearestLines = (xml) => named(xml, /map-D03-nearest-.*최근접 지시선|map-D03-nearest-/);
+  const inkNearest = nearestLines(await slideXml(tilePlan(modelOf({ baseTheme: "ink", features: [nearest] }), "near-ink")));
+  assert.ok(inkNearest.length >= 1, "최근접 지시선 도형이 있다");
+  for (const b of inkNearest) assert.ok(b.includes('val="CFCFCF"') && !b.includes('val="16181D"'), "ink 바탕의 최근접 지시선은 고리 색");
+  const lightNearest = nearestLines(await slideXml(tilePlan(modelOf({ features: [nearest] }), "near-light")));
+  assert.ok(lightNearest.length >= 1);
+  for (const b of lightNearest) assert.ok(b.includes('val="16181D"'), "밝은 바탕의 최근접 지시선은 그대로");
+  const figNearest = (model) => svgOf(model).match(/<line [^>]*stroke-dasharray[^>]*>/g) ?? [];
+  assert.ok(figNearest(modelOf({ baseTheme: "ink", features: [nearest] })).some((l) => l.includes('stroke="#cfcfcf"')), "화면 ink 바탕 최근접 지시선도 고리 색");
+  assert.ok(figNearest(modelOf({ features: [nearest] })).some((l) => l.includes('stroke="#16181d"')), "화면 밝은 바탕 최근접 지시선은 그대로");
   // 대지 표식(addSite): 모델 테마가 옵션 테마보다 앞. 필지 대지가 있어야 테마색 면이 그려진다.
   const siteOf = (xml) => named(xml, /map-D03-site\|분석 대지\|outline/)[0];
   const withSite = (extra) => modelOf({ siteParcel: [{ layer: "site_parcel", fid: "s", rings: [ring] }], ...extra });

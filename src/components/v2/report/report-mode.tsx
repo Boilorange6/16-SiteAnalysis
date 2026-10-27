@@ -1348,7 +1348,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     closeFontContext(true);
   }, [applyTextBox, closeFontContext, deleteDecoration, deleteMapElement, deletePageElement, deleteSheetCell, fontContext?.target, hideMapLabel, mapCell, selection]);
   const layoutPageKind = selectedPage?.kind ?? "blank";
-  const layoutHasMap = selectedSlide?.kind === "tile"
+  const layoutHasMap = selectedSlide?.kind === "tile" || selectedSlide?.kind === "cover"
     ? !!selectedSlide.map
     : selectedSlide?.kind === "sheet"
       ? selectedSlide.cells.some((cell) => !!cell?.view.map)
@@ -1386,6 +1386,9 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     apply({ type: "mapColors", scope: "page", id: selectedPage.id, patch: null });
     setMapColorScope("document");
   }, [apply, selectedPage]);
+  const clearDocumentMapColors = useCallback(() => {
+    apply({ type: "mapColors", scope: "document", patch: null });
+  }, [apply]);
   const deletedLayoutItems = useMemo<DeletedLayoutItem[]>(() => {
     if (!selectedPage || !selectedId) return [];
     const items: DeletedLayoutItem[] = [];
@@ -1848,7 +1851,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
             </div>
             <div className={styles.railPopoverRoot}>
               <button ref={mapColorTriggerRef} type="button" className={`${styles.railButton} ${mapColorPopoverOpen ? styles.railButtonActive : ""}`} aria-haspopup="dialog" aria-pressed={mapColorPopoverOpen} aria-expanded={mapColorPopoverOpen} aria-controls={mapColorPopoverOpen ? "report-map-color-popover" : undefined} aria-label="지도 색" onClick={(event) => toggleMapColorPopover(event.currentTarget)} disabled={!selectedPage}><span aria-hidden="true"><RailIcon name="palette" /></span><span className={styles.railTooltip} role="tooltip">지도 색</span></button>
-              {mapColorPopoverOpen && selectedPage && <div ref={mapColorPopoverRef} id="report-map-color-popover" className={`${styles.floatCard} ${styles.sidePanelCard} ${styles.anchoredCard} ${styles.railPopover} ${styles.mapColorPopover}`} style={{ ...anchoredCardStyle, ...sidePanelStyle }} role="dialog" aria-label="지도 색"><div className={styles.popoverBody}><SidePanelHeader title="지도 색" opacity={sidePanelOpacity} onOpacityChange={changeSidePanelOpacity} onClose={() => closePopover(true)} closeLabel="지도 색 창 닫기" /><MapColorPopover value={mapColorValue} scope={{ value: mapColorTarget, pageAvailable: layoutHasMap, pageOverridden: !!selectedPage.mapColors, onChange: setMapColorScope, onClearPage: clearPageMapColors }} onPreview={previewMapColors} onApply={applyMapColors} onClose={() => closePopover(true)} makerSide="right" contextKey={selectedPage.id} /></div></div>}
+              {mapColorPopoverOpen && selectedPage && <div ref={mapColorPopoverRef} id="report-map-color-popover" className={`${styles.floatCard} ${styles.sidePanelCard} ${styles.anchoredCard} ${styles.railPopover} ${styles.mapColorPopover}`} style={{ ...anchoredCardStyle, ...sidePanelStyle }} role="dialog" aria-label="지도 색"><div className={styles.popoverBody}><SidePanelHeader title="지도 색" opacity={sidePanelOpacity} onOpacityChange={changeSidePanelOpacity} onClose={() => closePopover(true)} closeLabel="지도 색 창 닫기" /><MapColorPopover value={mapColorValue} scope={{ value: mapColorTarget, pageAvailable: layoutHasMap, pageOverridden: !!selectedPage.mapColors, documentOverridden: !!history.present.mapColors, onChange: setMapColorScope, onClearPage: clearPageMapColors, onClearDocument: clearDocumentMapColors }} onPreview={previewMapColors} onApply={applyMapColors} onClose={() => closePopover(true)} makerSide="right" contextKey={selectedPage.id} /></div></div>}
             </div>
             {textBoxPopoverOpen && <div ref={textBoxPopoverRef} id="report-textbox-popover" className={`${styles.floatCard} ${styles.sidePanelCard} ${styles.anchoredCard} ${styles.railPopover} ${styles.textBoxPopover}`} style={{ ...anchoredCardStyle, ...sidePanelStyle }} role="dialog" aria-label="글상자 종류"><TextBoxPopover opacity={sidePanelOpacity} onOpacityChange={changeSidePanelOpacity} onChoose={chooseTextBoxKind} onClose={() => closePopover(true)} /></div>}
           </nav>

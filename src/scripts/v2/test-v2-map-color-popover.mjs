@@ -110,6 +110,21 @@ const stripCells = (html, nth = 0) => {
   assert.ok(pageBtn.includes('aria-disabled="true"'), "지도 없는 쪽은 aria-disabled");
   assert.ok(pageBtn.includes('title="이 쪽에는 지도가 없습니다"'), "지도 없는 쪽 안내");
 
+  assert.ok(!html.includes("보드 색 따르기"), "보고서 전체 색이 없으면 보드 색 따르기 버튼 없음");
+  const docOver = pop({ scope: scope({ documentOverridden: true }) });
+  const followBoard = tags(docOver, /<button[^>]*>보드 색 따르기<\/button>/g);
+  assert.equal(followBoard.length, 1, "보고서 전체에 색이 있으면 보드 색 따르기 버튼");
+  assert.ok(followBoard[0].includes('class="secondary"'), "보고서 전체 색으로 버튼과 같은 보조 단추 모양");
+  assert.ok(!pop({ scope: scope({ value: "page", documentOverridden: true }) }).includes("보드 색 따르기"), "이 쪽만 범위에서는 숨김");
+  const reportSrc = read("../../components/v2/report/report-mode.tsx");
+  assert.match(reportSrc, /apply\(\{ type: "mapColors", scope: "document", patch: null \}\)/, "보드 색 따르기는 되돌릴 수 있는 문서 동작");
+  assert.match(reportSrc, /documentOverridden: !!history\.present\.mapColors/);
+  const clearedDoc = reportDocReducer(reportDocReducer({ v: 1, format: "wide", pages: [] }, { type: "mapColors", scope: "document", patch: { base: "cool" } }), { type: "mapColors", scope: "document", patch: null });
+  assert.equal(clearedDoc.mapColors, undefined, "patch null은 보고서 전체 색을 지운다");
+
+  // 표지에도 「이 쪽만」(지도가 있는 표지)
+  assert.match(reportSrc, /selectedSlide\?\.kind === "tile" \|\| selectedSlide\?\.kind === "cover"\s*\?\s*!!selectedSlide\.map/, "표지 지도도 이 쪽만을 쓸 수 있다");
+
   const over = pop({ scope: scope({ value: "page", pageOverridden: true }) });
   assert.match(over, /보고서 전체 색으로/, "덮어쓴 쪽에는 전체 색으로 되돌리는 버튼");
   assert.ok(tags(over, /<button[^>]*data-scope="page"[^>]*>/g)[0].includes('aria-pressed="true"'));
@@ -165,6 +180,21 @@ const stripCells = (html, nth = 0) => {
   assert.equal(tags(html, /<button[^>]*data-eye=/g).length, 0, "다이어그램 카드에는 눈이 없다");
   assert.match(html, /순서형/);
   assert.match(html, /(?:✓|!)\s*(?:색 구분 충분|비슷한 색|녹색약)/, "팔레트 경고 줄");
+}
+
+// ── 만들기 카드 줄 글자 대비: 모든 프리셋 범주색에서 4.5:1 이상 ──
+{
+  const { rowInk } = await import("../../components/v2/map-colors/map-color-maker.tsx");
+  const { contrast } = await import("../../lib/v2/ui/map-color.ts");
+  const makerSrc = read("../../components/v2/map-colors/map-color-maker.tsx");
+  assert.match(makerSrc, /badgeTextColor\(hex\)/, "만들기 카드 줄 글자색은 badgeTextColor에서 시작한다");
+  assert.equal((makerSrc.match(/color: [^}]*rowInk\(hex\)/g) ?? []).length, 2, "두 줄 모두 rowInk를 쓴다");
+  assert.doesNotMatch(makerSrc, /inkOn/, "옛 명도 문턱 함수는 쓰지 않는다");
+  const cats = [...PALETTE_IDS.flatMap((id) => (paletteColors(id) ?? appPaletteColors()).cat), ...appPaletteColors().cat];
+  assert.ok(cats.length >= 48);
+  for (const c of cats) assert.ok(contrast(rowInk(c), c) >= 4.5, `${c} 위 글자 대비 ${contrast(rowInk(c), c).toFixed(2)}`);
+  const css = read("../../components/v2/map-colors/map-colors.module.css");
+  assert.doesNotMatch(css.slice(css.indexOf(".crow button {"), css.indexOf(".crow button:hover")), /opacity/, "줄 아이콘 단추는 흐리게 하지 않는다");
 }
 
 // ── 내 테마 목록 합치기(늦게 온 불러오기가 방금 저장을 덮지 않는다) ──

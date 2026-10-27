@@ -3,9 +3,10 @@
 /** 「색 만들기」 카드: 분위기로 바탕 색 7개·다이어그램 팔레트를 만들고, 고친 색은 바로 지도에 적용한다. */
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { saveMyColor, SAVE_FAILED_MESSAGE, type SavedBase, type SavedPalette } from "@/lib/v2/ui/my-map-colors";
-import { baseThemeWarnings, generateBaseColors, generatePaletteColors, lum, MOODS, paletteWarnings, shiftL, type Mood } from "@/lib/v2/ui/map-color";
+import { baseThemeWarnings, generateBaseColors, contrast, generatePaletteColors, MOODS, paletteWarnings, shiftL, type Mood } from "@/lib/v2/ui/map-color";
 import { baseTheme, BASE_TOGGLE_LAYERS, themeFromColors, type BaseThemeColors, type BaseToggleLayer } from "@/lib/v2/ui/map-theme";
 import { paletteColors, type DiagramPaletteColors } from "@/lib/v2/ui/map-palette";
+import { badgeTextColor } from "@/lib/v2/ui/map-labels";
 import type { MapColorChoice } from "@/lib/v2/report/report-doc";
 import { appPaletteColors } from "./app-palette";
 import styles from "./map-colors.module.css";
@@ -63,8 +64,12 @@ export function MapColorIcon({ name, size = 14 }: { name: keyof typeof ICONS; si
   );
 }
 
-const inkOn = (hex: string) => (lum(hex) > 0.36 ? "#1d1d1b" : "#ffffff");
 const FADED_INK = "#1d1d1b";
+/** 줄 글자색: 배지와 같은 badgeTextColor를 쓰되, 그 어두운 글자(#111)가 4.5:1에 못 미치는 중간 명도에서는 검정으로 올린다. */
+export function rowInk(hex: string): string {
+  const pick = badgeTextColor(hex);
+  return contrast(pick, hex) >= 4.5 ? pick : "#000000";
+}
 
 /** 지금 적용된 바탕 테마에서 색 7개를 읽는다. */
 export function baseColorsOf(ref: Required<MapColorChoice>["base"]): BaseThemeColors {
@@ -215,7 +220,7 @@ export default function MapColorMaker({ kind, value, onApply, onSaved, onClose }
                 const hex = (colors as BaseThemeColors)[key];
                 const hidden = layer !== null && value.hide.includes(layer);
                 return (
-                  <div key={key} className={styles.crow} data-color-row={key} data-eyes="" style={{ color: hidden ? FADED_INK : inkOn(hex) }}>
+                  <div key={key} className={styles.crow} data-color-row={key} data-eyes="" style={{ color: hidden ? FADED_INK : rowInk(hex) }}>
                     <span className={styles.crowFill} style={{ background: hex, opacity: hidden ? 0.45 : 1 } as CSSProperties} aria-hidden="true" />
                     {layer !== null ? (
                       <button type="button" data-eye={layer} aria-pressed={hidden} aria-label={`${name} ${hidden ? "보이기" : "숨기기"}`} title={`${name} ${hidden ? "보이기" : "숨기기"}`} onClick={() => toggleHide(layer)}><MapColorIcon name={hidden ? "eyeOff" : "eye"} /></button>
@@ -229,7 +234,7 @@ export default function MapColorMaker({ kind, value, onApply, onSaved, onClose }
             : (
               <>
                 {(colors as DiagramPaletteColors).cat.map((hex, i) => (
-                  <div key={i} className={styles.crow} data-color-row={`cat-${i}`} style={{ color: inkOn(hex) }}>
+                  <div key={i} className={styles.crow} data-color-row={`cat-${i}`} style={{ color: rowInk(hex) }}>
                     <span className={styles.crowFill} style={{ background: hex }} aria-hidden="true" />
                     <span className={styles.cn}>{i + 1}번</span>
                     <span className={styles.hx}>{hex.toUpperCase()}</span>

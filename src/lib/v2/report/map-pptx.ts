@@ -3,7 +3,7 @@ import { buildingStyleForRaster, isBuildingLayer, layerStyle, legendItems, legen
 import { isSiteParcelLayer } from "../ui/site-parcel";
 import { calloutLegendEntries, SLIDE, slideCalloutAvoidance, slideGeometry, slideLayout, slideLegend, slidePanelRects, slideReserved, slideSiteX, terrainSectionLayout, type SlideFormat } from "../ui/overlay-layout";
 import { SLIDE_OVERVIEW_FILL, slideCalloutFrame } from "../ui/callout-layout";
-import { buildMapScene, locatorBox, mapLabelEntries, northArrowBox, RAIL_EXIT_COLOR, RAIL_EXIT_DOT_RADIUS, RAIL_EXIT_DOT_STROKE, scaleBarBox, scaleChromeScaleForBox, type MapScene, type MapSceneBaseBucket, type MapSceneBox } from "../ui/map-scene";
+import { buildMapScene, locatorBox, mapLabelEntries, nearestLineStroke, northArrowBox, RAIL_EXIT_COLOR, RAIL_EXIT_DOT_RADIUS, RAIL_EXIT_DOT_STROKE, scaleBarBox, scaleChromeScaleForBox, type MapScene, type MapSceneBaseBucket, type MapSceneBox } from "../ui/map-scene";
 import { baseTheme, type BaseThemeRef } from "../ui/map-theme";
 import { badgeTextColor } from "../ui/map-labels";
 import { terrainSectionMapStyle } from "../ui/terrain-section";
@@ -830,7 +830,7 @@ function addNearestLines(slide: Slide, code: string, scene: MapScene): void {
   for (const entry of scene.features) {
     if (isRasterizedLayer(entry.feature.layer)) continue;
     if (!entry.feature.highlight || entry.feature.distanceM == null) continue;
-    addSegment(slide, [cx, cy], entry.p, scene.isElementStrong(entry.feature.layer, entry.key) ? INK : scene.lineColor, scene.isElementStrong(entry.feature.layer, entry.key) ? 1.6 : 1.4, tag(code, `nearest-${safeKey(entry.key)}`, "최근접 지시선", "line"), 0, "3 3");
+    addSegment(slide, [cx, cy], entry.p, nearestLineStroke(scene, scene.isElementStrong(entry.feature.layer, entry.key)), scene.isElementStrong(entry.feature.layer, entry.key) ? 1.6 : 1.4, tag(code, `nearest-${safeKey(entry.key)}`, "최근접 지시선", "line"), 0, "3 3");
   }
 }
 
