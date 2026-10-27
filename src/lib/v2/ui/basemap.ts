@@ -55,12 +55,16 @@ export function mapBaseFromScene(scene: Scene): MapBase {
   return base;
 }
 
+/** 도로 맥락이 하나라도 있어야 벡터 바탕으로 쓴다. 맥락 없이 건물·필지만 그리면 깨져 보인다. */
+export const baseUsable = (base: MapBase | null | undefined): base is MapBase => !!base && base.roads.length > 0;
+
 /**
- * 바탕 결정: 결과가 지정한 바탕(D01·D10 위성) > 사용자가 고른 바탕 > 바탕 자료가 있으면 벡터 > 일반지도.
- * 벡터를 골랐어도 바탕 자료가 없는 옛 분석은 일반지도로 돌아간다.
+ * 바탕 결정: 결과가 지정한 바탕(D01·D10 위성) > 사용자가 고른 바탕 > 쓸 수 있는 바탕 자료가 있으면 벡터 > 일반지도.
+ * 벡터를 골랐어도 바탕 자료가 없거나 도로 맥락이 없는 분석은 일반지도로 돌아간다.
  */
 export function resolveBasemap(model: { basemap?: BasemapChoice; base?: MapBase | null }, chosen?: BasemapChoice): BasemapChoice {
   if (model.basemap) return model.basemap;
-  if (chosen && (chosen !== "vector" || model.base)) return chosen;
-  return model.base ? "vector" : "white";
+  const usable = baseUsable(model.base);
+  if (chosen && (chosen !== "vector" || usable)) return chosen;
+  return usable ? "vector" : "white";
 }

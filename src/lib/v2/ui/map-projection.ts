@@ -207,6 +207,10 @@ export function tileUrl(layer: BasemapLayer, z: number, x: number, y: number): s
   return `/site/api/v2/tiles/${layer}/${z}/${y}/${x}`;
 }
 export const BASEMAP_ATTRIBUTION = "© VWorld(국토교통부)";
+/** 벡터 바탕(OSM 도로·녹지·수계 + 국토교통부 건물·필지)의 출처 표기. 화면의 지도·출처 띠·요약이 같은 문구를 쓴다. */
+export const VECTOR_ATTRIBUTION = "© OpenStreetMap contributors · 국토교통부";
+/** 실제로 그려지는 바탕에 맞는 출처 표기 */
+export const basemapAttribution = (layer: BasemapChoice): string => (layer === "vector" ? VECTOR_ATTRIBUTION : BASEMAP_ATTRIBUTION);
 
 /** maxPx 안에 들어가는 가장 긴 1·2·5×10ⁿ m 막대 */
 export function scaleBar(mPerPx: number, maxPx: number): { meters: number; px: number; label: string } {

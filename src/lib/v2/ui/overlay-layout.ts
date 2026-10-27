@@ -7,6 +7,7 @@
  */
 import { isBuildingLayer, legendItemsForModel, type MapLegendLayerItem, type MapModel } from "./map-layers";
 import type { PagePanelKey, PageStyle } from "./board-state";
+import { VECTOR_ATTRIBUTION, type BasemapChoice } from "./map-projection";
 import type { CalloutModel } from "./tile-view";
 
 export type Box = { x0: number; y0: number; x1: number; y1: number };
@@ -33,9 +34,9 @@ export function badgesToShow<T>(items: T[], max: number = OV.maxBadges): { shown
 }
 
 /** 출처 띠 문구: 항상 출처와 기준일을 담는다 */
-export function stripText(sourceLine: string, credit = true): string {
+export function stripText(sourceLine: string, credit = true, basemap?: BasemapChoice): string {
   const base = sourceLine === "출처 없음" ? "출처 없음 · 기준일 해당 없음" : sourceLine;
-  return credit ? `${base} · ${OV.sourceCredit}` : base;
+  return credit ? `${base} · ${basemap === "vector" ? VECTOR_ATTRIBUTION : OV.sourceCredit}` : base;
 }
 
 /** 카드/펼침 위에 오버레이가 덮는 자리(px). 지도 라벨은 이 자리를 피한다. */

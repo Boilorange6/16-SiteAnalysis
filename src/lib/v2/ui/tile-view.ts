@@ -8,7 +8,7 @@ import { tileClientModuleFor } from "../tile/client";
 import type { Metric, TileHeadlinePolicy } from "../tile/types";
 import type { A05Counts, A05Filter } from "../engine/a05-filter";
 import type { CalloutLegendSpec, Complex, Stat } from "./callout-layout";
-import { mapBaseFromScene } from "./basemap";
+import { mapBaseFromScene, type MapBase } from "./basemap";
 import type { MapModel } from "./map-layers";
 import type { MassModel } from "./mass-projection";
 import { catalogEntry, sourceName, TILE_CODES, type TileCode } from "./tile-catalog";
@@ -116,6 +116,8 @@ export type CalloutModel = {
   summary: { count: number; apartments: number; households: number; householdsKnown: number; medianYear: number | null };
   /** A05 필터가 적용된 보고서 한 줄 */
   filterLine?: string | null;
+  /** 설명선 지도의 벡터 바탕 자료(다른 타일과 같은 객체) */
+  base?: MapBase | null;
 };
 
 const KIND_LABEL = { analysis: "분석", diagram: "도판", simulation: "시뮬레이션" } as const;
@@ -469,7 +471,7 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
   // 한 장면의 모든 타일이 같은 바탕 객체를 공유한다(타일별 생략은 model.tileCode로 그리는 쪽이 정한다).
   const base = mapBaseFromScene(scene);
   const withBase = (model: MapModel | null | undefined): MapModel | null | undefined => model ? { ...model, base } : model;
-  return { ...view, map: withBase(view.map) ?? null, backdrop: { ...view.backdrop, base }, ...(view.layerSourceMap ? { layerSourceMap: withBase(view.layerSourceMap) } : {}) };
+  return { ...view, map: withBase(view.map) ?? null, backdrop: { ...view.backdrop, base }, ...(view.callout ? { callout: { ...view.callout, base } } : {}), ...(view.layerSourceMap ? { layerSourceMap: withBase(view.layerSourceMap) } : {}) };
 }
 
 /** 카드·펼침 창·보고서가 같은 레이어 선택 결과를 사용하도록 지도 입력만 파생한다. */

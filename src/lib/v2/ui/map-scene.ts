@@ -1478,7 +1478,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     const suppress = new Set<BaseLayerKind>(BASE_SUPPRESS[model.tileCode ?? ""] ?? []);
     const projection = baseProjection(model.base, theme, vp, W, H, mpp, suppress);
     // 바탕 라벨은 가장 낮은 우선순위: 방위표·축척·범례·대지 표식·철도 라벨·주제 라벨이 먼저 자리를 잡는다.
-    const labelOccupied = [...(legendBox ? [legendBox] : []), ...calloutAvoid, ...(showSiteMarker && !muted ? [siteBounds] : []), ...labelPlacements.map((placement) => placement.box), ...rail.occupiedBoxes];
+    const labelOccupied = [...(legendBox ? [legendBox] : []), ...calloutAvoid, ...(showSiteMarker && !muted ? [siteBounds] : []), ...labelPlacements.flatMap((placement) => [placement.box, placement.leader]), ...rail.occupiedBoxes];
     baseScene = { bg: theme.bg, buckets: projection.buckets, labels: compact || W < BASE_LABEL_MIN_WIDTH ? [] : baseLabels(projection, theme, W, H, labelScale, labelOccupied) };
   }
   return {

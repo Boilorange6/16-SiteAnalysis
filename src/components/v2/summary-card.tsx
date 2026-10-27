@@ -1,10 +1,11 @@
 "use client";
 
-import { memo, useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { memo, useContext, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { SUMMARY_ID, type CardFace } from "@/lib/v2/ui/board-state";
 import type { SummaryView } from "@/lib/v2/ui/tile-view";
-import { OV } from "@/lib/v2/ui/overlay-layout";
-import MapBox from "./map-box";
+import { resolveBasemap } from "@/lib/v2/ui/basemap";
+import { basemapAttribution } from "@/lib/v2/ui/map-projection";
+import MapBox, { BasemapContext } from "./map-box";
 import styles from "./board.module.css";
 import { useCardRoving } from "./use-card-roving";
 
@@ -14,6 +15,8 @@ import { useCardRoving } from "./use-card-roving";
  */
 function SummaryCard({ view, face, onFace, rovingTabIndex, onRovingFocus, onRovingMove }: { view: SummaryView; face: CardFace; onFace: (f: CardFace) => void; rovingTabIndex: number; onRovingFocus: (id: string) => void; onRovingMove: (id: string, key: string, event: KeyboardEvent<HTMLElement>) => void }) {
   const [seen, setSeen] = useState(false);
+  // 요약 지도에 실제로 그려지는 바탕의 출처를 적는다.
+  const credit = basemapAttribution(resolveBasemap(view.map ?? {}, useContext(BasemapContext)));
   const summaryRef = useRef<HTMLElement>(null);
   const focusFace = useRef<CardFace | null>(null);
   const roving = useCardRoving(summaryRef);
@@ -124,10 +127,10 @@ function SummaryCard({ view, face, onFace, rovingTabIndex, onRovingFocus, onRovi
                   <MapBox model={view.map} bare legend={false} north={22} credit={false} pad={7} />
                 </div>
               </div>
-              <footer className={styles.mfFoot} title={`${view.asOfLine} · 배경지도 ${OV.sourceCredit}`}>
+              <footer className={styles.mfFoot} title={`${view.asOfLine} · 배경지도 ${credit}`}>
                 <span>
                   {view.asOfLine}
-                  {view.incomplete ? ` · 일부 자료 불완전 (타일 ${view.incompleteCount}개)` : ""} · 배경지도 {OV.sourceCredit}
+                  {view.incomplete ? ` · 일부 자료 불완전 (타일 ${view.incompleteCount}개)` : ""} · 배경지도 {credit}
                 </span>
               </footer>
             </div>

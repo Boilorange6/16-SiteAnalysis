@@ -12,6 +12,7 @@ import { CUT_CODES } from "@/lib/v2/tile/client";
 import { downloadBytes, EXPORT_MIME } from "@/lib/v2/export/download";
 import { BASEMAPS, BasemapContext, SetBasemapContext } from "./map-box";
 import { mapLabelEntries } from "./map-figure";
+import { baseUsable, resolveBasemap } from "@/lib/v2/ui/basemap";
 import SourcePanel from "./source-panel";
 import styles from "./board.module.css";
 import { dialogPanelFor } from "@/lib/v2/tile/components";
@@ -115,6 +116,9 @@ export default function TileDialog({ view, layer, onLayer, onRetry, cut, onCut, 
   const [tileExportError, setTileExportError] = useState<string | null>(null);
   const basemap = useContext(BasemapContext);
   const setBasemap = useContext(SetBasemapContext);
+  // 이 타일의 지도에 쓸 수 있는 기본 지도 자료가 없으면 그려지는 것은 일반지도다. 선택 표시도 실제로 그려지는 바탕을 따른다.
+  const vectorAvailable = baseUsable((view.map ?? view.backdrop).base);
+  const shownBasemap = resolveBasemap(view.map ?? view.backdrop, basemap);
 
   useFocusTrap({ ref, onClose });
 
@@ -163,7 +167,7 @@ export default function TileDialog({ view, layer, onLayer, onRetry, cut, onCut, 
         <div className={styles.dlgTop}>
           <span className={`${styles.plate} ${styles.seg}`} role="group" aria-label="배경지도">
             {BASEMAPS.map((b) => (
-              <button key={b.id} type="button" aria-pressed={basemap === b.id} onClick={() => setBasemap(b.id)}>
+              <button key={b.id} type="button" aria-pressed={shownBasemap === b.id} disabled={b.id === "vector" && !vectorAvailable} title={b.id === "vector" && !vectorAvailable ? "이 분석에는 기본 지도 자료가 없습니다" : undefined} onClick={() => setBasemap(b.id)}>
                 {b.label}
               </button>
             ))}

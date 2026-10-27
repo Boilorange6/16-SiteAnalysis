@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 
 const { toUtmk } = await import("../../lib/v2/crs.ts");
-const { mapBaseFromScene, BASE_SUPPRESS, resolveBasemap } = await import("../../lib/v2/ui/basemap.ts");
+const { mapBaseFromScene, BASE_SUPPRESS, resolveBasemap, baseUsable } =await import("../../lib/v2/ui/basemap.ts");
 const { buildMapScene, northArrowBox, scaleBarBox } = await import("../../lib/v2/ui/map-scene.ts");
 const { baseTheme } = await import("../../lib/v2/ui/map-theme.ts");
 
@@ -90,6 +90,30 @@ const build = (model, options = {}) => buildMapScene({ model, width: 800, height
   assert.equal(resolveBasemap({ base }, "vector"), "vector");
   assert.equal(resolveBasemap({}, "vector"), "white", "바탕 자료 없는 옛 분석은 일반지도");
   assert.equal(resolveBasemap({}), "white");
+  // 도로 맥락이 없는 바탕(OSM 맥락 없는 장면)은 건물·필지만 남아 깨져 보이므로 쓰지 않는다
+  const noContext = makeScene(); delete noContext.context;
+  const roadless = mapBaseFromScene(noContext);
+  assert.equal(baseUsable(roadless), false);
+  assert.equal(baseUsable(base), true);
+  assert.equal(resolveBasemap({ base: roadless }), "white");
+  assert.equal(resolveBasemap({ base: roadless }, "vector"), "white");
+  assert.equal(resolveBasemap({ base: roadless }, "Base"), "Base", "사용자가 고른 VWorld는 그대로");
+  const roadlessScene = buildMapScene({ model: modelOf("A04", { base: roadless }), width: 800, height: 600 });
+  assert.equal(roadlessScene.base, null);
+  assert.equal(roadlessScene.activeLayer, "white");
+}
+
+// ── 출처 표기: 벡터일 때만 OSM 문구 ──
+{
+  const { VECTOR_ATTRIBUTION, basemapAttribution, BASEMAP_ATTRIBUTION } = await import("../../lib/v2/ui/map-projection.ts");
+  const { stripText } = await import("../../lib/v2/ui/overlay-layout.ts");
+  assert.equal(VECTOR_ATTRIBUTION, "© OpenStreetMap contributors · 국토교통부");
+  assert.equal(basemapAttribution("vector"), VECTOR_ATTRIBUTION);
+  for (const layer of ["white", "Base", "Satellite"]) assert.equal(basemapAttribution(layer), BASEMAP_ATTRIBUTION);
+  assert.equal(stripText("국토부 2026-01-01", true, "vector"), `국토부 2026-01-01 · ${VECTOR_ATTRIBUTION}`);
+  assert.equal(stripText("국토부 2026-01-01", true, "white"), "국토부 2026-01-01 · © VWorld(국토교통부)");
+  assert.equal(stripText("국토부 2026-01-01"), "국토부 2026-01-01 · © VWorld(국토교통부)");
+  assert.equal(stripText("국토부 2026-01-01", false, "vector"), "국토부 2026-01-01");
 }
 
 // ── base-buckets ──
@@ -173,6 +197,22 @@ const build = (model, options = {}) => buildMapScene({ model, width: 800, height
   assert.equal(build(modelOf("A04"), { compact: true }).base.labels.length, 0, "compact면 라벨 없음");
   assert.equal(buildMapScene({ model: modelOf("A04"), width: 599, height: 600, activeLayer: "vector" }).base.labels.length, 0, "폭 600 미만이면 라벨 없음");
   assert.ok(build(modelOf("A04"), { compact: true }).base.buckets.length > 0, "compact여도 묶음은 그린다");
+  // 주제 라벨의 설명선(leader) 상자도 피한다: 고정 라벨이 있는 장면에서 바탕 라벨은 상자·설명선과 모두 겹치지 않는다
+  const { toLngLat } = await import("../../lib/v2/crs.ts");
+  const features = [[-60, 40], [90, 70], [20, -120], [-200, 160], [60, -300]].map(([x, y], i) => {
+    const [lng, lat] = toLngLat([ox + x, oy + y]);
+    return { fid: `f${i}`, layer: "park", lng, lat, name: `주제${i}`, labelPriority: 2 };
+  });
+  const topical = build(modelOf("A04", { features, total: features.length }), { pinnedKeys: features.map((f) => `park|${f.fid}`) });
+  assert.ok(topical.labelPlacements.length > 0, "주제 라벨 배치가 있다");
+  assert.ok(topical.labelPlacements.every((p) => p.leader.x1 > p.leader.x0 || p.leader.y1 > p.leader.y0), "설명선 상자가 있다");
+  assert.ok(topical.base.labels.length > 0);
+  // 마지막 지물은 지명 "역삼동"의 자리에 있어 그 설명선 상자가 지명 라벨을 덮는다 -> 지명 라벨은 버려진다
+  assert.ok(labels.some((l) => l.text === "역삼동") && !topical.base.labels.some((l) => l.text === "역삼동"), "설명선 위의 바탕 라벨은 버린다");
+  for (const l of topical.base.labels) for (const p of topical.labelPlacements) {
+    assert.ok(!overlaps(l.box, p.box), `${l.text} 가 주제 라벨 상자와 겹침`);
+    assert.ok(!overlaps(l.box, p.leader), `${l.text} 가 설명선 상자와 겹침`);
+  }
   // 역·철도 바탕이 빠지면 역 라벨도 없다
   assert.ok(!build(modelOf("A01")).base.labels.some((l) => l.kind === "station"));
   assert.ok(!build(modelOf("D13")).base.labels.some((l) => l.kind === "road"));

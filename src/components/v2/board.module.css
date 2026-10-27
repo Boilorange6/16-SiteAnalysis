@@ -2159,6 +2159,10 @@ button.badge:focus-visible {
   line-height: 1.2;
   cursor: pointer;
 }
+.seg button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 .seg button[aria-pressed="true"] {
   /* 상세 창은 body 포털이라 .root의 --black 상속 범위 밖에서도 같은 선택 대비를 유지한다. */
   background: var(--black, #16181d);

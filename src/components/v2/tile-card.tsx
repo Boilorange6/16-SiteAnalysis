@@ -1,14 +1,16 @@
 "use client";
 
 import { createPortal } from "react-dom";
-import { memo, useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { memo, useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import type { CardFace, CutSpec, DemoPhase, PinnedLabel, TerrainSectionId, TileSize } from "@/lib/v2/ui/board-state";
 import { STRIP_COLORS } from "@/lib/v2/ui/map-layers";
+import { resolveBasemap } from "@/lib/v2/ui/basemap";
+import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import { OV, badgesToShow, cardReserved, stripText } from "@/lib/v2/ui/overlay-layout";
 import { shortHeadlineLabel, type Badge, type TileView } from "@/lib/v2/ui/tile-view";
 import { cutCandidates, cutKey, cutOwnsRaster, normalizedCut, viewForCut } from "@/lib/v2/ui/cut-selection";
 import { faceExtraFor, stageFor } from "@/lib/v2/tile/components";
-import MapBox from "./map-box";
+import MapBox, { BasemapContext } from "./map-box";
 import DetailWindow from "./detail-window";
 import { LayerSelect } from "./layer-select";
 import { mapLabelEntries, type MapFigureElementPick } from "./map-figure";
@@ -213,9 +215,15 @@ export function TitleChip({ view, lead, tail, headingId, as: H = "h3" }: { view:
   );
 }
 
+/** 지도에 실제로 그려지는 바탕. 출처 띠 문구가 이 값을 따른다. */
+function useDrawnBasemap(view: TileView): BasemapChoice {
+  const chosen = useContext(BasemapContext);
+  return resolveBasemap(view.map ?? view.backdrop, chosen);
+}
+
 /** 맨 아래: 출처·기준일 띠 */
 export function SourceStrip({ view }: { view: TileView }) {
-  const text = stripText(view.sourceLine);
+  const text = stripText(view.sourceLine, true, useDrawnBasemap(view));
   return (
     <div className={styles.srcStrip} title={text}>
       {text}
@@ -622,7 +630,7 @@ function MapFace({ p, active, state, back, onBack, onFlip, onDetail, mapReady }:
   const shortAux = h?.aux && h.aux.length <= 4 ? h.aux : "";
   const headlineLabel = h ? shortHeadlineLabel(h.label) : "";
   const extra = view.stackLayers ? view.stackLayers.join(" + ") : view.sheetGrid;
-  const text = stripText(view.sourceLine);
+  const text = stripText(view.sourceLine, true, useDrawnBasemap(view));
   const labelEntries = view.map ? mapLabelEntries(view.map) : [];
   const pinnedCount = p.pinnedLabels.filter((label) => label.on && labelEntries.some((entry) => entry.key === label.key)).length;
   const pinnedKeys = p.pinnedLabels.filter((label) => label.on && labelEntries.some((entry) => entry.key === label.key)).map((label) => label.key);

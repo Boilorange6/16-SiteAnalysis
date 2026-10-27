@@ -2,7 +2,7 @@ import * as React from "react";
 import { memo, useCallback, useContext, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { buildingStyleForRaster, isBuildingLayer, layerStyle, legendItems, RASTER_STYLES, type MapModel, type RasterStyle } from "@/lib/v2/ui/map-layers";
 import { badgeTextColor, mapLabelText as formatMapLabelText } from "@/lib/v2/ui/map-labels";
-import { applyView, BASEMAP_ATTRIBUTION, BASEMAP_STACK, framedViewport, makeProjector, metersPerPixel, scaleBar, tilesFor, tileUrl, worldPx, type BasemapChoice, type MapView, type Viewport } from "@/lib/v2/ui/map-projection";
+import { applyView, basemapAttribution, BASEMAP_STACK, framedViewport, makeProjector, metersPerPixel, scaleBar, tilesFor, tileUrl, worldPx, type BasemapChoice, type MapView, type Viewport } from "@/lib/v2/ui/map-projection";
 import { rasterAffine, rasterLegendColor, rasterLegendEntries, resolveRasterStyle } from "@/lib/v2/ui/raster-image";
 import type { MapFeature, MapLine, MapPolygon, RasterRef } from "@/lib/v2/tile-result";
 import { maxOf, minOf } from "@/lib/v2/extent";
@@ -1779,9 +1779,9 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseT
               </text>
             </>
           )}
-          {credit && !scene.base && (
+          {credit && (
             <text x={W - 4 * u} y={H - 4 * u} fontSize={6.6 * u} textAnchor="end" fill="#3b3f47" stroke="#fff" strokeOpacity={0.8} strokeWidth={2 * u} paintOrder="stroke">
-              {BASEMAP_ATTRIBUTION}
+              {basemapAttribution(activeLayer)}
             </text>
           )}
         </g>}
