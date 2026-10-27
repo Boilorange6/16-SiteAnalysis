@@ -18,7 +18,7 @@ import type { MapModel } from "../ui/map-layers";
 import { catalogEntry, TILE_CODES } from "../ui/tile-catalog";
 import type { SourceDetailRow, SourceMeta } from "../ui/source-details";
 import { sourceDetailsFor, UNKNOWN_AS_OF } from "../ui/source-details";
-import { toTileView, withCalloutPalette, withPalette, type SummaryView, type TileView } from "../ui/tile-view";
+import { toTileView, withCalloutColors, withPalette, type SummaryView, type TileView } from "../ui/tile-view";
 import { mergeMapColors, withMapColors } from "../ui/map-colors";
 import type { Scene } from "../scene";
 import type { MapPolygon, TileResult } from "../tile-result";
@@ -545,7 +545,13 @@ function calloutViewForPage(page: CalloutPage, view: TileView, ctx: ReportDocPla
   const result = ctx.resultFor?.(page.tileId) ?? ctx.results?.get(page.tileId);
   if (!result || !view.callout) return view;
   const filtered = toTileView(result, ctx.scene, ctx.analysisSiteParcel, page.part.filter ?? null);
-  return { ...filtered, tileId: page.tileId };
+  // 결과에서 새로 만든 view는 보드가 고른 색(팔레트·끈 바탕 레이어)을 잃으므로 들어온 view의 것을 이어받는다.
+  const carried = {
+    base: view.map?.baseTheme ?? view.backdrop.baseTheme,
+    palette: view.callout.palette ?? view.map?.palette,
+    hide: view.backdrop.baseHide ?? view.map?.baseHide ?? view.callout.baseHide,
+  };
+  return withPalette({ ...filtered, tileId: page.tileId }, carried);
 }
 
 function calloutLabelCountForPage(page: CalloutPage, view: TileView, ctx: ReportDocPlanContext): number {
@@ -686,7 +692,7 @@ function colorSlide<S extends ReportSlide>(slide: S, colors: MapColorChoice | un
       ...slide,
       map: withMapColors(slide.map, colors) ?? null,
       view: withPalette(slide.view, colors),
-      ...(slide.callout ? { callout: { ...slide.callout, model: withCalloutPalette(slide.callout.model, colors.palette) } } : {}),
+      ...(slide.callout ? { callout: { ...slide.callout, model: withCalloutColors(slide.callout.model, colors) } } : {}),
     };
   }
   return { ...slide, view: withPalette(slide.view, colors), cells: slide.cells.map((cell) => (cell ? { ...cell, view: withPalette(cell.view, colors) } : cell)) };

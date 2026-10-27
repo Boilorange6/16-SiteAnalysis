@@ -1,6 +1,6 @@
 /** 「내 테마」: 사용자가 만든 바탕 색 7개·다이어그램 팔레트를 계정에 저장한다. 종류마다 최대 12개. */
 import { getDb } from "./database";
-import { isBaseThemeRef, type BaseThemeColors } from "../v2/ui/map-theme";
+import { COLOR_KEYS, isBaseThemeRef, type BaseThemeColors } from "../v2/ui/map-theme";
 import { isPaletteRef, type DiagramPaletteColors } from "../v2/ui/map-palette";
 
 export type MapColorKind = "base" | "palette";
@@ -8,7 +8,6 @@ export type SavedBase = { id: number; name: string; colors: BaseThemeColors };
 export type SavedPalette = { id: number; name: string; colors: DiagramPaletteColors };
 
 export const MAX_SAVED_PER_KIND = 12;
-const BASE_KEYS = ["bg", "building", "parcel", "road", "green", "water", "site"] as const;
 const NAME_PREFIX = "내 테마 ";
 
 type Row = { id: number; kind: MapColorKind; name: string; colors: string };
@@ -19,7 +18,7 @@ export function parseMapColorBody(body: unknown): { kind: "base"; colors: BaseTh
   const { kind, colors } = body as { kind?: unknown; colors?: unknown };
   if (kind === "base" && isBaseThemeRef({ name: "x", colors })) {
     const c = colors as Record<string, string>;
-    return { kind, colors: Object.fromEntries(BASE_KEYS.map((k) => [k, c[k]])) as BaseThemeColors };
+    return { kind, colors: Object.fromEntries(COLOR_KEYS.map((k) => [k, c[k]])) as BaseThemeColors };
   }
   if (kind === "palette" && isPaletteRef({ name: "x", colors })) {
     const c = colors as DiagramPaletteColors;

@@ -100,7 +100,7 @@ export const isBaseToggleLayer = (value: unknown): value is BaseToggleLayer =>
 export const isBaseThemeId = (value: unknown): value is BaseThemeId =>
   typeof value === "string" && Object.prototype.hasOwnProperty.call(BASE_THEMES, value);
 
-const COLOR_KEYS: readonly (keyof BaseThemeColors)[] = ["bg", "building", "parcel", "road", "green", "water", "site"];
+export const COLOR_KEYS: readonly (keyof BaseThemeColors)[] = ["bg", "building", "parcel", "road", "green", "water", "site"];
 const HEX = /^#[0-9a-f]{6}$/i;
 
 /** 프리셋 id이거나, 이름과 7색이 모두 #rrggbb인 만든 색. */

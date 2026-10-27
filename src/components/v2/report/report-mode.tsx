@@ -14,7 +14,7 @@ import { reportFileName, tileReportSettingsFromBoard, type PlannedSlide } from "
 import type { ExportPageScope } from "@/lib/v2/report/export-runner";
 import { deleteElementFramePatch, initialReportRail, insertIndexAfter, isTypingTarget, labelFramePatch, mapElementKindLabel, moveByKey, reorderMessage, reportPageMapSelectable, stripNavIndex, toggleLabelVisibility, transitionMapInteraction, type ReportRailKey } from "@/lib/v2/ui/report-mode-logic";
 import type { BoardAction, BoardState } from "@/lib/v2/ui/board-state";
-import { toTileView, withCalloutPalette, type CalloutModel, type SummaryView, type TileView } from "@/lib/v2/ui/tile-view";
+import { toTileView, type CalloutModel, type SummaryView, type TileView } from "@/lib/v2/ui/tile-view";
 import { normalizeA05Filter, type A05Filter } from "@/lib/v2/engine/a05-filter";
 import type { TileResult, MapPolygon } from "@/lib/v2/tile-result";
 import type { Scene } from "@/lib/v2/scene";
@@ -1046,9 +1046,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
       ? { ...toTileView(result, scene, analysisSiteParcel, normalizeA05Filter(filter)), tileId: current.page.tileId }
       : baseView;
     if (!nextView?.callout) return;
-    // 다시 만든 설명선도 이 장이 따르는 팔레트를 유지한다(withCalloutPalette로만 붙인다).
-    const callout = withCalloutPalette(nextView.callout, current.slide.callout.model.palette);
-    const keys = shownCalloutKeys(current.page, current.slide.callout.model, current.slide.callout.numberStart ?? 1).filter((key) => callout.complexes.some((complex) => complex.key === key));
+    const keys = shownCalloutKeys(current.page, current.slide.callout.model, current.slide.callout.numberStart ?? 1).filter((key) => nextView.callout!.complexes.some((complex) => complex.key === key));
     apply({ type: "calloutFilter", id: current.page.id, filter: normalizeA05Filter(filter), keys }, "이 장의 설명선 필터를 바꿨습니다.");
   }, [analysisSiteParcel, apply, calloutPageSelection, resultFor, results, scene, views]);
   const autoGenerateCallout = useCallback((by: CalloutSort) => {

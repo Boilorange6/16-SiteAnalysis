@@ -184,6 +184,34 @@ const baseDoc = { ...EMPTY_REPORT_DOC, pages: [{ id: "cv", kind: "cover", layout
   assert.equal(plainSlide.callout.model, a05.callout, "고르지 않으면 설명선 모델은 그대로");
 }
 
+// 보드 색이 붙은 view: 필터를 건 A05 쪽·표지 지도도 보드 값을 유지한다(쪽 > 보고서 > 보드).
+{
+  const boardColors = { palette: "vivid", hide: ["building"] };
+  const boardViews = new Map([...views].map(([id, v]) => [id, withPalette(v, boardColors)]));
+  const boardSummary = { ...summary, map: withMapColors(summary.map, { hide: boardColors.hide }) };
+  const boardCtx = { ...ctx, summary: boardSummary, views: boardViews };
+  const a05 = boardViews.get("t-A05");
+  const page = pagesForTile(EMPTY_REPORT_DOC, "t-A05", a05, { ...tileReportSettingsFromBoard(board, "t-A05"), callout: "top10" }, boardCtx)[0];
+  const doc0 = { ...EMPTY_REPORT_DOC, pages: [{ id: "cv", kind: "cover", layout: "map-full", panels: {}, textBoxes: [], notes: "" }, page] };
+  for (const filter of [undefined, null]) {
+    const doc = filter === undefined ? doc0 : reportDocReducer(doc0, { type: "calloutFilter", id: page.id, filter: null });
+    if (filter === null) assert.ok(Object.prototype.hasOwnProperty.call(doc.pages[1].part, "filter"), "calloutFilter는 filter 키를 만든다");
+    const plan = planReportDoc(doc, boardViews, boardCtx);
+    const slide = plan.find((s) => s.page?.id === page.id);
+    const label = filter === null ? "필터 쪽" : "필터 없는 쪽";
+    assert.equal(slide.callout.model.palette, "vivid", `${label} 설명선 팔레트`);
+    assert.deepEqual(slide.callout.model.baseHide, ["building"], `${label} 설명선 끈 레이어`);
+    assert.equal(slide.map.palette, "vivid", `${label} 지도 팔레트`);
+    assert.deepEqual(slide.map.baseHide, ["building"], `${label} 지도 끈 레이어`);
+    assert.deepEqual(plan.find((s) => s.kind === "cover").map.baseHide, ["building"], "표지 지도는 보드의 끈 레이어를 따른다");
+  }
+  // 쪽이 모두 켜면 보드의 끔을 덮는다(설명선 포함).
+  const docOn = reportDocReducer(reportDocReducer(doc0, { type: "calloutFilter", id: page.id, filter: null }), { type: "mapColors", scope: "page", id: page.id, patch: { hide: [] } });
+  const slideOn = planReportDoc(docOn, boardViews, boardCtx).find((s) => s.page?.id === page.id);
+  assert.deepEqual(slideOn.callout.model.baseHide, []);
+  assert.deepEqual(slideOn.map.baseHide, []);
+}
+
 // withPalette(view): 보드 view의 모든 모델과 설명선에 붙는다.
 {
   const a05 = views.get("t-A05");
@@ -192,6 +220,8 @@ const baseDoc = { ...EMPTY_REPORT_DOC, pages: [{ id: "cv", kind: "cover", layout
   assert.equal(out.backdrop.palette, "vivid");
   assert.deepEqual(out.map.baseHide, ["parcel"]);
   assert.equal(out.callout.palette, "vivid");
+  assert.deepEqual(out.callout.baseHide, ["parcel"], "설명선 모델에도 끈 레이어");
+  assert.equal(withPalette(a05, { palette: "vivid" }).callout.baseHide, undefined, "hide를 안 고르면 키가 없다");
   assert.notDeepEqual(out.callout.legend, a05.callout.legend, "범례 견본 색도 함께 바뀐다");
   assert.equal(withPalette(a05, {}), a05, "고른 것이 없으면 같은 view");
   assert.equal(a05.map.palette, undefined, "원본은 그대로");

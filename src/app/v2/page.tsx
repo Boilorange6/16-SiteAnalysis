@@ -9,6 +9,7 @@ import ReportMode from "@/components/v2/report/report-mode";
 import { useTileDrag } from "@/components/v2/use-tile-drag";
 import { BASEMAPS, BasemapContext, SetBasemapContext } from "@/components/v2/map-box";
 import { BaseThemeContext } from "@/components/v2/base-theme-context";
+import { withMapColors } from "@/lib/v2/ui/map-colors";
 import { baseUsable, mapBaseFromScene } from "@/lib/v2/ui/basemap";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import styles from "@/components/v2/board.module.css";
@@ -699,7 +700,11 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
     [baseViews, board.order, board.stacks],
   );
   const sheetableIds = useMemo(() => board.order.filter((id) => views.has(id) && views.get(id)!.code !== "SHEET"), [board.order, views]);
-  const summary = useMemo(() => toSummaryView(siteSummary, results, scene), [siteSummary, results, scene]);
+  // 요약 카드·보고서 표지·출처 장의 대지 지도도 보드가 끈 바탕 레이어를 따른다(바탕 테마는 BaseThemeContext).
+  const summary = useMemo(() => {
+    const base = toSummaryView(siteSummary, results, scene);
+    return board.baseHide ? { ...base, map: withMapColors(base.map, { hide: board.baseHide }) ?? null } : base;
+  }, [siteSummary, results, scene, board.baseHide]);
   const analysisDate = results[0]?.conditions.analysisDate ?? "기준일 미확인";
   const reportPlanContext = useMemo(() => ({ summary, analysisDate, views, results: reportResults, scene, analysisSiteParcel, resultFor: reportResultFor }), [analysisDate, analysisSiteParcel, reportResultFor, reportResults, scene, summary, views]);
   const reportDocPageCount = useMemo(() => printedPageCount(board.reportDoc, views, reportPlanContext), [board.reportDoc, reportPlanContext, views]);

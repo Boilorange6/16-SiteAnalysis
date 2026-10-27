@@ -313,7 +313,7 @@ function CalloutMap({ model, kind, page = 0, onPage, label, mapInteractive = tru
   const sat = layer === "Satellite";
   // 카드 축척은 우측 하단 줌 버튼과 겹치지 않게 왼쪽 아래, 상세는 오른쪽 설명선 칸 앞에 둔다.
   const scaleX = scene && kind !== "card" ? scene.frame.right.x0 - 18 - 92 : undefined;
-  const backdrop = useMemo(() => ({ center: model.center, radiusM: model.radiusM, features: [], total: 0, notes: [], base: model.base ?? null }), [model]);
+  const backdrop = useMemo(() => ({ center: model.center, radiusM: model.radiusM, features: [], total: 0, notes: [], base: model.base ?? null, ...(model.baseHide ? { baseHide: model.baseHide } : {}) }), [model]);
   const scale = scene && size
     ? (() => {
         const viewport = applyView(framedViewport(model.center, model.radiusM, size.w, size.h, scene.frame.siteX, scene.frame.fill, scene.siteY), model.center[1], controller.view);

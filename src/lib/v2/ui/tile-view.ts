@@ -10,6 +10,7 @@ import type { A05Counts, A05Filter } from "../engine/a05-filter";
 import { paletteCalloutLegend, type CalloutLegendSpec, type Complex, type Stat } from "./callout-layout";
 import type { DiagramPaletteRef } from "./map-palette";
 import type { MapColorChoice } from "../report/report-doc";
+import type { BaseToggleLayer } from "./map-theme";
 import { withMapColors } from "./map-colors";
 import { mapBaseFromScene, type MapBase } from "./basemap";
 import type { MapModel } from "./map-layers";
@@ -123,6 +124,8 @@ export type CalloutModel = {
   base?: MapBase | null;
   /** 다이어그램 팔레트. 있으면 준공 연대 점 색을 `dotColor(c, palette)`가 따른다(범례는 `withCalloutPalette`가 같이 바꾼다). */
   palette?: DiagramPaletteRef;
+  /** 끈 바탕 레이어. 있으면 설명선 지도의 배경 모델에 넘긴다. */
+  baseHide?: BaseToggleLayer[];
 };
 
 /** 설명선 모델에 팔레트를 싣는다: `palette`와 준공 연대 범례 견본 색을 함께 바꾼다. 팔레트가 없으면 같은 객체. */
@@ -483,12 +486,19 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
   return { ...view, map: withBase(view.map) ?? null, backdrop: { ...view.backdrop, base }, ...(view.callout ? { callout: { ...view.callout, base } } : {}), ...(view.layerSourceMap ? { layerSourceMap: withBase(view.layerSourceMap) } : {}) };
 }
 
+/** 설명선 모델에 고른 팔레트(`withCalloutPalette`)와 끈 바탕 레이어를 싣는다. 고른 것이 없으면 같은 객체. */
+export function withCalloutColors(model: CalloutModel, colors: Pick<MapColorChoice, "palette" | "hide">): CalloutModel {
+  const withColors = withCalloutPalette(model, colors.palette);
+  const hide = colors.hide && (colors.hide.length > 0 || withColors.baseHide) ? colors.hide : undefined;
+  return hide ? { ...withColors, baseHide: [...hide] } : withColors;
+}
+
 /** view의 모든 지도 모델(지도·배경·원본 지도)과 설명선에 고른 색(바탕 테마·팔레트·끈 레이어)을 붙인다. 고른 것이 없으면 같은 view. */
 export function withPalette(view: TileView, colors: MapColorChoice): TileView {
   const map = withMapColors(view.map, colors) ?? null;
   const backdrop = withMapColors(view.backdrop, colors);
   const layerSourceMap = withMapColors(view.layerSourceMap, colors);
-  const callout = view.callout ? withCalloutPalette(view.callout, colors.palette) : view.callout;
+  const callout = view.callout ? withCalloutColors(view.callout, colors) : view.callout;
   if (map === view.map && backdrop === view.backdrop && layerSourceMap === view.layerSourceMap && callout === view.callout) return view;
   return { ...view, map, backdrop, ...(view.layerSourceMap !== undefined ? { layerSourceMap } : {}), ...(view.callout ? { callout } : {}) };
 }

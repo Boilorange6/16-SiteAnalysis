@@ -3,15 +3,13 @@ import type { MapColorChoice, ReportDoc, ReportPage } from "../report/report-doc
 import type { BoardState } from "./board-state";
 import type { MapModel } from "./map-layers";
 import { isPaletteRef, type DiagramPaletteRef } from "./map-palette";
-import { DEFAULT_BASE_THEME, isBaseThemeRef, isBaseToggleLayer, type BaseThemeColors, type BaseThemeRef, type BaseToggleLayer } from "./map-theme";
-
-const BASE_KEYS = ["bg", "building", "parcel", "road", "green", "water", "site"] as const;
+import { COLOR_KEYS, DEFAULT_BASE_THEME, isBaseThemeRef, isBaseToggleLayer, type BaseThemeColors, type BaseThemeRef, type BaseToggleLayer } from "./map-theme";
 
 /** 검증을 통과한 바탕 색 참조의 복사본. 모르는 값이면 undefined. */
 export function normalizeBaseRef(value: unknown): BaseThemeRef | undefined {
   if (!isBaseThemeRef(value)) return undefined;
   if (typeof value === "string") return value;
-  return { name: value.name, colors: Object.fromEntries(BASE_KEYS.map((k) => [k, value.colors[k]])) as BaseThemeColors };
+  return { name: value.name, colors: Object.fromEntries(COLOR_KEYS.map((k) => [k, value.colors[k]])) as BaseThemeColors };
 }
 
 /** 검증을 통과한 팔레트 참조의 복사본. 모르는 값이면 undefined. */
