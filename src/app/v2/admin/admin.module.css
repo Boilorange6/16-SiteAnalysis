@@ -18,7 +18,9 @@
 }
 
 .root {
-  min-height: 100dvh;
+  height: 100dvh;
+  overflow-x: hidden;
+  overflow-y: auto;
   background: var(--bg);
 }
 
