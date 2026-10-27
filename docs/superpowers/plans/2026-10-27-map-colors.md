@@ -2,12 +2,15 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 보드와 보고서에서 지도 색을 고른다. 고르는 건 두 층이다. 바탕 테마(프리셋 8개)와 다이어그램 팔레트(프리셋 8개)이고, 둘 다 「색 만들기」로 직접 만들고 「내 테마」로 저장할 수 있다. 고른 색은 화면과 PPT 도형·범례에 같게 반영된다.
+**Goal:** 보드와 보고서에서 지도 색을 고른다. 고르는 건 두 층이다. 바탕 테마(프리셋 8개)와 다이어그램 팔레트(프리셋 8개)이고, 둘 다 「색 만들기」로 직접 만들고 「내 테마」(계정에 저장)로 남길 수 있다. 바탕 레이어(건물·필지선·도로·녹지·물)는 하나씩 켜고 끌 수 있다. 고른 색과 켜기 상태는 화면과 PPT 도형·범례에 같게 반영된다.
+
+**사용자 결정(2026-10-27):** UI는 C안. 「내 테마」는 계정에 저장(서버 DB). 바탕 레이어 켜기·끄기를 포함한다. T6 구현은 2단계 시안 작업과 동시에 진행한다.
 
 **Architecture:**
 - 색 계산과 프리셋은 순수 모듈 세 개에 둔다: `map-theme.ts`(바탕), `map-palette.ts`(다이어그램), `map-color.ts`(색 계산·생성기·경고).
 - 두 층 모두 **지도 모델(`MapModel`)에 실어 보낸다**(`baseTheme`, `palette`). 화면 SVG·PPT 도형·범례는 모델에서 색을 읽는다. 그래서 미리보기와 PPT가 구조상 같아진다.
-- 저장 위치: 보드 전체는 `BoardState`, 보고서 전체·쪽별 덮어쓰기는 `ReportDoc`·`ReportPage`, 「내 테마」 목록은 localStorage.
+- 저장 위치: 보드 전체는 `BoardState`, 보고서 전체·쪽별 덮어쓰기는 `ReportDoc`·`ReportPage`, 「내 테마」 목록은 계정(서버 DB 표 `user_map_colors` + `/api/user/map-colors`).
+- 바탕 레이어 숨기기는 색 선택과 같은 범위(쪽 > 보고서 > 보드)로 저장한다. 모델의 `baseHide`로 실어 보내고, `buildMapScene`이 기존 타일별 바탕 생략(`BASE_SUPPRESS`)에 더한다.
 - UI는 사용자가 고른 C안 작은 팝오버다. 보드는 `기본 지도 ▾`, 보고서는 도구 막대 `지도 색`에서 연다.
 
 **Tech Stack:** Next.js(React) · TypeScript · pptxgenjs · node:assert 테스트(`npx tsx src/scripts/v2/<file>.mjs`, 전체 `npm run test:v2`)
@@ -32,6 +35,8 @@
 3. **어두운 프리셋(먹):** 라벨·대지 표식·반경 원·방위표·축척 막대가 어두운 바탕에서도 보여야 한다 → Task 1 대비 테스트, Task 3 반경 원 색 테스트.
 4. **「이 쪽만」을 조판 쪽에 적용:** 그 쪽의 모든 칸이 같은 덮어쓰기를 따르고, 다른 쪽은 그대로다. 「이 쪽만」을 지우면 보고서 전체 값으로 돌아간다 → Task 4 plan 테스트.
 5. **만든 색으로 내보낸 PPT:** 화면 미리보기와 같은 색이어야 하고, 다시 열어도·되돌리기 해도 유지돼야 한다 → Task 3 PPT 색 테스트, Task 4 reducer·restore 테스트.
+6. **숨긴 바탕 레이어:** 화면과 PPT 모두에서 빠져야 한다. 그 레이어의 이름 라벨(도로 숨김 → 도로명, 녹지 숨김 → 공원 이름)도 같이 빠진다 → Task 3 테스트.
+7. **「내 테마」 API:** 남의 테마는 지울 수 없다. 로그인하지 않았거나 색 형식이 틀리면 거절한다. 종류별 12개를 넘으면 오래된 것부터 지운다 → Task 4 store·검증 테스트.
 
 ---
 
@@ -97,7 +102,8 @@
   - `PALETTE_IDS`, `paletteName(ref): string`, `paletteColors(ref): DiagramPaletteColors | null`(`app`이면 null), `isPaletteRef(value): value is DiagramPaletteRef`
   - `paletteLayerStyle(layer: string, style: LayerStyle, ref?: DiagramPaletteRef | null): LayerStyle` — `app`·없음이면 **같은 객체(===)를 돌려준다**.
 - Produces (map-layers.ts):
-  - `MapModel`에 `baseTheme?: BaseThemeRef`, `palette?: DiagramPaletteRef` 추가
+  - `MapModel`에 `baseTheme?: BaseThemeRef`, `palette?: DiagramPaletteRef`, `baseHide?: BaseToggleLayer[]` 추가
+  - `type BaseToggleLayer = "building" | "parcel" | "road" | "green" | "water"`, `BASE_TOGGLE_LAYERS`(이 순서), `isBaseToggleLayer(value)`. 정의 위치는 `map-theme.ts`.
   - `modelLayerStyle(model: Pick<MapModel, "palette"> | null | undefined, layer: string): LayerStyle`
   - `legendItemsForModel`·`legendItemsOf`·`legendItems`가 모델의 팔레트 색을 범례 색으로 쓴다.
 - Produces (map-color.ts): `generatePaletteColors(mood, current: DiagramPaletteColors, locks: Partial<Record<number | "seq", boolean>>, only?: number | "seq", rng?): DiagramPaletteColors`, `paletteWarnings(colors: DiagramPaletteColors): { level; text }[]`
@@ -138,6 +144,7 @@
   - 엔진(`src/lib/v2/engine/**`, `tile/*/engine.ts`)의 라벨 조회는 그대로 둔다.
 - Modify: 바탕 테마 결정 `src/lib/v2/ui/map-scene.ts`(1479행 부근), `src/components/v2/map-figure.tsx`(405-407행), `src/lib/v2/report/map-pptx.ts`(`addSite`, `sceneFor`) — `model.baseTheme ?? <prop/옵션/컨텍스트>` 순서. 반경 원·대지 주변 선은 바탕이 있으면 `theme.ring`을 쓴다.
 - Modify: `BaseThemeId`를 받던 자리(`MapFigureProps.baseTheme`, `MapSceneOptions.baseTheme`, `PptxMapLook.baseTheme`, `buildMapImages` options, `BaseThemeContext`)를 `BaseThemeRef`로 넓힌다.
+- Modify: `src/lib/v2/ui/map-scene.ts` `buildMapScene`이 바탕을 빼는 집합(`suppress`, 지금은 `BASE_SUPPRESS[tileCode]`)에 `model.baseHide`를 더한다. 숨긴 층의 라벨도 같은 규칙으로 빠진다: road → 도로명, green → 공원 이름.
 - Test: `src/scripts/v2/test-v2-map-palette-render.mjs`(신규)
 
 **Interfaces:**
@@ -150,32 +157,52 @@
   - `baseTheme: "ink"` 모델의 PPT `map-base-bg` 채움이 `22252A`이고, 반경 원 선이 `CFCFCF`다.
   - `baseTheme: { name, colors }`(만든 색)도 같은 경로로 반영된다.
   - 조판 칸 모델에 팔레트가 있으면 칸 도형에도 반영된다.
+  - `baseHide: ["parcel", "road"]` 모델:
+    - `buildMapScene`의 `base.buckets`에 parcel·road 층이 없고, road 라벨도 없다.
+    - PPT에 `map-base-parcel`·`map-base-road` 도형이 없고, 화면 SVG에 `data-map-base-layer="road"`가 없다.
+    - `baseHide: ["green"]`이면 park 라벨이 없다.
   - 기존 `test-v2-ppt-editable-maps.mjs`·`test-v2-ppt-vector-basemap.mjs`·`test-v2-report-doc-pptx.mjs`는 그대로 통과한다(기본값 불변 보장).
 - [ ] **Step 2: 실패 확인.** → FAIL(fill이 원래 색)
 - [ ] **Step 3: 구현** — 위 파일들의 색 조회를 바꾼다. 그 함수 안에 모델이 없으면 호출자에서 모델(또는 `palette`)을 넘긴다.
 - [ ] **Step 4: 통과 확인.** 새 파일과 위 기존 3개 PASS
 - [ ] **Step 5: 커밋** `feat(v2): 화면과 PPT가 모델의 팔레트·바탕 테마를 따름`
 
-### Task 4: 상태 저장·적용 범위·내 테마
+### Task 4: 상태 저장·적용 범위·내 테마(계정)
 
 **Files:**
-- Modify: `src/lib/v2/ui/board-state.ts`(`baseTheme?: BaseThemeRef`, `palette?: DiagramPaletteRef`, 액션 `{ type: "baseTheme"; ref: BaseThemeRef }`·`{ type: "palette"; ref: DiagramPaletteRef }`, 저장·`restore` 검증. 기존 `{ type: "baseTheme"; id }` 호출은 `ref`로 바꾼다)
-- Modify: `src/lib/v2/report/report-doc.ts`(`type MapColorChoice = { base?: BaseThemeRef; palette?: DiagramPaletteRef }`, `ReportDoc.mapColors?`, `ReportPageBase.mapColors?`, 액션 `{ type: "mapColors"; scope: "document" | "page"; id?: string; patch: MapColorChoice | null }` — page 범위의 `null`은 덮어쓰기를 지운다)
+- Modify: `src/lib/v2/ui/board-state.ts`(`baseTheme?: BaseThemeRef`, `palette?: DiagramPaletteRef`, `baseHide?: BaseToggleLayer[]`, 액션 `{ type: "baseTheme"; ref: BaseThemeRef }`·`{ type: "palette"; ref: DiagramPaletteRef }`·`{ type: "baseHide"; layers: BaseToggleLayer[] }`, 저장·`restore` 검증. 기존 `{ type: "baseTheme"; id }` 호출은 `ref`로 바꾼다)
+- Modify: `src/lib/v2/report/report-doc.ts`(`type MapColorChoice = { base?: BaseThemeRef; palette?: DiagramPaletteRef; hide?: BaseToggleLayer[] }`, `ReportDoc.mapColors?`, `ReportPageBase.mapColors?`, 액션 `{ type: "mapColors"; scope: "document" | "page"; id?: string; patch: MapColorChoice | null }` — page 범위의 `null`은 덮어쓰기를 지운다)
 - Modify: `src/lib/v2/ui/board-state.ts` `restoreReportDoc`(검증), `src/lib/v2/report/report-doc-plan.ts` `planReportDoc`(쪽마다 모델에 색을 붙인다), `src/lib/v2/ui/tile-view.ts`(보드 view의 모든 모델에 팔레트를 붙이는 `withPalette(view, ref)`, 기존 `withBase` 옆), `src/app/v2/page.tsx`(보드 view에 `board.palette` 적용)
-- Create: `src/lib/v2/ui/my-map-colors.ts`(localStorage 「내 테마」)
-- Test: `src/scripts/v2/test-v2-map-colors-state.mjs`(신규)
+- Modify: `src/lib/server/database.ts` `initSchema`에 표를 추가한다.
+  ```sql
+  CREATE TABLE IF NOT EXISTS user_map_colors (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('base','palette')), name TEXT NOT NULL,
+    colors TEXT NOT NULL, created_at REAL NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE);
+  ```
+- Create: `src/lib/server/map-color-store.ts`(서버 저장), `src/app/api/user/map-colors/route.ts`(GET·POST·DELETE, `requireAuth`·`isUser`는 `api/user/api-keys/route.ts`와 같은 방식), `src/lib/v2/ui/my-map-colors.ts`(브라우저에서 부르는 쪽, `authFetch("/site/api/user/map-colors")`)
+- Test: `src/scripts/v2/test-v2-map-colors-state.mjs`(신규), `src/scripts/v2/test-v2-map-color-store.mjs`(신규, `DB_PATH`를 임시 파일로 둔 뒤 import)
 
 **Interfaces:**
 - Consumes: Task 1·2 ref 타입과 검증기, Task 3의 모델 계약
 - Produces:
   - `resolveMapColors(board: Pick<BoardState, "baseTheme" | "palette">, doc: ReportDoc, page?: ReportPage): Required<MapColorChoice>` — 쪽 > 보고서 > 보드 > 기본(warm·app) 순이다.
   - `withMapColors(model: MapModel, colors: MapColorChoice): MapModel`
-  - `my-map-colors.ts`:
-    - `loadMyColors(): { base: SavedBase[]; palette: SavedPalette[] }`, `saveMyColor(kind: "base" | "palette", colors): SavedBase | SavedPalette`, `removeMyColor(kind, id): void`
-    - `SavedBase = { id: string; name: string; colors: BaseThemeColors }`, `SavedPalette`도 같은 모양이다.
-    - 키 `v2.mapColors.mine.v1`, 종류별 최대 12개(넘으면 오래된 것부터 버림), 이름은 `내 테마 N`이다.
-    - 모든 읽기·쓰기는 try/catch로 감싼다. 실패하면 빈 목록이다.
-  - 적용한 「내 테마」는 id가 아니라 `{ name, colors }`로 보드·보고서에 저장한다. 그래서 다른 브라우저에서 열어도 같은 색이다.
+  - `map-color-store.ts`(서버):
+    - `listMapColors(userId: number): { base: SavedBase[]; palette: SavedPalette[] }`(최근 것 먼저)
+    - `saveMapColor(userId: number, kind: "base" | "palette", colors: BaseThemeColors | DiagramPaletteColors): SavedBase | SavedPalette`
+    - `deleteMapColor(userId: number, id: number): boolean` — 남의 것이면 false.
+    - `parseMapColorBody(body: unknown): { kind; colors } | null` — `isBaseThemeRef`·`isPaletteRef`의 색 검사를 다시 쓴다.
+    - 종류별 최대 12개(넘으면 오래된 것부터 지움). 이름은 `내 테마 N`이고, N은 그 사용자·종류에서 지금까지 저장한 수 + 1이다.
+  - `SavedBase = { id: number; name: string; colors: BaseThemeColors }`, `SavedPalette`도 같은 모양이다.
+  - API:
+    - `GET` → `{ base, palette }`
+    - `POST { kind, colors }` → 저장한 항목. 형식이 틀리면 400.
+    - `DELETE ?id=` → 204, 없거나 남의 것이면 404.
+    - 로그인하지 않았으면 401(`requireAuth`).
+  - `my-map-colors.ts`(브라우저): `loadMyColors(): Promise<…>`, `saveMyColor(kind, colors): Promise<Saved…>`, `removeMyColor(id): Promise<void>`. 실패하면 빈 목록을 돌려주고, 저장 실패는 팝오버에 인라인 문구 "내 테마를 저장하지 못했습니다"로 보인다(토스트 금지).
+  - 적용한 「내 테마」는 id가 아니라 `{ name, colors }`로 보드·보고서에 저장한다. 그래서 테마를 지워도 이미 쓴 프로젝트의 색은 그대로다.
 
 - [ ] **Step 1: 실패 테스트.** `test-v2-map-colors-state.mjs`
   - reducer: `baseTheme`·`palette` 액션 → 저장본 → `restore` 왕복이 같은 값이다.
@@ -187,11 +214,18 @@
     - 히스토리 되돌리기 후 이전 값으로 돌아간다.
   - `resolveMapColors` 우선순위 4단계를 표로 검사한다.
   - `planReportDoc`: 쪽 2개 중 1쪽만 `mapColors.palette: "vivid"`이면, 그 쪽 `map.palette === "vivid"`이고 다른 쪽은 보고서 값이다. 조판 쪽이면 모든 칸 모델이 같은 값을 받는다. 표지 지도는 보고서 값을 따른다.
-  - `my-map-colors`: localStorage가 없거나 던지는 환경(전역 대체)에서도 빈 목록이다. 13번째 저장이면 가장 오래된 것이 빠진다.
+  - `resolveMapColors`가 `hide`도 같은 우선순위로 정한다. `planReportDoc` 모델에 `baseHide`가 붙는다.
+
+  `test-v2-map-color-store.mjs`(임시 `DB_PATH`)
+  - 사용자 2명을 만든다. A의 저장·목록·삭제가 왕복된다.
+  - B는 A의 항목을 지울 수 없다(false).
+  - 13번째 저장이면 가장 오래된 것이 빠진다.
+  - 이름이 `내 테마 1`, `내 테마 2`… 순서로 붙는다.
+  - `parseMapColorBody`: 7키가 아닌 base·`cat` 7개·hex가 아닌 값·모르는 kind는 null이다.
 - [ ] **Step 2: 실패 확인** → FAIL
 - [ ] **Step 3: 구현** (위 Interfaces 그대로)
-- [ ] **Step 4: 통과 확인.** 새 파일, `test-v2-board-state-v4.mjs`, `test-v2-report-doc.mjs`, `test-v2-report-doc-plan.mjs` PASS
-- [ ] **Step 5: 커밋** `feat(v2): 지도 색 저장·보고서 전체/이 쪽만·내 테마`
+- [ ] **Step 4: 통과 확인.** 새 파일 2개, `test-v2-board-state-v4.mjs`, `test-v2-report-doc.mjs`, `test-v2-report-doc-plan.mjs` PASS
+- [ ] **Step 5: 커밋** `feat(v2): 지도 색 저장·보고서 전체/이 쪽만·내 테마(계정)`
 
 ### Task 5: C안 팝오버 — 보드·보고서 진입, 색 만들기 카드
 
@@ -227,8 +261,12 @@
 - **`색 만들기…`:** 모양 있는 보조 버튼이다. 누르면 288 px 카드를 팝오버 옆(`makerSide`)에 12 px 간격으로 띄운다.
   - 카드 구성: 머리(`바탕 색 만들기`/`다이어그램 색 만들기`·닫기) → 분위기 칩 8개 → 색 줄 → 경고(bad는 `#b42318`, ok는 `#3f6f45`) → `만들기` 주 버튼 + 되돌리기·다시 아이콘 버튼 → `내 테마로 저장`.
   - 색 줄: 바탕 7줄, 다이어그램 cat 8줄 + `순서형` 1줄. 줄마다 이름 · hex(고정폭) · 고정/섞기/어둡게/밝게/직접 고르기(`<input type="color">`) 아이콘 버튼이 있다. 아이콘 버튼은 26 px이고 맞힘 영역은 24 px 이상이다.
+  - 바탕 줄 가운데 건물·필지선·도로·녹지·물 5줄은 맨 앞에 눈 아이콘 토글을 둔다(`aria-pressed`, `aria-label="<층> 숨기기"`/`"<층> 보이기"`). 숨긴 줄은 색 칸을 45% 흐리게 하고 나머지 버튼은 그대로 둔다. 바탕색·대지 줄에는 눈이 없다.
+  - 토글은 색을 바꾸지 않고 `onApply({ hide })`만 부른다. 프리셋을 쓰는 중이어도 「만든 색」으로 바뀌지 않는다.
   - 카드에서 바꾼 색은 바로 `onApply({ base | palette: { name: "만든 색", colors } })`로 적용한다. 되돌리기 스택은 40단계다.
-  - 저장하면 `saveMyColor` 후 그 테마를 적용하고 목록 맨 위에 보인다.
+  - 저장하면 `saveMyColor`(계정) 후 그 테마를 적용하고 목록 맨 위에 보인다. 실패하면 카드 안에 인라인 문구를 띄운다.
+  - 「내 테마」 줄에는 마우스를 올리면 오른쪽 끝에 지우기(휴지통, 24 px) 버튼이 나온다. 누르면 줄 자리에서 `지울까요? 지우기 · 취소` 확인으로 바뀐다(confirm 대화상자 금지).
+  - 팝오버를 열 때 `loadMyColors()`를 한 번 부른다. 불러오는 동안 목록 머리에 회색 줄 1개를 둔다.
 - **닫기:** Esc는 카드부터 닫고 다음에 팝오버를 닫는다. 바깥 클릭으로 닫는다. 닫으면 트리거로 포커스를 돌린다. 팝오버 안 스크롤은 `overscroll-behavior: contain`이다.
 - **보드:**
   - `기본 지도` 버튼이 눌린 상태면 `기본 지도 ▾`로 쓰고 `aria-haspopup="dialog"`·`aria-expanded`를 단다.
@@ -245,6 +283,7 @@
   - 보드(scope 없음)에는 `보고서 전체`가 없다. 보고서 `pageAvailable:false`면 「이 쪽만」에 `aria-disabled`가 있다.
   - 색 띠 칸 수: 바탕 6, 다이어그램 5.
   - 화면 텍스트에 영문 id(`warm`, `vivid` 등)가 없다.
+  - 만들기 카드(바탕): 눈 토글 5개, 바탕색·대지 줄에는 없음. `hide`에 road가 있으면 도로 줄 토글이 `aria-pressed="true"`이고 라벨이 "도로 보이기"다.
   - 배선 검사: page.tsx `기본 지도 ▾`·`aria-haspopup`, report-mode.tsx `aria-label="지도 색"`·`mapColors` 액션 dispatch.
 - [ ] **Step 2: 실패 확인** → FAIL
 - [ ] **Step 3: 구현** — 위 동작 그대로 만든다. 문구는 이 계획의 따옴표 안 그대로 쓴다. §9-11에 치수(288·34·13×16·12·150 ms)를 적는다.
@@ -257,3 +296,4 @@
 - [ ] 보드 hover 미리보기 반응을 잰다: 8줄을 연속으로 훑을 때 long task와 화면 멈춤이 없는지 Performance 기록으로 확인한다.
 - [ ] 바탕 `ink` + 팔레트 `vivid`, 「이 쪽만」 1쪽 덮어쓰기로 PPT를 내보낸다. PowerPoint SaveAs PNG로 실렌더하고 미리보기와 나란히 비교한다. 도형 색 변경 가능 여부, 파일 크기·열기 시간을 기록한다.
 - [ ] 새로고침 뒤 보드·보고서 색이 유지되는지, 되돌리기·다시가 동작하는지 확인한다.
+- [ ] 「내 테마」를 저장한 뒤 다른 브라우저 문맥(새 storageState)으로 같은 계정에 들어가 목록이 보이는지 확인한다. 도로·필지선을 숨긴 상태로 PPT를 내보내 두 층이 빠졌는지 확인한다.
