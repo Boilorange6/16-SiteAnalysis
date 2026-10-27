@@ -114,17 +114,19 @@ function paletteCatColor(i: number, mood: Mood, h0: number, rnd: (a: number, b: 
   let l = rnd(52, 62) + (i % 2 ? 6 : -4);
   if (mood === "부드럽게") { s = rnd(35, 45); l = rnd(66, 74); }
   if (mood === "선명하게") { s = rnd(72, 85); l = rnd(48, 56); }
-  if (mood === "따뜻하게") { h = (h0 % 50) - 10 + i * 22; s = rnd(55, 70); l = 50 + (i % 3) * 8; }
-  if (mood === "차갑게") { h = 150 + (h0 % 30) + i * 17; s = rnd(40, 60); l = 45 + (i % 3) * 10; }
+  // 8칸이 따뜻한(−12°~+46°) / 차가운(154°~252°) 띠 안에 머물도록 색상 간격을 좁히고,
+  // 이웃 칸은 색상 순서를 3칸씩 건너뛰어(0,3,6,1,4,7,2,5) 명도와 함께 갈라 놓는다.
+  const j = (i * 3) % 8;
+  if (mood === "따뜻하게") { h = -12 + (h0 % 12) + j * 6.5; s = rnd(55, 70); l = 42 + (i % 4) * 9; }
+  if (mood === "차갑게") { h = 154 + (h0 % 14) + j * 12; s = rnd(40, 60); l = 45 + (i % 3) * 10; }
   if (mood === "밝게") { s = rnd(55, 65); l = rnd(70, 78); }
   if (mood === "어둡게") { s = rnd(45, 60); l = rnd(32, 40); }
   if (mood === "파스텔") { s = rnd(50, 65); l = rnd(80, 86); }
   return hsl(h, s, l);
 }
 
-/** 첫 범주색의 색상으로 밝음(L 92) → 어두움(L 28) 5점을 만든다. */
-function paletteSeq(cat0: string): string[] {
-  const [h, s] = toHsl(cat0);
+/** 주어진 색상으로 밝음(L 92) → 어두움(L 28) 5점을 만든다. */
+function paletteSeq(h: number, s: number): string[] {
   return [92, 76, 60, 44, 28].map((l) => hsl(h, Math.max(30, Math.min(80, s)), l));
 }
 
@@ -142,8 +144,14 @@ export function generatePaletteColors(
     if (only !== undefined) return only === i ? paletteCatColor(i, mood, rnd(0, 360), rnd) : c;
     return locks[i] ? c : paletteCatColor(i, mood, h0, rnd);
   });
-  const regenSeq = only === "seq" || (only === undefined && !locks.seq);
-  return { cat, seq: regenSeq ? paletteSeq(cat[0]) : current.seq };
+  // 순서형만 다시 섞을 때는 rng로 새 색상을 뽑는다. 전체를 다시 만들 때는 첫 범주색의 색상을 따른다.
+  let seq = [...current.seq];
+  if (only === "seq") seq = paletteSeq(rnd(0, 360), rnd(45, 70));
+  else if (only === undefined && !locks.seq) {
+    const [h, s] = toHsl(cat[0]);
+    seq = paletteSeq(h, s);
+  }
+  return { cat, seq };
 }
 
 const labOf = (rgbLin: number[]): [number, number, number] => {

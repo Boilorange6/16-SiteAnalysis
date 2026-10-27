@@ -45,17 +45,50 @@ assert.ok(isBaseToggleLayer("road") && !isBaseToggleLayer("site") && !isBaseTogg
   assert.equal(modelLayerStyle({ palette: "app" }, "use:주거"), s);
 }
 
-// 범주형: 접두사별 기타·미상 아닌 n번째 → cat[n % 8]
+// 범주형: legendOrder가 있으면 그 값, 없으면 접두사별 기타·미상 아닌 n번째(정의 순서) → cat[칸 % 8]
 const SKIP = /(기타|미상|other)$/;
-for (const prefix of ["use", "store", "zone", "zone_center", "jimok", "district", "facility"]) {
+for (const prefix of ["use", "store", "jimok", "district", "facility"]) {
   const keys = Object.keys(LAYER_STYLES).filter((k) => k.startsWith(`${prefix}:`) && !SKIP.test(k));
   assert.ok(keys.length > 0, prefix);
-  keys.forEach((k, n) => {
+  let n = 0;
+  for (const k of keys) {
+    const slot = LAYER_STYLES[k].legendOrder ?? n++;
     const out = paletteLayerStyle(k, LAYER_STYLES[k], "vivid");
-    assert.equal(out.color, vivid.cat[n % 8], `${k} color`);
-    if (LAYER_STYLES[k].fill !== undefined) assert.equal(out.fill, vivid.cat[n % 8], `${k} fill`);
+    assert.equal(out.color, vivid.cat[slot % 8], `${k} color`);
+    if (LAYER_STYLES[k].fill !== undefined) assert.equal(out.fill, vivid.cat[slot % 8], `${k} fill`);
     assert.equal(out.label, LAYER_STYLES[k].label);
-  });
+  }
+}
+// D19 지목: 영어 키(emitter)와 한글 별칭 키가 같은 칸을 쓴다
+{
+  const jm = (k, ref) => paletteLayerStyle(k, LAYER_STYLES[k], ref).color;
+  assert.equal(jm("jimok:site", "vivid"), vivid.cat[0]);
+  assert.equal(jm("jimok:대", "vivid"), vivid.cat[0]);
+  assert.equal(jm("jimok:field", "vivid"), vivid.cat[2]);
+  assert.equal(jm("jimok:전답", "vivid"), vivid.cat[2]);
+  assert.equal(jm("jimok:water", "vivid"), vivid.cat[4]);
+  assert.notEqual(jm("jimok:field", "safe").toLowerCase(), "#000000", "safe 전답은 검정이 아님");
+  assert.equal(jm("jimok:field", "safe"), paletteColors("safe").cat[2]);
+}
+// 용도지역은 어떤 팔레트에서도 앱 색
+for (const k of Object.keys(LAYER_STYLES).filter((x) => x.startsWith("zone:") || x.startsWith("zone_center:"))) {
+  for (const id of P.PALETTE_IDS) assert.equal(paletteLayerStyle(k, LAYER_STYLES[k], id), LAYER_STYLES[k], `${k}/${id}`);
+}
+assert.equal(paletteLayerStyle("zone:주거", LAYER_STYLES["zone:주거"], "vivid"), LAYER_STYLES["zone:주거"]);
+
+// 프리셋·검증 캐시
+{
+  const c = paletteColors("vivid");
+  const orig = c.cat[0];
+  try { c.cat[0] = "#000000"; c.seq.push("#000000"); } catch { /* 얼린 배열 */ }
+  assert.equal(paletteColors("vivid").cat[0], orig, "프리셋은 바뀌지 않는다");
+  assert.equal(paletteColors("vivid").seq.length, 5);
+  const mine = { name: "내 색", colors: { cat: [...vivid.cat], seq: [...vivid.seq] } };
+  assert.equal(paletteColors(mine), mine.colors);
+  assert.equal(paletteColors(mine), paletteColors(mine), "같은 객체는 같은 결과");
+  const bad = { name: "x", colors: { cat: ["#fff"], seq: [] } };
+  assert.equal(paletteColors(bad), null);
+  assert.equal(paletteColors(bad), null);
 }
 assert.equal(paletteLayerStyle("use:주거", LAYER_STYLES["use:주거"], "vivid").color, vivid.cat[0]);
 assert.equal(paletteLayerStyle("use:공업", LAYER_STYLES["use:공업"], "vivid").color, vivid.cat[7]);
@@ -139,10 +172,44 @@ const at = (seq, t) => {
   const seqOnly = generatePaletteColors("선명하게", cur, {}, "seq", half);
   assert.deepEqual(seqOnly.cat, cur.cat);
   assert.notDeepEqual(seqOnly.seq, cur.seq);
+  // 순서형만 다시 섞기는 rng에 따라 달라지고, 연달아 눌러도 바뀐다
+  const seqA = generatePaletteColors("선명하게", cur, {}, "seq", () => 0.1).seq;
+  const seqB = generatePaletteColors("선명하게", cur, {}, "seq", () => 0.6).seq;
+  assert.notDeepEqual(seqA, seqB);
+  assert.notDeepEqual(generatePaletteColors("선명하게", { cat: cur.cat, seq: seqA }, {}, "seq", () => 0.6).seq, seqA);
+  // 결과를 바꿔도 입력은 그대로(복사본)
+  const keep = generatePaletteColors("선명하게", cur, { seq: true }, undefined, half);
+  assert.notEqual(keep.seq, cur.seq);
+  keep.seq[0] = "#000000";
+  assert.notEqual(cur.seq[0], "#000000");
   // seq는 밝음→어두움
   const L = (h) => rgb(h).reduce((s, v) => s + v, 0);
   const s = generatePaletteColors("자동", cur, {}, undefined, half).seq;
   for (let i = 1; i < 5; i++) assert.ok(L(s[i]) < L(s[i - 1]), "seq 어두워짐");
+}
+
+// 분위기 색상 띠: 따뜻하게는 빨강~노랑, 차갑게는 청록~보라 쪽 안에 머문다
+{
+  const { toHsl } = await import("../../lib/v2/ui/map-color.ts");
+  let seed = 12345;
+  const lcg = () => (seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296;
+  const rngs = [() => 0, () => 0.25, () => 0.5, () => 0.75, () => 0.999, lcg, lcg, lcg];
+  const cur = paletteColors("soft");
+  for (const rng of rngs) {
+    for (const c of generatePaletteColors("따뜻하게", cur, {}, undefined, rng).cat) {
+      const h = toHsl(c)[0];
+      assert.ok(h >= 345 || h <= 65, `따뜻하게 색상 ${h.toFixed(1)} (${c})`);
+    }
+    for (const c of generatePaletteColors("차갑게", cur, {}, undefined, rng).cat) {
+      const h = toHsl(c)[0];
+      assert.ok(h >= 150 && h <= 260, `차갑게 색상 ${h.toFixed(1)} (${c})`);
+    }
+    // 한 칸 다시 만들기도 같은 띠
+    for (let i = 0; i < 8; i++) {
+      const h = toHsl(generatePaletteColors("따뜻하게", cur, {}, i, rng).cat[i])[0];
+      assert.ok(h >= 345 || h <= 65, `따뜻하게 ${i}번 ${h.toFixed(1)}`);
+    }
+  }
 }
 
 // 경고

@@ -7,7 +7,7 @@ export type DiagramPaletteId = "app" | "soft" | "vivid" | "earth" | "pastel" | "
 export type DiagramPaletteColors = { cat: string[]; seq: string[] };
 export type DiagramPaletteRef = DiagramPaletteId | { name: string; colors: DiagramPaletteColors };
 
-const PRESETS: Readonly<Record<Exclude<DiagramPaletteId, "app">, DiagramPaletteColors>> = {
+const RAW_PRESETS: Readonly<Record<Exclude<DiagramPaletteId, "app">, DiagramPaletteColors>> = {
   soft: {
     cat: ["#e8c37a", "#efa492", "#93c5a0", "#9db5de", "#c8a8d8", "#f0c9a0", "#9fd0cc", "#d8b4a6"],
     seq: ["#eef3f8", "#c9d9ec", "#9db5de", "#6f8fc4", "#4a69a3"],
@@ -37,6 +37,14 @@ const PRESETS: Readonly<Record<Exclude<DiagramPaletteId, "app">, DiagramPaletteC
     seq: ["#f0f0f0", "#c8c8c8", "#969696", "#646464", "#2f2f2f"],
   },
 };
+
+/** 호출자가 공유 프리셋을 바꾸지 못하게 얼린다. */
+const PRESETS = Object.fromEntries(
+  Object.entries(RAW_PRESETS).map(([id, c]) => [
+    id,
+    Object.freeze({ cat: Object.freeze([...c.cat]) as string[], seq: Object.freeze([...c.seq]) as string[] }),
+  ]),
+) as Readonly<Record<Exclude<DiagramPaletteId, "app">, DiagramPaletteColors>>;
 
 const NAMES: Readonly<Record<DiagramPaletteId, string>> = {
   app: "지금 앱 색",
@@ -70,13 +78,23 @@ export function paletteName(ref: DiagramPaletteRef): string {
   return typeof ref === "string" ? NAMES[ref] : ref.name;
 }
 
+const VALID_CUSTOM = new WeakMap<object, boolean>();
+
 /** `app`·모르는 값·없음이면 null(= 레이어 원래 색). */
 export function paletteColors(ref?: DiagramPaletteRef | null): DiagramPaletteColors | null {
   if (typeof ref === "string") return ref === "app" || !isPaletteId(ref) ? null : PRESETS[ref];
-  return ref && isPaletteRef(ref) ? ref.colors : null;
+  if (!ref || typeof ref !== "object") return null;
+  // 렌더러가 지물마다 부르므로 같은 객체의 검증은 한 번만 한다.
+  let valid = VALID_CUSTOM.get(ref);
+  if (valid === undefined) {
+    valid = isPaletteRef(ref);
+    VALID_CUSTOM.set(ref, valid);
+  }
+  return valid ? ref.colors : null;
 }
 
-const CATEGORICAL_PREFIXES = new Set(["use", "store", "zone", "zone_center", "jimok", "district", "facility"]);
+/** 용도지역(zone·zone_center)은 계획 관습 색이라 팔레트와 무관하게 앱 색을 쓴다. */
+const CATEGORICAL_PREFIXES = new Set(["use", "store", "jimok", "district", "facility"]);
 /** 기타·미상 범주는 팔레트 색을 받지 않는다. */
 const OTHER_KEY = /(기타|미상|other)$/;
 /** 순서형 묶음 안의 미상·가정·자료 부족 항목 */
@@ -106,6 +124,11 @@ function slots(): Map<string, Slot> {
     const prefix = colon > 0 ? layer.slice(0, colon) : "";
     if (CATEGORICAL_PREFIXES.has(prefix)) {
       if (OTHER_KEY.test(layer)) continue;
+      // legendOrder가 있으면 그 값이 칸(같은 범주의 별칭 키가 같은 색을 받는다). 없으면 정의 순서.
+      if (style.legendOrder !== undefined) {
+        out.set(layer, { kind: "cat", index: style.legendOrder });
+        continue;
+      }
       const n = catCount.get(prefix) ?? 0;
       catCount.set(prefix, n + 1);
       out.set(layer, { kind: "cat", index: n });
