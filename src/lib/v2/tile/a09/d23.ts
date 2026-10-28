@@ -129,7 +129,8 @@ export function d23(ctx: EngineContext): TileResult {
   for (const zone of order) {
     const project = projectMap.get(zoneProject.get(zone.featureId) ?? "");
     const stage = project?.stage ?? "미확인";
-    const layer = `maint_stage:${stage}`;
+    const areaKind = zone.properties.layer === "seoul_plan" ? zone.properties.areaKind : null;
+    const layer = areaKind === "모아타운" || areaKind === "재정비촉진지구" ? `maint_area:${areaKind}` : `maint_stage:${stage}`;
     const zoneName = [zone.name, zone.properties.zoneName]
       .map((value) => typeof value === "string" ? value.trim() : "")
       .find((value) => value !== "") ?? null;

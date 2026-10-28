@@ -372,6 +372,12 @@ const MAINTENANCE_COLUMNS: DetailColumn[] = [
   { key: "zone_type", label: "구역 레이어 유형 원문", kind: "text", csvOnly: true },
   { key: "linked", label: "명부 연결", kind: "category", csvOnly: true },
   { key: "source", label: "자료", kind: "text", csvOnly: true },
+  { key: "stage_detail", label: "세부 단계", kind: "text", csvOnly: true },
+  { key: "stage_date", label: "단계일", kind: "date", csvOnly: true },
+  { key: "program", label: "사업 방식", kind: "text", csvOnly: true },
+  { key: "far", label: "용적률(%)", kind: "number", csvOnly: true },
+  { key: "bcr", label: "건폐율(%)", kind: "number", csvOnly: true },
+  { key: "floors", label: "층수", kind: "text", csvOnly: true },
 ];
 
 const MAINTENANCE_LAYERS: Record<string, string> = { zone: "정비구역", redevelopment: "재개발구역", promotion: "재정비촉진지구", planned: "정비계획을수립중인지역", improvement: "주거환경개선지구" };
@@ -388,13 +394,15 @@ function maintenanceRows(ctx: DetailContext): DetailRow[] {
     const parts = hits.map((hit) => shapeParts(hit.geometry));
     const [lng, lat] = hitPoint(hits[0]);
     return { fid: fids[0], fids, lng, lat, cells: {
-      name: maintenanceName(project), type: project.type, stage: project.stage, households: project.households,
+      name: maintenanceName(project), type: project.program === "신속통합기획" && project.type !== "신속통합기획" ? `${project.type} · 신통` : project.type, stage: project.stage, households: project.households,
       area_m2: clipped.every((value) => value !== null) ? clipped.reduce((sum, value) => sum + (value?.areaM2 ?? 0), 0) : null,
       announced_date: project.announcedDate, designated_at: project.designatedAt, operator: project.operator,
       zone_area_m2: parts.every((value) => value.length > 0) ? parts.flat().reduce((sum, rings) => sum + polygonArea(rings), 0) : null,
       raw_stage: project.rawStage,
       zone_type: [...new Set(hits.map((hit) => MAINTENANCE_LAYERS[String(hit.properties.layer)]).filter(Boolean))].join(" / ") || null,
       linked: project.linked ? "연결" : "미연결", source,
+      stage_detail: project.stageDetail, stage_date: project.stageDate, program: project.program,
+      far: project.overview?.floorAreaRatio ?? null, bcr: project.overview?.buildingCoverage ?? null, floors: project.overview?.floors ?? null,
     } };
   });
 }
@@ -433,6 +441,20 @@ function maintenanceSpec(): DetailSpec {
         { label: "구역 전체 면적", value: cells.zone_area_m2 === null ? null : `${cells.zone_area_m2}㎡` },
         { label: "반경 안 면적", value: cells.area_m2 === null ? null : `${cells.area_m2}㎡` },
       ];
+      const project = collection.projects.get(collection.zoneProject.get(hit.featureId) ?? "");
+      if (project) {
+        const overview = project.overview;
+        const optional = [
+          { label: "세부 단계", value: project.stageDetail ? [project.stageDetail, project.stageDate].filter(Boolean).join(" · ") : project.stageDate },
+          { label: "사업 방식", value: project.program },
+          { label: "사업면적", value: overview?.bizAreaM2 != null ? `${overview.bizAreaM2}㎡` : null },
+          { label: "용적률", value: overview?.floorAreaRatio != null ? `${overview.floorAreaRatio}%` : null },
+          { label: "건폐율", value: overview?.buildingCoverage != null ? `${overview.buildingCoverage}%` : null },
+          { label: "층수", value: overview?.floors ?? null },
+          { label: "분양·임대 세대", value: [overview?.saleUnits != null ? `분양 ${overview.saleUnits}` : null, overview?.rentUnits != null ? `임대 ${overview.rentUnits}` : null].filter(Boolean).join(" · ") || null },
+        ];
+        fields.push(...optional.filter((field) => field.value !== null));
+      }
       const stage = cells.stage === "미확인" ? "단계 미확인" : String(cells.stage);
       return { fid: String(hit.featureId), fids: row.fids, card: { title: String(cells.name), subtitle: `${cells.type} · ${stage}`, chip: { label: stage, color: layerStyle(`maint_stage:${cells.stage}`).color }, fields, missing: fields.filter((field) => field.value === null).map((field) => field.label), source: sourceLineOf(maintenanceSources(ctx)) } };
     },

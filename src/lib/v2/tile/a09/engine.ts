@@ -5,16 +5,19 @@
  * 사업이 많다고 호재로 판단하지 않고 등급도 없다. 예정 세대는 알려진 사업만 합산한다.
  */
 import type { FeatureHit } from "../../data/features";
+import type { Geometry, MultiPolygon, Polygon } from "geojson";
+import { bbox, feature, featureCollection, intersect } from "@turf/turf";
 import type { TileResult } from "../../tile-result";
 import type { EngineContext, FileKey, Limitation } from "../../engine/context";
 import { fmt, makeTile, missing, obs, type TileDraft } from "../../engine/tiles/common";
 import { notProvided } from "../../engine/tiles/not-provided";
+import { polygonArea } from "../../engine/tiles/geo";
 
 /** D23 단계 순서 (ingest/sources/maintenance.ts의 MAINT_STAGES와 같다 — 엔진이 적재 코드를 끌어오지 않도록 복사) */
-export const STAGES = ["구역지정", "추진위", "조합", "사업시행", "관리처분", "착공", "준공", "미확인"] as const;
+export const STAGES = ["정비계획", "구역지정", "추진위", "조합", "사업시행", "관리처분", "착공", "준공", "미확인"] as const;
 type Stage = (typeof STAGES)[number];
 const stageOf = (v: unknown): Stage => (STAGES as readonly string[]).includes(String(v)) ? (v as Stage) : "미확인";
-const SOURCES = ["maintenance_zone", "maintenance_integrated", "maintenance_std"];
+const SOURCES = ["maintenance_zone", "maintenance_integrated", "maintenance_std", "seoul_plan_zone"];
 const KEYS: FileKey[] = ["market", "reference"];
 
 function sourceIdsWithPrefix(ctx: EngineContext, key: FileKey, prefix: string): string[] {
@@ -40,6 +43,23 @@ export interface Project {
   announcedDate: string | null;
   rawStage: string | null;
   linked: boolean;
+  program: string | null;
+  stageDetail: string | null;
+  stageDate: string | null;
+  areaKind: string | null;
+  overview: MaintenanceOverview | null;
+}
+
+export interface MaintenanceOverview {
+  bizAreaM2: number | null;
+  floorAreaRatio: number | null;
+  buildingCoverage: number | null;
+  floors: string | null;
+  heightM: number | null;
+  saleUnits: number | null;
+  rentUnits: number | null;
+  zoningBefore: string | null;
+  zoningAfter: string | null;
 }
 
 export interface MaintenanceCollection {
@@ -65,6 +85,41 @@ const dateOf = (value: unknown): string | null => {
   const date = sourceName(value);
   return date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
 };
+
+function areaOf(geometry: Polygon | MultiPolygon): number {
+  const parts = geometry.type === "Polygon" ? [geometry.coordinates] : geometry.coordinates;
+  return parts.reduce((sum, rings) => sum + polygonArea(rings), 0);
+}
+
+function polygonGeometry(geometry: Geometry): geometry is Polygon | MultiPolygon {
+  return geometry?.type === "Polygon" || geometry?.type === "MultiPolygon";
+}
+
+/** 서울의 기존 경계만 작은 면적의 절반 이상 겹칠 때 제외한다. */
+function deduplicateZones(hits: FeatureHit[]): { zones: FeatureHit[]; dates: Map<number, string[]> } {
+  const plans = hits.filter((hit) => hit.properties.layer === "seoul_plan" && polygonGeometry(hit.geometry)).map((hit) => ({ hit, bounds: bbox(feature(hit.geometry)), area: areaOf(hit.geometry as Polygon | MultiPolygon) }));
+  const dates = new Map<number, string[]>();
+  const zones = hits.filter((hit) => {
+    if (hit.properties.layer === "seoul_plan" || !hit.legalCode?.startsWith("11") || !polygonGeometry(hit.geometry)) return true;
+    const bounds = bbox(feature(hit.geometry));
+    const area = areaOf(hit.geometry);
+    if (area <= 0) return true;
+    let best: { id: number; ratio: number } | null = null;
+    for (const plan of plans) {
+      if (plan.area <= 0 || bounds[0] > plan.bounds[2] || bounds[2] < plan.bounds[0] || bounds[1] > plan.bounds[3] || bounds[3] < plan.bounds[1]) continue;
+      try {
+        const overlap = intersect(featureCollection([feature(hit.geometry), feature(plan.hit.geometry as Polygon | MultiPolygon)]));
+        const ratio = overlap ? areaOf(overlap.geometry) / Math.min(area, plan.area) : 0;
+        if (ratio >= 0.5 && (!best || ratio > best.ratio)) best = { id: plan.hit.featureId, ratio };
+      } catch { continue; }
+    }
+    if (!best) return true;
+    const date = dateOf(hit.properties.announcedDate);
+    if (date) dates.set(best.id, [...(dates.get(best.id) ?? []), date]);
+    return false;
+  });
+  return { zones, dates };
+}
 
 /** 명부의 시군구명("수원시", "강동구")이 법정구역명("경기도 수원시 팔달구")에 걸리는지. 같은 시도 안에서만 비교한다. */
 export function sigunguMatches(areaName: string, rosterName: string): boolean {
@@ -114,7 +169,7 @@ export function collectMaintenance(ctx: EngineContext): MaintenanceCollection | 
   const key = KEYS.find((k) => ctx.db(k)?.prepare("SELECT 1 FROM feature WHERE kind = 'maintenance_zone' LIMIT 1").get() !== undefined);
   if (!key) return null;
 
-  const zones = ctx.hits(key, ["maintenance_zone"]);
+  const { zones, dates } = deduplicateZones(ctx.hits(key, ["maintenance_zone"]));
   const zdb = ctx.db(key)!;
   const market = ctx.db("market");
   const link = zdb.prepare("SELECT to_stable_id FROM feature_link WHERE from_stable_id = ? AND relation_type = 'zone_of_project'").pluck();
@@ -124,29 +179,42 @@ export function collectMaintenance(ctx: EngineContext): MaintenanceCollection | 
 
   const projects = new Map<string, Project>();
   const zoneProject = new Map<number, string>();
-  for (const z of zones) {
+  // 같은 명부에 연결된 구역이 섞여도 서울플랜+ 속성을 사업의 기준으로 둔다.
+  const ordered = [...zones].sort((a, b) => Number(b.properties.layer === "seoul_plan") - Number(a.properties.layer === "seoul_plan"));
+  for (const z of ordered) {
     const to = link.get(z.stableId) as string | undefined;
     const p = z.properties;
+    const isPlan = p.layer === "seoul_plan";
     let stage = stageOf(p.stage);
     let households = posInt(p.households) ?? posInt(p.units);
     if (to) {
       linked++;
       const ev = (events?.all(to) ?? []) as Array<{ stage: string; units: number | null }>;
       const best = ev.map((e) => stageOf(e.stage)).filter((s) => s !== "미확인").sort((a, b) => STAGES.indexOf(b) - STAGES.indexOf(a))[0];
-      if (best) stage = best;
-      households = ev.map((e) => posInt(e.units)).filter((u): u is number => u !== null).sort((a, b) => b - a)[0] ?? households;
+      if (!isPlan && best) stage = best;
+      if (!isPlan) households = ev.map((e) => posInt(e.units)).filter((u): u is number => u !== null).sort((a, b) => b - a)[0] ?? households;
     }
-    const k = to ?? z.stableId;
+    const k = to ?? (isPlan ? sourceName(p.projectKey) : null) ?? z.stableId;
     zoneProject.set(z.featureId, k);
     const prev = projects.get(k);
     const row = to ? roster.get(to) : undefined;
-    const name = sourceName(row?.name, z.name, p.name, p.altName, p.zoneName);
+    const name = isPlan ? sourceName(z.name) : sourceName(row?.name, z.name, p.name, p.altName, p.zoneName);
     const announcedDate = dateOf(p.announcedDate);
     // 한 사업의 구역이 여럿이면 단계·세대수는 처음 것을 유지하고, 이름은 원천값이 있는 쪽을 우선한다.
     projects.set(k, prev
-      ? { ...prev, name: prev.name ?? name, announcedDate: [prev.announcedDate, announcedDate].filter((v): v is string => v !== null).sort()[0] ?? null }
-      : { key: k, name, stage, type: sourceName(row?.type) && row?.type !== "미상" ? row!.type : typeOf(z), households,
-        operator: sourceName(row?.operator), designatedAt: dateOf(row?.designatedAt), announcedDate, rawStage: sourceName(row?.rawStage), linked: Boolean(to) });
+      ? { ...prev, name: prev.name ?? name, announcedDate: [prev.announcedDate, announcedDate].filter((v): v is string => v !== null).sort()[0] ?? null,
+        households: isPlan ? prev.households ?? households : prev.households, program: prev.program ?? (isPlan ? sourceName(p.program) : null),
+        stageDetail: prev.stageDetail ?? (isPlan ? sourceName(p.stageName) : null), stageDate: prev.stageDate ?? (isPlan ? dateOf(p.stageDate) : null),
+        areaKind: prev.areaKind ?? (isPlan ? sourceName(p.areaKind) : null),
+        overview: prev.overview ?? (isPlan && p.overview && typeof p.overview === "object" && !Array.isArray(p.overview) ? p.overview as MaintenanceOverview : null) }
+      : { key: k, name, stage, type: isPlan ? sourceName(p.projectType) ?? "종류 미확인" : sourceName(row?.type) && row?.type !== "미상" ? row!.type : typeOf(z), households,
+        operator: sourceName(row?.operator), designatedAt: dateOf(row?.designatedAt), announcedDate, rawStage: sourceName(row?.rawStage), linked: Boolean(to),
+        program: isPlan ? sourceName(p.program) : null, stageDetail: isPlan ? sourceName(p.stageName) : null, stageDate: isPlan ? dateOf(p.stageDate) : null,
+        areaKind: isPlan ? sourceName(p.areaKind) : null, overview: isPlan && p.overview && typeof p.overview === "object" && !Array.isArray(p.overview) ? p.overview as MaintenanceOverview : null });
+  }
+  for (const [featureId, values] of dates) {
+    const project = projects.get(zoneProject.get(featureId) ?? "");
+    if (project && !project.announcedDate) project.announcedDate = values.sort()[0] ?? null;
   }
   return { zones, projects, zoneProject, sources, linked, key };
 }
@@ -212,7 +280,7 @@ export function collectMaintenanceRoster(ctx: EngineContext): Project[] {
   for (const r of rows) {
     if (seen.has(r.id) || !areas.some((a) => a.code.startsWith(r.sido) && sigunguMatches(a.name, r.sigungu))) continue;
     seen.add(r.id);
-    list.push({ key: r.id, name: sourceName(r.name), stage: stageOf(r.stage), type: r.type && r.type !== "미상" ? r.type : "종류 미확인", households: posInt(r.households), operator: sourceName(r.operator), designatedAt: dateOf(r.designatedAt), announcedDate: null, rawStage: sourceName(r.rawStage), linked: false });
+    list.push({ key: r.id, name: sourceName(r.name), stage: stageOf(r.stage), type: r.type && r.type !== "미상" ? r.type : "종류 미확인", households: posInt(r.households), operator: sourceName(r.operator), designatedAt: dateOf(r.designatedAt), announcedDate: null, rawStage: sourceName(r.rawStage), linked: false, program: null, stageDetail: null, stageDate: null, areaKind: null, overview: null });
   }
   return list;
 }

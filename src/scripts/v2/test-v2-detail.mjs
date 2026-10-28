@@ -126,10 +126,29 @@ try {
   assert.deepEqual(maintenanceAt.card.fields.map((field) => field.label), ["종류", "단계", "결정고시일", "구역지정일", "예정 세대", "시행자", "구역 전체 면적", "반경 안 면적"]);
   assert.deepEqual(maintenanceAt.card.missing, ["결정고시일", "구역지정일", "시행자"]);
   assert.deepEqual(DETAIL_SPECS.A09.columns.filter((column) => !column.csvOnly).map((column) => column.key), ["name", "type", "stage", "households", "area_m2"]);
-  assert.deepEqual(DETAIL_SPECS.A09.columns.filter((column) => column.csvOnly).map((column) => column.key), ["announced_date", "designated_at", "operator", "zone_area_m2", "raw_stage", "zone_type", "linked", "source"]);
+  assert.deepEqual(DETAIL_SPECS.A09.columns.filter((column) => column.csvOnly).map((column) => column.key), ["announced_date", "designated_at", "operator", "zone_area_m2", "raw_stage", "zone_type", "linked", "source", "stage_detail", "stage_date", "program", "far", "bcr", "floors"]);
   const maintenanceSummary = DETAIL_SPECS.A09.summary(maintenanceCtx);
   assert.equal(maintenanceSummary.subtitle, "사업 3건 · 구역 4곳");
   assert.equal(maintenanceSummary.fields.at(-1).value, "1건", "반경 밖 경계가 있는 명부 사업은 위치 미확인에서 제외");
+
+  const planProperties = { layer: "seoul_plan", classCode: "BZ105", className: "재건축(공동)", projectType: "재건축", program: "신속통합기획", areaKind: null, projectKey: "seoulplan:GRP1", stageCode: "PP0206", stageName: "조합설립인가", stage: "조합", stageDate: "2024-05-01", areaM2: 10000, households: 500, overview: { bizAreaM2: 9000, floorAreaRatio: 250, buildingCoverage: 20, floors: "2/33", heightM: null, saleUnits: 400, rentUnits: 100, zoningBefore: null, zoningAfter: null }, apiMatched: true, grp: "GRP1", sigungu: "11110", sourceUpdatedAt: null };
+  const planZones = [
+    { ...maintenanceZone(201, -300), legalCode: "1111000000", stableId: "seoulplan:1", kind: "maintenance_zone", name: "서울 사업", properties: planProperties },
+    { ...maintenanceZone(202, -150), legalCode: "1111000000", stableId: "seoulplan:2", kind: "maintenance_zone", name: "서울 사업", properties: planProperties },
+    { ...maintenanceZone(203, -260), legalCode: "1111000000", stableId: "vworld:1", kind: "maintenance_zone", name: "기존 구역", properties: { layer: "zone", announcedDate: "2020-01-01" } },
+    { ...maintenanceZone(204, 0), legalCode: "4136000000", stableId: "vworld:2", kind: "maintenance_zone", name: "경기 사업", properties: { layer: "zone" } },
+  ];
+  const planCtx = { ...maintenanceCtx, hits: () => planZones };
+  const planRows = DETAIL_SPECS.A09.rows(planCtx);
+  assert.equal(planRows.length, 2);
+  const planRow = planRows.find((row) => row.cells.name === "서울 사업");
+  assert.deepEqual(planRow.fids, ["201", "202"]);
+  assert.equal(planRow.cells.type, "재건축 · 신통");
+  assert.equal(planRow.cells.announced_date, "2020-01-01");
+  assert.deepEqual([planRow.cells.stage_detail, planRow.cells.stage_date, planRow.cells.program, planRow.cells.far, planRow.cells.bcr, planRow.cells.floors], ["조합설립인가", "2024-05-01", "신속통합기획", 250, 20, "2/33"]);
+  const planCard = DETAIL_SPECS.A09.at(planCtx, ...at(-275, -50)).card;
+  assert.deepEqual(planCard.fields.slice(8).map((f) => [f.label, f.value]), [["세부 단계", "조합설립인가 · 2024-05-01"], ["사업 방식", "신속통합기획"], ["사업면적", "9000㎡"], ["용적률", "250%"], ["건폐율", "20%"], ["층수", "2/33"], ["분양·임대 세대", "분양 400 · 임대 100"]]);
+  assert.equal(DETAIL_SPECS.A09.at(planCtx, ...at(25, -50)).card.fields.length, 8);
 
 
   const densityStarted = performance.now();
