@@ -129,6 +129,48 @@ assert.deepEqual(keyA, analysisCharts(structuredClone(keyModel)), "결정적");
 const keyDs = keyA.distance.points.map((point) => point.d);
 assert.deepEqual(keyDs, [...keyDs].sort((a, b) => a - b), "거리순 유지");
 
+// 동률 처리: 지킬 점의 앞뒤 일반 점이 같은 거리면 앞쪽(낮은 번호)이 대신 빠진다. 건너뛰는 자리 k의 양옆 k-1·k+1은 둘 다 뽑혀 있다.
+const tieAt = skipped[10];
+assert.ok(evenly.has(tieAt - 1) && evenly.has(tieAt + 1));
+const tieFeatures = Array.from({ length: 2500 }, (_, i) => pt(i % 2 ? "floors_1_4" : "floors_5_8", i * EAST_STEP, 0, i === tieAt ? 99 : i === tieAt - 1 ? 55 : i === tieAt + 1 ? 56 : 5));
+const tie = analysisCharts(model({ valueAxis: AXIS, features: tieFeatures }));
+const tieValues = tie.distance.points.map((point) => point.v);
+assert.equal(tie.distance.points.length, 2000);
+assert.ok(tieValues.includes(99) && tieValues.includes(56) && !tieValues.includes(55), "앞쪽(k-1)이 빠지고 뒤쪽(k+1)은 남는다");
+
+// 지킬 점이 여러 개 빠진 경우: 대지 안 13개(연속) + 최댓값. 모두 남고 대신 바깥쪽 일반 점이 빠진다.
+const runStart = skipped[20];
+const runFeatures = Array.from({ length: 2500 }, (_, i) => pt(i % 2 ? "floors_1_4" : "floors_5_8", i * EAST_STEP, 0, i === skipped[60] ? 500 : i >= runStart && i < runStart + 13 ? 100 + (i - runStart) : 5));
+const runModel = model({ valueAxis: AXIS, features: runFeatures, siteParcel: [{ layer: "parcel_site", rings: square((runStart + 6) * EAST_STEP, 0, 2.6) }] });
+const run = analysisCharts(runModel);
+assert.equal(run.distance.points.length, 2000);
+assert.equal(run.distance.points.filter((point) => point.v >= 100 && point.v < 113).length, 13, "대지 안 점 13개 모두 유지");
+assert.ok(run.distance.points.some((point) => point.v === 500), "최댓값 유지");
+assert.deepEqual(run, analysisCharts(structuredClone(runModel)));
+
+// NaN·±Infinity 값은 값 있음도 값 없음도 아니다
+const nonFinite = analysisCharts(model({ valueAxis: AXIS, features: [pt("floors_1_4", 10, 0, 3), pt("floors_1_4", 20, 0, NaN), pt("floors_5_8", 30, 0, Infinity), pt("floors_5_8", 40, 0, -Infinity), pt("floors_5_8", 50, 0, 7), pt("floors_5_8", 60, 0, null)] }));
+assert.equal(nonFinite.distance.points.length, 2);
+assert.equal(nonFinite.distance.max, 7);
+assert.equal(nonFinite.distance.median, 5);
+assert.equal(nonFinite.missing, 1, "null만 값 없음");
+assert.equal(nonFinite.total, 6);
+
+// ── 거리대 폭은 반경에 맞춰 막대가 10개쯤 되게
+const radiusBands = (radiusM) => analysisCharts(model({ radiusM, features: [pt("bus_stop", 50), pt("rail_station", radiusM - 10)] })).distance.bands;
+const b3 = radiusBands(3000);
+assert.equal(b3.length, 10);
+assert.deepEqual(b3[0], { from: 0, to: 300, count: 1 });
+assert.deepEqual(b3[9], { from: 2700, to: 3000, count: 1 });
+const b2 = radiusBands(2000);
+assert.equal(b2.length, 10);
+assert.deepEqual(b2[1], { from: 200, to: 400, count: 0 });
+const b15 = radiusBands(1500);
+assert.equal(b15.length, 8);
+assert.deepEqual(b15[7], { from: 1400, to: 1500, count: 1 });
+assert.equal(radiusBands(500).length, 5, "500 m는 100 m 간격 그대로");
+assert.equal(analysisStatLine(analysisCharts(model({ radiusM: 3000, features: [pt("bus_stop", 350), pt("bus_stop", 360), pt("rail_station", 2000)] }))), "반경 3 km 안 버스정류장 3개 · 가장 많은 거리 300–600 m");
+
 // ── null 경우
 assert.equal(analysisCharts(model({ features: [pt("floors_1_4", 10), pt("floors_1_4", 20)] })), null, "범례 1개");
 assert.equal(analysisCharts(model({ features: [pt("floors_1_4", 10), pt("floors_1_4", 20), pt("floors_5_8", 1500)] })), null, "범례는 2개여도 반경 안은 한 항목뿐");

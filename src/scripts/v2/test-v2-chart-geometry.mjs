@@ -12,7 +12,8 @@ const bounds = (s) => {
   if (s.kind === "dots") {
     const xs = s.points.map((p) => p[0]);
     const ys = s.points.map((p) => p[1]);
-    return { x: Math.min(...xs) - s.r, y: Math.min(...ys) - s.r, w: Math.max(...xs) - Math.min(...xs) + 2 * s.r, h: Math.max(...ys) - Math.min(...ys) + 2 * s.r };
+    const e = s.r + (s.stroke ? s.strokeWidth / 144 : 0); // 테두리는 pt, 반쪽이 바깥으로 나온다
+    return { x: Math.min(...xs) - e, y: Math.min(...ys) - e, w: Math.max(...xs) - Math.min(...xs) + 2 * e, h: Math.max(...ys) - Math.min(...ys) + 2 * e };
   }
   return s;
 };
@@ -115,10 +116,13 @@ for (const scale of SCALES) {
   const first = points.find((p) => p.color === COLORS[0]);
   assert.ok(Math.abs(dots[0].points[0][0] - (gx0 + ((gx1 - gx0) * first.d) / 1000)) < EPS && Math.abs(dots[0].points[0][1] - yOf(first.v)) < EPS);
 
-  // 대지 점: 분홍 속·진한 테두리색 바깥, 글자 `대지 평균 17층`
-  assert.equal(byName(shapes, "chart-distance-site-dot").color, "#f2b6b8");
-  assert.equal(byName(shapes, "chart-distance-site-ring").color, "#c9404a");
-  assert.ok(byName(shapes, "chart-distance-site-ring").r > byName(shapes, "chart-distance-site-dot").r);
+  // 대지 점: 도형 하나(분홍 속, 진한 테두리), 글자 `대지 평균 17층`
+  const site = byName(shapes, "chart-distance-site");
+  assert.equal(site.kind, "dots");
+  assert.equal(site.color, "#f2b6b8");
+  assert.equal(site.stroke, "#c9404a");
+  assert.ok(site.strokeWidth > 0 && site.points.length === 1 && site.opacity === 1);
+  assert.equal(shapes.filter((s) => s.name.startsWith("chart-distance-site") && s.kind !== "text").length, 1, "대지 점 도형은 하나");
   assert.equal(byName(shapes, "chart-distance-site-label").text, "대지 평균 17층");
   assert.equal(byName(shapes, "chart-distance-median-label").text, "중앙값 4층");
   assert.equal(byName(shapes, "chart-distance-mean-label").text, "평균 6.2층");
@@ -175,6 +179,50 @@ for (const scale of SCALES) {
 const wideYears = tickValues(distanceShapes({ ...yearFixture, points: [{ d: 1, v: 1910, color: COLORS[0] }, { d: 2, v: 2024, color: COLORS[1] }], median: 1990, mean: 1990, site: null }, 1000, BOX, 1));
 assert.ok(wideYears.length <= 6 && Number(wideYears[0]) <= 1910 && Number(wideYears.at(-1)) >= 2024, `넓은 연도 눈금 ${wideYears}`);
 
+// 연도 1950–2020: 올림 대신 최댓값 그대로 끝나는 10년 눈금 8개
+const y1950 = distanceShapes({ ...yearFixture, points: [{ d: 10, v: 1950, color: COLORS[0] }, { d: 20, v: 2020, color: COLORS[1] }], median: 1990, mean: 1985, max: 2020, site: null }, 1000, BOX, 1);
+assert.deepEqual(tickValues(y1950), ["1950", "1960", "1970", "1980", "1990", "2000", "2010", "2020"]);
+
+// ── 실제 크기 상자(3.9 x 1.9 in)에서 층수·가격·연도 차트 900개를 무작위(고정 시드)로: 큰 글자(1.85)까지 글자끼리 안 겹치고 box 안
+const REAL = { x: 8.6, y: 3.2, w: 3.9, h: 1.9 };
+let bseed = 11;
+const brand = () => ((bseed = (bseed * 1103515245 + 12345) % 2147483648) / 2147483648);
+const medianOf = (a) => {
+  const s = [...a].sort((x, y) => x - y);
+  return s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2;
+};
+const genScatter = (kind) => {
+  const n = 20 + Math.floor(brand() * 300);
+  const vs = Array.from({ length: n }, () => (kind === "floors" ? 1 + Math.floor(Math.pow(brand(), 3) * 40) : kind === "price" ? Math.round(300 + Math.pow(brand(), 2) * 15000) : Math.round(1965 + brand() * 59)));
+  return {
+    kind: "scatter",
+    axis: { label: "값", unit: kind === "floors" ? "층" : kind === "price" ? "만원" : "년" },
+    points: vs.map((v, i) => ({ d: brand() * 1000, v, color: COLORS[i % 3] })),
+    median: medianOf(vs),
+    mean: vs.reduce((a, b) => a + b, 0) / n,
+    max: Math.max(...vs),
+    site: brand() < 0.7 ? vs[Math.floor(brand() * n)] : null,
+    sampled: false,
+  };
+};
+const failures = [];
+for (const kind of ["floors", "price", "year"]) {
+  for (let k = 0; k < 300; k++) {
+    const fx = genScatter(kind);
+    for (const box of [REAL, { x: 8.6, y: 3.2, w: 3.4, h: 2.0 }]) // 뒤쪽은 A4 폭에 가까운 더 좁은 상자
+      for (const scale of [1, 1.85]) {
+        const shapes = distanceShapes(fx, 1000, box, scale);
+        try {
+          assertInside(shapes, box, `${kind} #${k} ${box.w}x${scale}`);
+          assertNoTextOverlap(shapes, `${kind} #${k} ${box.w}x${scale}`);
+        } catch (e) {
+          failures.push(e.message);
+        }
+      }
+  }
+}
+assert.deepEqual(failures, [], `무작위 차트 ${failures.length}개에서 글자 겹침·상자 밖`);
+
 // ── 구간 막대(10개 × 100 m)
 const counts = [4, 12, 30, 18, 9, 7, 0, 3, 22, 1234];
 const bands = { kind: "bands", bands: counts.map((count, i) => ({ from: i * 100, to: (i + 1) * 100, count })) };
@@ -189,11 +237,15 @@ for (const scale of SCALES) {
   const mid = byName(shapes, "chart-distance-band-2");
   assert.ok(Math.abs(mid.h / tall.h - 30 / 1234) < 1e-9, "막대 높이 비 = 개수 비");
   assert.equal(byName(shapes, "chart-distance-band-6").h, 0);
-  assert.equal(tall.fill, "#3d629c", "가장 많은 구간 강조");
-  assert.notEqual(mid.fill, tall.fill);
-  assert.equal(byName(shapes, "chart-distance-count-9").text, "1,234", "위에 개수(천 단위 쉼표)");
-  // 막대 바로 위에 있는 개수 글자
-  assert.ok(byName(shapes, "chart-distance-count-2").y + byName(shapes, "chart-distance-count-2").h <= mid.y + EPS);
+  assert.equal(new Set(rects.map((s) => s.fill)).size, 1, "막대는 한 색");
+  assert.equal(byName(shapes, "chart-distance-count-9").text, "1,234", "위에 개수(천 단위 쉼표), 가장 많은 구간은 늘 남는다");
+  assert.ok(texts(shapes).filter((s) => s.name.startsWith("chart-distance-count-")).every((s) => s.pt >= 7.5 * scale - EPS), "개수 글자는 눈금 글자보다 작지 않다");
+  // 막대 바로 위에 있는 개수 글자(건너뛴 막대에는 없다)
+  for (const s of texts(shapes).filter((x) => x.name.startsWith("chart-distance-count-"))) {
+    const bar = byName(shapes, s.name.replace("count", "band"));
+    assert.ok(s.y + s.h <= bar.y + EPS, `${s.name} 막대 위`);
+  }
+  if (scale === 1) assert.equal(texts(shapes).filter((s) => s.name.startsWith("chart-distance-count-")).length, 10, "들어가면 전부 쓴다");
   const xt = texts(shapes).filter((s) => s.name.startsWith("chart-distance-xtick-")).map((s) => s.text).reverse();
   if (scale === 1) assert.deepEqual(xt, ["0", "100", "200", "300", "400", "500", "600", "700", "800", "900", "1,000 m"], "구간 경계 글자");
   else assert.deepEqual(xt, ["0", "200", "400", "600", "800", "1,000 m"], "배율 2는 겹치지 않게 한 칸씩 건너뛰고 마지막은 남긴다");
@@ -207,6 +259,26 @@ for (const scale of SCALES) {
   assert.equal(byName(shapes, "chart-distance-xtick-30").text, "3,000 m");
 }
 assert.equal(distanceShapes({ kind: "bands", bands: [] }, 1000, BOX, 1).length, 0);
+
+// 반경 선택지(1.5·2·3 km)의 거리대 막대도 큰 글자(1.85)까지 안쪽·겹침 없음. 개수는 네 자리 쉼표 숫자.
+const REAL_BOX = { x: 8.6, y: 3.2, w: 3.9, h: 1.9 };
+const radiusBands = (radiusM) => {
+  const bandM = Math.max(100, Math.ceil(radiusM / 10 / 100) * 100);
+  const n = Math.ceil(radiusM / bandM);
+  return { kind: "bands", bands: Array.from({ length: n }, (_, i) => ({ from: i * bandM, to: Math.min((i + 1) * bandM, radiusM), count: [1234, 987, 4567, 12, 0, 3456, 78, 2345, 9, 1500][i % 10] })) };
+};
+for (const radiusM of [500, 1000, 1500, 2000, 3000]) {
+  for (const scale of [1, 1.85]) {
+    const shapes = distanceShapes(radiusBands(radiusM), radiusM, REAL_BOX, scale);
+    assertInside(shapes, REAL_BOX, `반경 ${radiusM} x${scale}`);
+    assertNoTextOverlap(shapes, `반경 ${radiusM} x${scale}`);
+    assertNoLatin(shapes, `반경 ${radiusM} x${scale}`);
+    const counts = texts(shapes).filter((s) => s.name.startsWith("chart-distance-count-"));
+    assert.ok(counts.length >= 1 && counts.every((s) => s.pt >= 7.5 * scale - EPS), `반경 ${radiusM} x${scale} 개수 글자 크기`);
+    const tallest = shapes.filter((s) => s.kind === "rect").reduce((a, b) => (b.h > a.h ? b : a));
+    assert.ok(counts.some((s) => s.name === tallest.name.replace("band", "count")), "가장 많은 구간 개수는 남는다");
+  }
+}
 
 // 결정적
 assert.deepEqual(distanceShapes(floors, 1000, BOX, 1), distanceShapes(structuredClone(floors), 1000, BOX, 1));

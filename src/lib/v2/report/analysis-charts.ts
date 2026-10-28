@@ -9,7 +9,6 @@ export type DistanceData =
 export type AnalysisCharts = { radiusM: number; total: number; countUnit: string; subject: string; missing: number; composition: CompositionItem[]; distance: DistanceData };
 
 const MAX_POINTS = 2000;
-const BAND_M = 100;
 const OTHER = { label: "그 밖", color: "#B9BDC6" };
 /** 거리·포함 판정은 지도와 같은 Web Mercator 세계 픽셀(z20)에서 한다. 미터는 metersPerPixel로 환산. */
 const Z = 20;
@@ -100,7 +99,7 @@ export function analysisCharts(model: MapModel): AnalysisCharts | null {
   const subject = modelLayerStyle(model, top.layer).subject ?? "지물";
   const countUnit = model.valueAxis?.countUnit ?? "개";
 
-  const valued = counted.filter((c): c is typeof c & { value: number } => typeof c.value === "number");
+  const valued = counted.filter((c): c is typeof c & { value: number } => Number.isFinite(c.value)); // NaN·±Infinity는 값 있음도 없음도 아니다
   let distance: DistanceData;
   let missing = 0;
   if (valued.length > 0) {
@@ -142,9 +141,11 @@ export function analysisCharts(model: MapModel): AnalysisCharts | null {
       sampled,
     };
   } else {
-    const n = Math.max(1, Math.ceil(model.radiusM / BAND_M));
-    const bands = Array.from({ length: n }, (_, i) => ({ from: i * BAND_M, to: Math.min((i + 1) * BAND_M, model.radiusM), count: 0 }));
-    for (const c of counted) bands[Math.min(Math.floor(c.d / BAND_M), n - 1)]!.count++;
+    // 막대는 최대 10개쯤: 1 km → 100 m, 1.5~2 km → 200 m, 3 km → 300 m
+    const bandM = Math.max(100, Math.ceil(model.radiusM / 10 / 100) * 100);
+    const n = Math.max(1, Math.ceil(model.radiusM / bandM));
+    const bands = Array.from({ length: n }, (_, i) => ({ from: i * bandM, to: Math.min((i + 1) * bandM, model.radiusM), count: 0 }));
+    for (const c of counted) bands[Math.min(Math.floor(c.d / bandM), n - 1)]!.count++;
     distance = { kind: "bands", bands };
   }
 

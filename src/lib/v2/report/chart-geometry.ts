@@ -7,11 +7,11 @@ import type { CompositionItem, DistanceData } from "./analysis-charts";
 export type ChartShape =
   | { kind: "rect"; x: number; y: number; w: number; h: number; fill: string; stroke?: string; name: string }
   | { kind: "line"; x1: number; y1: number; x2: number; y2: number; stroke: string; width: number; dash?: boolean; name: string }
-  | { kind: "dots"; color: string; r: number; opacity: number; points: [number, number][]; name: string } // 한 색 = 한 묶음(PPT custGeom 1개)
+  | { kind: "dots"; color: string; r: number; opacity: number; points: [number, number][]; stroke?: string; strokeWidth?: number; name: string } // 한 색 = 한 묶음(PPT custGeom 1개). strokeWidth는 pt
   | { kind: "text"; x: number; y: number; w: number; h: number; text: string; pt: number; bold?: boolean; color: string; align: "left" | "right" | "center"; name: string };
 export type ChartBox = { x: number; y: number; w: number; h: number }; // 인치
 
-const C = { track: "#f1efea", grid: "#ecebe6", axis: "#77766f", label: "#3b3a35", strong: "#1d1d1b", siteFill: "#f2b6b8", siteStroke: "#c9404a", lightBar: "#b9b4aa", bar: "#9db3d4", peak: "#3d629c" };
+const C = { track: "#f1efea", grid: "#ecebe6", axis: "#77766f", label: "#3b3a35", strong: "#1d1d1b", siteFill: "#f2b6b8", siteStroke: "#c9404a", lightBar: "#b9b4aa", bar: "#9db3d4" };
 const PX = 1 / 96;
 const AXIS_PT = 7.5; // 시안 10 px
 const LABEL_PT = 8.6; // 시안 11.5 px
@@ -41,7 +41,8 @@ const isLight = (hex: string) => {
 };
 
 type TextShape = Extract<ChartShape, { kind: "text" }>;
-const overlaps = (a: TextShape, b: TextShape) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+/** 두 글자 상자가 겹친 넓이(맞닿기만 하면 0). */
+const overlapArea = (a: TextShape, b: TextShape) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) - 1e-9) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y) - 1e-9);
 
 /** 글자 상자를 만들고 box 밖으로 나가지 않게 당겨 놓는다. ax는 정렬 기준 x, y는 상자 위. */
 const textMaker = (box: ChartBox, prefix: string) => (name: string, text: string, pt: number, color: string, align: "left" | "right" | "center", ax: number, y: number, bold = false): TextShape => {
@@ -75,7 +76,7 @@ export function compositionShapes(items: CompositionItem[], box: ChartBox, scale
   });
 }
 
-/** y 눈금. 10 단위가 8개 이하면 그대로(층수), 아니면 1·2·5×10^k 중 6개 이하가 되는 가장 작은 단위. 연도처럼 최솟값이 최댓값의 절반보다 크면 0에서 시작하지 않는다. */
+/** y 눈금. 10 단위가 8개 이하면 그대로(층수), 아니면 1·2·5×10^k 중 6개 이하가 되는 가장 작은 단위. 연도처럼 최솟값이 최댓값의 절반보다 크면 0에서 시작하지 않고 최댓값을 단위로 올림한다. */
 function axisOf(lo: number, hi: number) {
   const rebase = lo > 0.5 * hi;
   const build = (step: number, end: number) => {
@@ -83,7 +84,7 @@ function axisOf(lo: number, hi: number) {
     const to = Math.max(end, start + step);
     return { start, end: to, step, n: Math.round((to - start) / step) + 1 };
   };
-  const ten = build(10, Math.ceil((hi + 1) / 10) * 10);
+  const ten = build(10, Math.ceil((rebase ? hi : hi + 1) / 10) * 10);
   if (ten.n <= 8) return ten;
   for (let p = 1; ; p *= 10) {
     for (const m of [1, 2, 5]) {
@@ -107,10 +108,14 @@ function scatterShapes(d: Scatter, radiusM: number, box: ChartBox, scale: number
 
   const l = Math.max(...ticks.map((v) => textW(tickText(v, unit), pt))) + 0.1 * scale;
   const r = Math.max(0.083 * scale, textW(xLabels[4]!, pt) / 2); // 마지막 눈금 글자가 상자 밖으로 안 나가게
-  const t = th + 0.03 * scale; // 위에 중앙값·평균 글자 자리
   const b = th + 0.07 * scale;
   const px = box.x + l;
   const pw = box.w - l - r;
+  const medText = `중앙값 ${statText(d.median, unit, false)}${unit}`;
+  const meanText = `평균 ${statText(d.mean, unit, true)}${unit}`;
+  const medW = textW(medText, pt, true);
+  const sideFits = medW + textW(meanText, pt) + 0.08 * scale <= pw; // 가까운 두 선의 글자를 한 줄에 나란히 놓을 수 있나
+  const t = sideFits ? th + 0.03 * scale : 2 * th + 0.04 * scale; // 위에 중앙값·평균 글자 자리(나란히 못 놓으면 두 줄)
   const ph = box.h - t - b;
   const X = (m: number) => px + (pw * Math.min(m, radiusM)) / radiusM;
   const Y = (v: number) => box.y + t + ph * (1 - (v - axis.start) / (axis.end - axis.start));
@@ -134,38 +139,42 @@ function scatterShapes(d: Scatter, radiusM: number, box: ChartBox, scale: number
   const yMean = Y(d.mean);
   out.push({ kind: "line", x1: px, y1: yMean, x2: px + pw, y2: yMean, stroke: C.strong, width: 0.75, dash: true, name: "chart-distance-mean" });
   out.push({ kind: "line", x1: px, y1: yMed, x2: px + pw, y2: yMed, stroke: C.strong, width: 0.9, name: "chart-distance-median" });
-  // 두 선이 글자 높이보다 가까우면 글자를 같은 줄에 나란히 둔다(평균을 중앙값 왼쪽에). 가로로 모자라면 위쪽 선 글자는 위, 아래쪽 선 글자는 선 아래.
-  const medText = `중앙값 ${statText(d.median, unit, false)}${unit}`;
-  const meanText = `평균 ${statText(d.mean, unit, true)}${unit}`;
+  // 두 선이 글자 높이보다 가까우면 글자를 같은 줄에 나란히 둔다(평균을 중앙값 왼쪽에). 가로로 모자라면 두 글자를 선 위쪽에만 두 줄로 쌓는다(아래쪽은 x 눈금과 부딪힌다).
   const gap = 0.03 * scale;
   const close = Math.abs(yMed - yMean) < th;
-  const medW = textW(medText, pt, true);
   const right = px + pw;
   let yMedLabel = yMed - gap - th;
   let yMeanLabel = yMean - gap - th;
   let meanAx = right;
-  if (close && medW + textW(meanText, pt) + 0.08 * scale <= pw) {
-    yMedLabel = yMeanLabel = Math.min(yMed, yMean) - gap - th;
-    meanAx = right - medW - 0.08 * scale;
-  } else if (close) {
-    if (yMed <= yMean) yMeanLabel = yMean + gap;
-    else yMedLabel = yMed + gap;
+  if (close) {
+    const first = Math.min(yMed, yMean) - gap - th; // 위쪽 선 바로 위
+    if (sideFits) {
+      yMedLabel = yMeanLabel = first;
+      meanAx = right - medW - 0.08 * scale;
+    } else if (yMed <= yMean) yMeanLabel = first - th;
+    else yMedLabel = first - th;
   }
   out.push(text("median-label", medText, pt, C.strong, "right", right, yMedLabel, true));
   out.push(text("mean-label", meanText, pt, C.label, "right", meanAx, yMeanLabel));
 
   if (d.site !== null) {
-    // 테두리가 있는 점은 도형 종류를 늘리지 않으려고 테두리색 큰 점 위에 분홍 작은 점을 겹쳐 만든다(테두리 1.5 px).
+    // 테두리 있는 점 하나(분홍 속·진한 테두리 1.5 px). 반지름은 테두리 가운데선까지.
     const ys = Y(d.site);
-    out.push({ kind: "dots", color: C.siteStroke, r: 5.75 * PX * scale, opacity: 1, points: [[X(0), ys]], name: "chart-distance-site-ring" });
-    out.push({ kind: "dots", color: C.siteFill, r: 4.25 * PX * scale, opacity: 1, points: [[X(0), ys]], name: "chart-distance-site-dot" });
-    // 점 위쪽에 두되 다른 글자와 겹치면 아래쪽으로 내린다.
+    out.push({ kind: "dots", color: C.siteFill, r: 5 * PX * scale, opacity: 1, points: [[X(0), ys]], stroke: C.siteStroke, strokeWidth: 1.5 * 0.75, name: "chart-distance-site" });
+    // 글자 자리 후보: 점 위 → 아래 → 점 오른쪽 한가운데 → 한 줄씩 더 위·아래. 다른 글자와 안 겹치는 첫 자리, 없으면 겹침이 가장 적은 자리.
     const siteText = `대지 평균 ${tickText(d.site, unit)}${unit}`;
-    const place = (y: number) => text("site-label", siteText, pt, C.siteStroke, "left", X(0) + 0.083 * scale, y, true);
-    const up = place(ys - 0.05 * scale - th);
-    const down = place(ys + 0.05 * scale);
+    const ds = 0.05 * scale;
+    const tops = [ys - ds - th, ys + ds, ys - th / 2, ...[1, 2, 3].flatMap((j) => [ys - ds - th * (1 + j), ys + ds + th * j])];
     const placed = out.filter((o): o is TextShape => o.kind === "text");
-    out.push(placed.some((o) => overlaps(o, up)) && !placed.some((o) => overlaps(o, down)) ? down : up);
+    let best: TextShape | undefined;
+    let bestArea = Infinity;
+    for (const y of tops) {
+      const cand = text("site-label", siteText, pt, C.siteStroke, "left", X(0) + 0.083 * scale, y, true);
+      const area = placed.reduce((sum, o) => sum + overlapArea(o, cand), 0);
+      if (area < bestArea) [best, bestArea] = [cand, area];
+      if (area === 0) break;
+    }
+    out.push(best!);
   }
   return out;
 }
@@ -187,7 +196,10 @@ function bandShapes(bands: { from: number; to: number; count: number }[], box: C
   const midW = Math.max(...bounds.slice(0, n).map((_, i) => textW(label(i), pt)));
   const every = Math.max(1, Math.ceil((Math.max(midW, (midW + lastW) / 2) + 0.04 * scale) / pitch)); // 글자가 피치보다 넓으면 끝에서부터 건너뛰며 쓴다
   const maxCount = Math.max(...bands.map((band) => band.count));
-  const countPt = Math.min(pt, (pitch * 0.95) / (group(maxCount).length * 0.55 * 0.0139 * 1.05));
+  // 개수 글자는 눈금 글자보다 작아지지 않는다. 피치에 안 들어가면 가장 많은 구간부터 k개 간격으로 건너뛴다.
+  const countPt = pt;
+  const tallest = bands.findIndex((band) => band.count === maxCount);
+  const countStep = Math.max(1, Math.ceil((Math.max(...bands.map((band) => textW(group(band.count), countPt, true))) + 0.04 * scale) / pitch));
   const t = textH(countPt) + 0.04 * scale;
   const b = th + 0.07 * scale;
   const px = box.x + l;
@@ -198,8 +210,8 @@ function bandShapes(bands: { from: number; to: number; count: number }[], box: C
   bands.forEach((band, i) => {
     const cx = px + pitch * (i + 0.5);
     const h = maxCount > 0 ? (ph * band.count) / maxCount : 0;
-    out.push({ kind: "rect", x: cx - pitch * 0.3, y: base - h, w: pitch * 0.6, h, fill: band.count === maxCount && maxCount > 0 ? C.peak : C.bar, name: `chart-distance-band-${i}` });
-    out.push(text(`count-${i}`, group(band.count), countPt, C.strong, "center", cx, base - h - 0.03 * scale - textH(countPt), true));
+    out.push({ kind: "rect", x: cx - pitch * 0.3, y: base - h, w: pitch * 0.6, h, fill: C.bar, name: `chart-distance-band-${i}` });
+    if ((i - tallest) % countStep === 0) out.push(text(`count-${i}`, group(band.count), countPt, C.strong, "center", cx, base - h - 0.03 * scale - textH(countPt), true));
   });
   for (let i = n; i >= 0; i -= every) out.push(text(`xtick-${i}`, label(i), pt, C.axis, "center", px + pitch * i, box.y + box.h - th));
   return out;
