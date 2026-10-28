@@ -2,6 +2,7 @@ import type { TileClientModule } from "../types";
 
 export const d05ClientModule = {
   code: "D05",
+  chart: { subject: "건물", countUnit: "동" },
   autoLabels: false,
   headline: { maxPrefix: "share_floors_" },
   mapNote: "지상층수 기본 · 35m·12m 기준 레이어 · [추정]은 층수×3m",

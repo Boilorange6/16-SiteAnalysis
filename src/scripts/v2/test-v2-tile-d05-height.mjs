@@ -138,7 +138,7 @@ try {
   const { viewWithLayer } = await import("../../lib/v2/ui/tile-view.ts");
   const { analysisCharts } = await import("../../lib/v2/report/analysis-charts.ts");
   const buildingOf = (polygon) => Math.floor(Number(polygon.fid) / 1000); // D05 면 fid = 지물 번호 × 1000 + 조각 번호
-  for (const radiusM of [800, 64]) { // 64 m는 반경에 걸친 건물이 있다(중심은 밖)
+  for (const radiusM of [800, 120, 64]) { // 120·64 m는 반경에 걸친 건물이 있다(중심은 밖). 64 m는 센 건물이 3동뿐이라 항목이 하나여서 그래프가 나오지 않는다.
     const countCtx = new EngineContext(dataDir, M.readManifest(dataDir), `d05-counted-${radiusM}`, { address: "경기도 남양주시 다산동 100", center: CENTER, radiusM, analysisDate: "2026-09-30", pnu: "4136011800101000000" });
     try {
       const tile = d05(countCtx);
@@ -149,12 +149,12 @@ try {
       const countedBuildings = new Set(floors.filter((polygon) => polygon.counted).map(buildingOf));
       assert.equal(countedBuildings.size, denominator, `${radiusM} m: counted 건물 수 = 엔진 동수(분모 ${denominator})`);
       for (const [key, flags] of Map.groupBy(polygons, buildingOf)) assert.equal(new Set(flags.map((polygon) => polygon.counted)).size, 1, `${radiusM} m: 건물 ${key}의 floors·tall·low 면은 같은 counted`);
-      if (radiusM === 64) assert.ok(floors.some((polygon) => !polygon.counted), "반경에 걸린 건물은 counted=false");
+      if (radiusM !== 800) assert.ok(floors.some((polygon) => !polygon.counted), "반경에 걸린 건물은 counted=false");
       else assert.ok(floors.every((polygon) => polygon.counted));
-      if (radiusM === 800) {
-        const view = toTileView(tile);
-        assert.equal(analysisCharts(viewWithLayer(view, view.defaultLayer).map).total, denominator, "그래프 건물 수 = 엔진 동수");
-      }
+      const view = toTileView(tile);
+      const chart = analysisCharts(viewWithLayer(view, view.defaultLayer).map);
+      if (radiusM !== 64) assert.equal(chart.total, denominator, `${radiusM} m: 그래프 건물 수 = 엔진 동수`);
+      else assert.equal(chart, null);
     } finally {
       countCtx.close();
     }

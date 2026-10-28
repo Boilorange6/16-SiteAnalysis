@@ -68,6 +68,29 @@ assert.equal(unknownUse.labelPriority, 1);
 assert.doesNotMatch(JSON.stringify(tile), /도보|\d\s*분|종합/);
 ctx.close();
 
+// 1b) counted: 그림은 반경에 걸친 건물도 그리지만 동수는 중심점이 반경 안인 건물만 센다 — 그래프 건물 수가 엔진 동수와 같다.
+//     120 m에는 그림 6동 중 동수 5동(한 동이 걸친다). 800 m에는 걸친 건물이 없어 이 단언이 걸러내지 못한다.
+{
+  const { viewWithLayer } = await import("../../lib/v2/ui/tile-view.ts");
+  const { analysisCharts } = await import("../../lib/v2/report/analysis-charts.ts");
+  for (const radiusM of [800, 120]) {
+    const countCtx = new EngineContext(dataDir, M.readManifest(dataDir), `d03-counted-${radiusM}`, { address: "경기도 남양주시 다산동 100", center: CENTER, radiusM, analysisDate: "2026-09-30", pnu: null });
+    const counted = d03(countCtx);
+    const polygons = counted.presentation.polygons;
+    assert.ok(polygons.length > 0 && polygons.every((polygon) => typeof polygon.counted === "boolean"), `${radiusM} m: 모든 건물 면에 boolean counted`);
+    const denominator = metric(counted, "fill_use_pct").denominator;
+    assert.equal(new Set(polygons.filter((polygon) => polygon.counted).map((polygon) => polygon.fid)).size, denominator, `${radiusM} m: counted 건물 수 = 엔진 동수(분모 ${denominator})`);
+    const view = toTileView(counted);
+    const chart = analysisCharts(viewWithLayer(view, view.defaultLayer).map);
+    assert.ok(chart, `${radiusM} m: D03은 건물·동을 밝혀 그래프가 나온다`);
+    assert.equal(chart.total, denominator, `${radiusM} m: 그래프 건물 수 = 엔진 동수`);
+    assert.equal(chart.subject + chart.countUnit, "건물동");
+    if (radiusM === 120) assert.ok(new Set(polygons.map((polygon) => polygon.fid)).size > denominator, "반경에 걸린 건물이 있다(그림 > 동수)");
+    else assert.ok(polygons.every((polygon) => polygon.counted));
+    countCtx.close();
+  }
+}
+
 // 2) 미상이 확인된 용도보다 많아도 헤더 후보에서는 제외하되 수치·도형은 보존.
 const unknownDominantDir = mkdtempSync(join(tmpdir(), "v2-d03-unknown-dominant-"));
 await buildEngineFixture(unknownDominantDir, "v1", { buildings: true });

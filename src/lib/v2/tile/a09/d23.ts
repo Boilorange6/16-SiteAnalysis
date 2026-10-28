@@ -149,6 +149,7 @@ export function d23(ctx: EngineContext): TileResult {
         name,
         sublabel: stage,
         labelPriority,
+        counted: true, // 반경과 교차해 「정비구역 N곳」에 든 구역 — 그래프 개수가 반경 판정 대신 따른다
       });
       if (polygon) {
         polygons.push(polygon);
@@ -156,7 +157,7 @@ export function d23(ctx: EngineContext): TileResult {
       }
     }
     // 면을 그릴 수 있는 지물은 같은 fid의 대표점을 만들지 않는다. 도형 변환에 실패한 경우만 점을 fallback으로 둔다.
-    if (polygonCount === 0) points.push(candidate(zone, layer, { label: null, name, sublabel: stage, labelPriority }));
+    if (polygonCount === 0) points.push(candidate(zone, layer, { label: null, name, sublabel: stage, labelPriority, counted: true }));
   }
 
   // makeTile도 상한 처리에서 면적순을 보장하지만, 타일 엔진의 후보 배열 자체도 교차 면적순으로 고정한다.

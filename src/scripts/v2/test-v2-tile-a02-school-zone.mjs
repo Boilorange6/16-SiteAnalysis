@@ -120,5 +120,24 @@ assert.match(a.judgment.sentence, /테스트중학교군/);
 assert.match(a.judgment.sentence, /테스트고등학교군/);
 assert.doesNotMatch(JSON.stringify(a), /통학구역 도형 미확보/);
 assert.doesNotMatch(JSON.stringify(toTileView(a)), /도보|\d\s*분|종합/);
+
+// counted: 그래프 학교 수 = 엔진이 반경 안에서 센 학교 수(초·중·고 합). 250 m는 고등학교(300 m)가 반경 밖이라 지도에서 빠진다.
+{
+  const { viewWithLayer } = await import("../../lib/v2/ui/tile-view.ts");
+  const { analysisCharts } = await import("../../lib/v2/report/analysis-charts.ts");
+  for (const radiusM of [800, 250]) {
+    const countCtx = new EngineContext(dataDir, M.readManifest(dataDir), `a02-counted-${radiusM}`, { address: "대구광역시 북구 칠성동2가 395-1", center: CENTER, radiusM, analysisDate: "2026-10-01" });
+    const tile = parseTileResult(a02WithSchoolZones(countCtx));
+    const engineSchools = ["elem_schools", "middle_schools", "high_schools"].reduce((sum, id) => sum + tile.metrics.find((m) => m.id === id).value, 0);
+    const schools = tile.presentation.features.filter((f) => f.layer.startsWith("school_"));
+    assert.ok(schools.length > 0 && schools.every((f) => f.counted === true), `${radiusM} m: 그린 학교는 모두 counted`);
+    const view = toTileView(tile);
+    const chart = analysisCharts(viewWithLayer(view, view.defaultLayer).map);
+    assert.ok(chart, `${radiusM} m: A02는 학교·곳을 밝혀 그래프가 나온다`);
+    assert.equal(chart.total, engineSchools, `${radiusM} m: 그래프 학교 수 = 엔진 학교 수(${engineSchools})`);
+    assert.equal(chart.subject + chart.countUnit, "학교곳");
+    countCtx.close();
+  }
+}
 ctx.close();
 console.log("✓ v2 D26/A02 school-zone engine");

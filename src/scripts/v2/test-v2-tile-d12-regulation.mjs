@@ -131,6 +131,31 @@ const outside = d12(outsideContext);
 assert.equal(outside.presentation.lines, undefined, "a line wholly outside the radius has no zero-length MapLine");
 assert.equal(outside.metrics.some((item) => item.id === "back_length_교통"), false, "out-of-radius zero fill stays missing rather than observed 0");
 
+// ── counted: 그래프 시설 수 = 엔진이 센 시설 수(문장의 「N건」). 북쪽 반경 가장자리(799.7~800 m)에 0.3 m만 걸친 면은 엔진(UTM-K)에선 안이지만
+//    그래프(구 모양 웹 메르카토르)는 남북 거리를 0.3 % 길게 재 802.6 m로 밖에 둔다 — counted를 떼면 5건이 4건으로 줄어든다(음성 대조).
+{
+  const { toTileView, viewWithLayer } = await import("../../lib/v2/ui/tile-view.ts");
+  const { analysisCharts } = await import("../../lib/v2/report/analysis-charts.ts");
+  const box = (x0, x1, y0, y1) => ({ type: "Polygon", coordinates: [[[cx + x0, cy + y0], [cx + x1, cy + y0], [cx + x1, cy + y1], [cx + x0, cy + y1], [cx + x0, cy + y0]]] });
+  const countCtx = contextFor([
+    hit(11, box(-100, 100, -100, 100), "polygon", "공간"),
+    hit(12, box(-20, 20, 799.7, 900), "polygon", "교통"), // 북쪽 반경 가장자리에 걸친 가는 조각
+    hit(13, line, "line", "교통"),
+    hit(14, point, "point", "교통"),
+    hit(15, { type: "LineString", coordinates: [[cx - 300, cy + 300], [cx + 300, cy + 300]] }, "line", "공간"),
+  ]);
+  const counted = d12(countCtx);
+  const engineCount = Number(/도시계획시설 (\d+)건/.exec(counted.judgment.sentence)?.[1]);
+  assert.equal(engineCount, 5, "문장의 건수(전제)");
+  assert.ok([...(counted.presentation.polygons ?? []), ...(counted.presentation.features ?? []), ...(counted.presentation.lines ?? [])].every((item) => item.counted === true), "그린 시설은 모두 counted");
+  const view = toTileView(counted);
+  const chart = analysisCharts(viewWithLayer(view, view.defaultLayer).map);
+  assert.ok(chart, "D12는 도시계획시설·건을 밝혀 그래프가 나온다");
+  assert.equal(chart.total, engineCount, "그래프 시설 수 = 엔진 시설 수(면·선·점 합)");
+  assert.equal(chart.subject + chart.countUnit, "도시계획시설건");
+  countCtx.close();
+}
+
 facilityContext.close();
 outsideContext.close();
 db.close();

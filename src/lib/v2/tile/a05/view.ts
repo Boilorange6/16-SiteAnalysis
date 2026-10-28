@@ -62,6 +62,7 @@ export function calloutForA05(result: TileResult, sourceLine: string, filterLine
 
 export const a05ClientModule = {
   code: "A05",
+  chart: { subject: "주거 건물·단지", countUnit: "곳" },
   headline: { ids: ["households", "apartment_complexes"] },
   mapNote: "원 크기 = 확인 세대·호실 · 색 = 준공 연대 · 속 빈 원 = 준공 연대 미상",
   prepare: (result, context) => prepareA05(result, context.filter),

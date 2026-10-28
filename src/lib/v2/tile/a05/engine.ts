@@ -51,6 +51,7 @@ function kaptOnly(ctx: EngineContext): FeatureHit[] {
 /** 설명선 카드에 쓰는 단지 값. 엔진이 아는 것만 담고 나머지는 null (K-APT·건물 연결은 다른 브랜치가 채운다) */
 function callout(h: FeatureHit, type: string, households: number | null) {
   return {
+    counted: true, // 구성비 분모(반경 내 주거 건물·단지 수)에 든 지물 — 그래프 개수가 반경 판정 대신 따른다
     weight: households,
     households,
     name: h.name,

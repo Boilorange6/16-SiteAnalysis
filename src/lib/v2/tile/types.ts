@@ -121,6 +121,11 @@ export interface TileClientModule {
   rowsExclude?: readonly string[];
   /** 캐시된 옛 판단 문장을 현재 표기와 맞춘다(필터 꼬리표 붙이기 전). */
   sentenceFor?: (result: TileResult, sentence: string, rows: readonly { label: string; value: string }[]) => string;
+  /**
+   * 「지도 + 그래프」가 세는 대상. 이 선언이 있는 타일만 그래프를 낸다(없으면 「지도 + 요약」).
+   * subject는 구성 항목 전부를 아우르는 이름, countUnit은 그 세는 단위다. 그래프 합계는 엔진이 세어 판단 문장·행에 적은 수와 같아야 한다.
+   */
+  chart?: { subject: string; countUnit: string };
   /** 카드에 표시할 모델·법적 사용 한계 문구다. */
   caveat?: string;
   /** 카드 배지에 표시할 계산 모델 요약이다. */

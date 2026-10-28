@@ -129,6 +129,25 @@ const clean = (tile) => {
   assert.ok(tradePoints.length > 0);
   for (const feature of tradePoints) assert.ok(Number.isFinite(feature.value) && feature.value === feature.weight, `${feature.layer} value === weight`);
   assert.deepEqual(toTileView(a).map.valueAxis, a.presentation.valueAxis);
+  // counted: 그래프 단지 수 = 엔진이 센 거래 단지 수(점 수). 400 m는 단지 C(600 m)가 반경 밖이라 점 3 → 2.
+  {
+    const { viewWithLayer } = await import("../../lib/v2/ui/tile-view.ts");
+    const { analysisCharts, analysisStatLine } = await import("../../lib/v2/report/analysis-charts.ts");
+    const makeAt = await make({ trades: true });
+    for (const [radiusM, complexes] of [[800, 3], [400, 2]]) {
+      const radiusCtx = makeAt(radiusM);
+      const tile = a07(radiusCtx);
+      const engineComplexes = collectTrades(radiusCtx).points.length;
+      assert.equal(engineComplexes, complexes, `${radiusM} m: 엔진 단지 수(전제)`);
+      assert.ok(tile.presentation.features.length > 0 && tile.presentation.features.every((feature) => feature.counted === true), `${radiusM} m: 그린 단지는 모두 counted`);
+      const view = toTileView(tile);
+      const chart = analysisCharts(viewWithLayer(view, view.defaultLayer).map);
+      assert.ok(chart, `${radiusM} m: A07은 아파트·단지를 밝혀 그래프가 나온다`);
+      assert.equal(chart.total, engineComplexes, `${radiusM} m: 그래프 단지 수 = 엔진 단지 수`);
+      assert.ok(analysisStatLine(chart).startsWith(`반경 ${radiusM === 800 ? "800 m" : "400 m"} 안 아파트 ${engineComplexes}단지`), analysisStatLine(chart));
+      radiusCtx.close();
+    }
+  }
   assert.ok(a.presentation.features.every((feature) => !Object.hasOwn(feature, "label")), "A07는 옛 label을 내지 않는다");
   const cuts = [0.2, 0.4, 0.6, 0.8].map((p) => {
     const values = trades.points.map((point) => point.m).sort((x, y) => x - y);

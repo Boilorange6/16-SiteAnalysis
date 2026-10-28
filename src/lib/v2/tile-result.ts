@@ -80,6 +80,8 @@ const MapFeatureSchema = z.object({
   overlap: z.boolean().optional(),
   /** 그래프 y값(타일의 `valueAxis` 단위). 값이 없거나 추정이면 null. */
   value: z.number().finite().nullable().optional(),
+  /** 엔진이 센 지물인가. 있으면 그래프 개수가 반경 판정 대신 이 표시를 따른다(엔진은 UTM-K, 그래프는 웹 메르카토르라 경계에서 1 m쯤 어긋난다). */
+  counted: z.boolean().optional(),
 });
 
 /** 면(폴리곤) 지물 상한: 일반 타일은 개수, 고리 하나의 꼭짓점 수. 상한은 엔진이 지키고 스키마가 다시 막는다. */
@@ -111,6 +113,8 @@ const MapLineSchema = z.object({
   /** 선별 지물의 개별 불투명도. 없으면 공용 LayerStyle을 따른다. */
   opacity: z.number().finite().min(0).max(1).optional(),
   emphasis: z.enum(["major", "minor"]).optional(),
+  /** 엔진이 센 선 지물인가. MapFeature.counted와 같다. */
+  counted: z.boolean().optional(),
 }).refine(
   ({ strokeWidth, casingWidth }) => casingWidth === undefined || strokeWidth === undefined || casingWidth >= strokeWidth,
   { path: ["casingWidth"], message: "casingWidth must be at least strokeWidth" },
@@ -127,7 +131,7 @@ const MapPolygonSchema = z.object({
   labelPriority: z.number().int().min(0).max(2).optional(),
   /** 그래프 y값(타일의 `valueAxis` 단위). 값이 없거나 추정이면 null. */
   value: z.number().finite().nullable().optional(),
-  /** 건물 면 전용: 엔진이 동수로 센 건물인가(건물 중심이 반경 안). 지도는 반경에 걸친 건물도 그리므로 그래프 건물 수가 이 표시를 따른다. */
+  /** 엔진이 센 지물인가(예: 건물은 중심이 반경 안인 것만 동수에 든다). 지도는 반경에 걸친 것도 그리므로 그래프 개수가 이 표시를 따른다. */
   counted: z.boolean().optional(),
 });
 

@@ -80,6 +80,23 @@ assert.equal(a06ClientModule.mapNote, "색 = 원천(청약홈·입주예정) · 
   );
   assert.ok(tile.presentation.features.every((item) => !Object.hasOwn(item, "label")), "A05는 옛 label을 내지 않는다");
   ctx.close();
+
+  // counted: 그래프 「주거 건물·단지」 수 = 엔진이 구성비 분모로 센 반경 내 주거 건물·단지 수. 425 m는 연립 한 곳(421.9 m)만 안, 다음(431.8 m)은 밖이다.
+  const { toTileView, viewWithLayer } = await import("../../lib/v2/ui/tile-view.ts");
+  const { analysisCharts, analysisStatLine } = await import("../../lib/v2/report/analysis-charts.ts");
+  for (const radiusM of [800, 425]) {
+    const countCtx = new EngineContext(dataDir, M.readManifest(dataDir), `a05-counted-${radiusM}`, { address: "경기도 남양주시 다산동 100", center: CENTER, radiusM, analysisDate: "2026-09-30" });
+    const counted = a05(countCtx);
+    const engineCount = counted.metrics.find((metric) => metric.id === "share_unknown").denominator;
+    assert.ok(counted.presentation.features.length > 0 && counted.presentation.features.every((item) => item.counted === true), `${radiusM} m: 그린 단지는 모두 counted`);
+    assert.equal(engineCount, counted.presentation.features.length, `${radiusM} m: 엔진 분모(반경 내 주거 건물·단지) = 그린 지물 수`);
+    const view = toTileView(counted);
+    const chart = analysisCharts(viewWithLayer(view, view.defaultLayer).map);
+    assert.ok(chart, `${radiusM} m: A05는 주거 건물·단지를 밝혀 그래프가 나온다`);
+    assert.equal(chart.total, engineCount, `${radiusM} m: 그래프 수 = 엔진 수`);
+    assert.ok(analysisStatLine(chart).includes(`주거 건물·단지 ${engineCount}곳`), analysisStatLine(chart));
+    countCtx.close();
+  }
 }
 
 {

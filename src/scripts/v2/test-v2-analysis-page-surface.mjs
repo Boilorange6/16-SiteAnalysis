@@ -68,6 +68,26 @@ const noFeatureView = { ...view, map: { ...view.map, features: [], polygons: [],
 const noChartPages = recommendedPages(EMPTY_REPORT_DOC, new Map([[d05Result.tileId, noFeatureView]]), board, { ...ctx, views: new Map([[d05Result.tileId, noFeatureView]]) });
 assert.equal(noChartPages.find((page) => page.kind === "tile").layout, "map-summary", "그래프 자료가 없으면 map-summary");
 
+// ── 세는 대상을 밝히지 않은 타일(A12)은 같은 지도 자료가 있어도 「지도 + 요약」에 머물고, 레이아웃 창도 「지도 + 그래프」를 내놓지 않는다
+{
+  const { reportLayoutDecision } = await import("../../lib/v2/report/report-layout.ts");
+  const undeclaredResult = { ...d05Result, tileId: "x-A12", tileCode: "A12" };
+  const undeclaredFiltered = viewWithLayer(toTileView(undeclaredResult), undefined);
+  assert.equal(undeclaredFiltered.map.tileCode, "A12");
+  assert.ok(undeclaredFiltered.map.polygons.length > 0, "전제: 지도 자료는 있다");
+  const undeclaredViews = new Map([[undeclaredResult.tileId, { ...undeclaredFiltered, headline: view.headline, sentence: view.sentence }]]);
+  const undeclaredCtx = { ...ctx, views: undeclaredViews };
+  const undeclaredPage = recommendedPages(EMPTY_REPORT_DOC, undeclaredViews, initBoard([undeclaredResult]), undeclaredCtx).find((page) => page.kind === "tile");
+  assert.ok(undeclaredPage, "추천 구성에 A12 쪽");
+  assert.equal(undeclaredPage.layout, "map-summary", "밝히지 않은 타일의 새 쪽은 map-summary");
+  const undeclaredSlide = planReportDoc({ ...EMPTY_REPORT_DOC, pages: [undeclaredPage] }, undeclaredViews, undeclaredCtx).find((slide) => slide.kind === "tile");
+  assert.equal(analysisCharts(undeclaredSlide.map), null, "그래프 자료 없음");
+  const menu = reportLayoutDecision({ pageKind: "tile", hasMap: true, hasSummary: true, hasCharts: analysisCharts(undeclaredSlide.map) !== null });
+  assert.ok(!menu.choices.some((choice) => choice.value === "map-charts"), "레이아웃 창에 「지도 + 그래프」가 없다");
+  const declaredSlide = planReportDoc({ ...EMPTY_REPORT_DOC, pages: [{ ...tilePage, layout: "map-summary" }] }, views, ctx).find((slide) => slide.kind === "tile");
+  assert.ok(reportLayoutDecision({ pageKind: "tile", hasMap: true, hasSummary: true, hasCharts: analysisCharts(declaredSlide.map) !== null }).choices.some((choice) => choice.value === "map-charts"), "밝힌 타일(D05)은 같은 자료에서 메뉴에 나온다");
+}
+
 const planOf = (page, v = views) => planReportDoc({ ...EMPTY_REPORT_DOC, pages: [page] }, v, { ...ctx, views: v }).find((slide) => slide.kind === "tile");
 const render = (slide, mode = "edit") => renderToStaticMarkup(createElement(SlideSurface, { slide, basemap: "none", mode }));
 

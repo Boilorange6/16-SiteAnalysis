@@ -723,6 +723,7 @@ function openCandidates(ctx: EngineContext, bounds: Bbox, blocks: Block[]): Poly
       name: null,
       sublabel: mapAreaHaText(polygonArea(rings)),
       labelPriority: 0,
+      counted: false, // 미폐합 잔여 면은 블록이 아니다
     });
     return candidate ? [candidate] : [];
   });
@@ -822,6 +823,7 @@ export function d15(ctx: EngineContext): TileResult {
             name: null,
             sublabel: mapAreaHaText(block.areaM2),
             labelPriority: 0,
+            counted: true, // 엔진이 폐합 블록으로 센 면(그래프 개수가 따른다)
           });
           return candidate ? [candidate] : [];
         });

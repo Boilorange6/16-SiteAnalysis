@@ -1,4 +1,5 @@
 /** 분석 장 그래프 자료(구성비·거리). 지도 모델에서 계산하는 순수 함수라 미리보기·PPT·테스트가 같은 값을 쓴다. */
+import { tileClientModuleFor } from "../tile/client";
 import { legendItems, legendItemsForModel, modelLayerStyle, type MapModel } from "../ui/map-layers";
 import { metersPerPixel, worldPx } from "../ui/map-projection";
 
@@ -65,28 +66,51 @@ const median = (sorted: number[]): number => {
 };
 
 export function analysisCharts(model: MapModel): AnalysisCharts | null {
-  const items = legendItemsForModel(model);
-  if (items.length < 2) return null;
+  // 타일이 세는 대상을 밝힌 경우에만 그래프를 낸다. 밝히지 않았거나 타일 코드가 없으면 「지도 + 요약」에 머문다.
+  const declared = model.tileCode ? tileClientModuleFor(model.tileCode)?.chart : undefined;
+  if (!declared) return null;
+  const { subject, countUnit } = declared;
+  const items = [...legendItemsForModel(model)];
 
   // 같은 표시명으로 합쳐진 레이어(도로 등)는 범례의 항목 하나로 모은다.
   const itemByLayer = new Map(items.map((item) => [item.layer, item]));
   const layerByLabel = new Map(legendItems(model).map((item) => [item.label, item.layer]));
   const itemFor = (layer: string) => {
     if (layer.endsWith("_site")) return undefined; // 대지 레이어
-    return itemByLayer.get(layer) ?? itemByLayer.get(layerByLabel.get(modelLayerStyle(model, layer).label) ?? "");
+    const style = modelLayerStyle(model, layer);
+    const found = itemByLayer.get(layer) ?? itemByLayer.get(layerByLabel.get(style.label) ?? "");
+    if (found || !layer.endsWith("_nearest")) return found;
+    // 「최근접 …」 강조 층은 범례에서 빠지지만 같은 종류의 지물이다(A02 최근접 초등학교). 본 층 항목에 합치고, 본 층이 없으면 항목을 만들어 맨 앞에 둔다.
+    const label = style.label.replace(/^최근접 /, "");
+    const base = itemByLayer.get(layerByLabel.get(label) ?? "");
+    if (base) return base;
+    const made: (typeof items)[number] = { layer, label, color: style.color, highlight: false };
+    items.unshift(made);
+    itemByLayer.set(layer, made);
+    return made;
   };
 
   const mpp = metersPerPixel(model.center[1], Z);
   const [cx, cy] = worldPx(model.center[0], model.center[1], Z);
   const counted: Array<{ d: number; value: number | null | undefined; at: Px; item: NonNullable<ReturnType<typeof itemFor>> }> = [];
-  // 엔진이 건물 면에 `counted`를 실었으면 그 표시가 반경 판정을 대신한다(지도는 반경에 걸친 건물도 그리지만 동수는 건물 중심이 반경 안인 것만 센다).
+  // 엔진이 지물에 `counted`를 실었으면 그 표시가 반경 판정을 대신한다(지도는 반경에 걸친 건물도 그리지만 동수는 건물 중심이 반경 안인 것만 센다. 엔진은 UTM-K, 여기는 웹 메르카토르라 경계의 1 m 안팎은 판정이 갈린다).
   const consider = (layer: string, at: Px, value: number | null | undefined, flag?: boolean) => {
     const item = itemFor(layer);
     if (!item) return;
     const d = Math.hypot(at[0] - cx, at[1] - cy) * mpp;
     if (flag === undefined ? d <= model.radiusM : flag) counted.push({ d, value, at, item });
   };
-  for (const f of model.features) consider(f.layer, worldPx(f.lng, f.lat, Z), f.value);
+  for (const f of model.features) consider(f.layer, worldPx(f.lng, f.lat, Z), f.value, f.counted);
+  // 선 지물(D12 선 시설): 같은 fid의 조각은 한 번만, 대표점은 첫 조각의 가운데 꼭짓점이다.
+  const seenLine = new Set<string>();
+  for (const l of model.lines ?? []) {
+    if (l.fid !== undefined) {
+      if (seenLine.has(l.fid)) continue;
+      seenLine.add(l.fid);
+    }
+    const mid = l.points[l.points.length >> 1]!;
+    consider(l.layer, worldPx(mid[0], mid[1], Z), undefined, l.counted);
+  }
   // 같은 fid의 면(여러 조각으로 나뉜 건물)은 한 번만 센다. 첫 고리 넓이가 가장 큰(같으면 앞선) 조각이 대표라 점도 값도 그 조각의 것이다. fid 없는 면은 하나씩 센다.
   const rings = (model.polygons ?? []).map((p) => (p.rings[0]?.length ? toPx([p.rings[0]])[0]! : null));
   const biggest = new Map<string, number>();
@@ -116,10 +140,6 @@ export function analysisCharts(model: MapModel): AnalysisCharts | null {
     const rest = present.filter((item) => !keep.has(item)).reduce((sum, item) => sum + countByItem.get(item)!, 0);
     composition = [...present.filter((item) => keep.has(item)).map(toComposition), { ...OTHER, count: rest, share: rest / total }];
   }
-
-  const top = present.reduce((best, item) => (countByItem.get(item)! > countByItem.get(best)! ? item : best));
-  const subject = modelLayerStyle(model, top.layer).subject ?? "지물";
-  const countUnit = model.valueAxis?.countUnit ?? "개";
 
   const valued = counted.filter((c): c is typeof c & { value: number } => Number.isFinite(c.value)); // NaN·±Infinity는 값 있음도 없음도 아니다
   let distance: DistanceData;

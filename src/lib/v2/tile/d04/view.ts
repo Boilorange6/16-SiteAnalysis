@@ -39,6 +39,7 @@ function headlineForD04(result: TileResult, helpers: TileHeadlineHelpers) {
 
 export const d04ClientModule = {
   code: "D04",
+  chart: { subject: "건물", countUnit: "동" },
   autoLabels: false,
   headline: { ids: ["share_pre2000", "share_pre1980", "share_1990s"] },
   parameterBadges: [

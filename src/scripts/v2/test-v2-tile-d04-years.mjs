@@ -116,7 +116,7 @@ try {
 // ── counted: 모든 건물 면이 엔진이 동수로 센 건물인지 싣고, 그래프 건물 수가 엔진 동수와 같다
 {
   const { analysisCharts } = await import("../../lib/v2/report/analysis-charts.ts");
-  for (const radiusM of [800, 64]) { // 64 m는 반경에 걸친 건물이 있다(중심은 밖)
+  for (const radiusM of [800, 120, 64]) { // 120·64 m는 반경에 걸친 건물이 있다(중심은 밖). 64 m는 센 건물이 1동뿐이라 그래프가 나오지 않는다(항목 둘 미만).
     const countCtx = new EngineContext(dataDir, M.readManifest(dataDir), `d04-counted-${radiusM}`, { address: "경기도 남양주시 다산동 100", center: CENTER, radiusM, analysisDate: "2026-09-30", pnu: null });
     try {
       const counted = d04(countCtx);
@@ -124,11 +124,10 @@ try {
       assert.ok(polygons.length > 0 && polygons.every((polygon) => typeof polygon.counted === "boolean"), `${radiusM} m: 모든 건물 면에 boolean counted`);
       const denominator = metric(counted, "confirmed_share_pct").denominator;
       assert.equal(new Set(polygons.filter((polygon) => polygon.counted).map((polygon) => polygon.fid)).size, denominator, `${radiusM} m: counted 건물 수 = 엔진 동수(분모 ${denominator})`);
-      if (radiusM === 64) assert.ok(polygons.some((polygon) => !polygon.counted), "반경에 걸린 건물은 counted=false");
-      else {
-        assert.ok(polygons.every((polygon) => polygon.counted));
-        assert.equal(analysisCharts(toTileView(counted).map).total, denominator, "그래프 건물 수 = 엔진 동수");
-      }
+      if (radiusM !== 800) assert.ok(polygons.some((polygon) => !polygon.counted), "반경에 걸린 건물은 counted=false");
+      else assert.ok(polygons.every((polygon) => polygon.counted));
+      if (radiusM !== 64) assert.equal(analysisCharts(toTileView(counted).map).total, denominator, `${radiusM} m: 그래프 건물 수 = 엔진 동수`);
+      else assert.equal(analysisCharts(toTileView(counted).map), null, "센 건물의 항목이 하나뿐이면 그래프를 내지 않는다");
     } finally {
       countCtx.close();
     }

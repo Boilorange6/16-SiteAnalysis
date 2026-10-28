@@ -237,4 +237,30 @@ const SYNTHETIC_EXPECTED = {
   }
 }
 
+// ─── 6. counted: 그래프 블록 수 = 엔진이 센 폐합 블록 수 (반경 가장자리에 걸친 조각·미폐합 면이 있는 합성 격자) ──
+{
+  const { toTileView, viewWithLayer } = await import("../../lib/v2/ui/tile-view.ts");
+  const { analysisCharts } = await import("../../lib/v2/report/analysis-charts.ts");
+  const center = [127.1506, 37.6245];
+  const radiusM = 800;
+  const dataDir = mkdtempSync(join(tmpdir(), "v2-d15-counted-"));
+  await buildEngineFixture(dataDir, "v1", { roads: true });
+  const ctx = new EngineContext(dataDir, readManifest(dataDir), "d15-counted", { address: "합성 격자", center, radiusM, analysisDate: "2026-09-30", pnu: null });
+  const hits = syntheticRoadHits(center, radiusM);
+  ctx.hits = () => hits;
+  const tile = d15(ctx);
+  const polygons = tile.presentation.polygons;
+  const blocks = metric(tile, "blocks").value;
+  assert.ok(polygons.every((polygon) => typeof polygon.counted === "boolean"), "모든 면에 boolean counted");
+  assert.ok(polygons.filter((polygon) => polygon.layer === "block_open").every((polygon) => polygon.counted === false), "미폐합 면은 블록이 아니다");
+  assert.equal(new Set(polygons.filter((polygon) => polygon.counted).map((polygon) => polygon.fid)).size, blocks, "counted 블록 수 = 엔진 폐합 블록 수");
+  const view = toTileView(tile);
+  const chart = analysisCharts(viewWithLayer(view, view.defaultLayer).map);
+  assert.ok(chart, "D15는 폐합 블록·개를 밝혀 그래프가 나온다");
+  assert.equal(chart.total, blocks, `그래프 블록 수 = 엔진 폐합 블록 수(${blocks})`);
+  assert.equal(chart.subject + chart.countUnit, "폐합 블록개");
+  assert.ok(chart.composition.every((item) => item.label !== "미폐합"), "미폐합 면은 구성비에 들지 않는다");
+  ctx.close();
+}
+
 console.log("✓ v2 D15 blocks");

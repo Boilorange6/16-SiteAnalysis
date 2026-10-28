@@ -106,6 +106,7 @@ export function d03(ctx: EngineContext): TileResult {
         name,
         sublabel: useLabelOf(row.useCode),
         labelPriority: name === null ? 0 : 1,
+        counted, // 그래프 동수가 엔진 동수(중심점이 반경 안)를 따른다
       });
       if (polygon) polygons.push(polygon);
     }

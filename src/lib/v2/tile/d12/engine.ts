@@ -109,6 +109,7 @@ export function d12(ctx: EngineContext): TileResult {
           name,
           sublabel: formatAreaM2(polygonArea(rings)),
           labelPriority: name === null ? 0 : 1,
+          counted: true, // 문장의 「N건」에 든 시설 — 그래프 개수가 반경 판정 대신 따른다
         });
         if (poly) polygons.push(poly);
       }
@@ -120,6 +121,7 @@ export function d12(ctx: EngineContext): TileResult {
           name,
           sublabel: formatLengthM(lengthM),
           labelPriority: name === null ? 0 : 1,
+          counted: true,
         });
         if (!line) continue;
         length += line.lengthM;
@@ -134,6 +136,7 @@ export function d12(ctx: EngineContext): TileResult {
         name,
         sublabel: null,
         labelPriority: name === null ? 0 : 1,
+        counted: true,
       }));
     }
   }

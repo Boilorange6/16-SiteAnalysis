@@ -4,7 +4,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import Database from "better-sqlite3";
 
-const { buildEngineFixture, CENTER } = await import("./engine-fixture.mjs");
+const { buildEngineFixture, CENTER, at } = await import("./engine-fixture.mjs");
+const { insertFeature } = await import("../../lib/v2/data/features.ts");
 const M = await import("../../lib/v2/data/manifest.ts");
 const { insertRelease } = await import("../../lib/v2/ingest/build.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
@@ -29,11 +30,20 @@ const make = async (options) => {
     });
     db.close();
   }
+  if (options.edgeZone) {
+    // 북쪽 반경 가장자리(799.7~800 m)에 0.3 m만 걸치는 가는 구역 하나 — 엔진(UTM-K)은 센다
+    const manifest = M.readManifest(dir);
+    const db = new Database(M.resolveDataPath(dir, manifest.files.reference.path));
+    const releaseId = db.prepare("SELECT release_id FROM source_release WHERE source_id = 'maintenance_zone'").pluck().get();
+    const rect = (x0, x1, y0, y1) => ({ type: "Polygon", coordinates: [[at(x0, y0), at(x1, y0), at(x1, y1), at(x0, y1), at(x0, y0)]] });
+    insertFeature(db, { stableId: "maintenance_zone:zedge", kind: "maintenance_zone", sourceKey: "zedge", releaseId, geometry: rect(-20, 20, 799.7, 900), name: "가장자리구역", properties: { type: "재개발", stage: "착공" } });
+    db.close();
+  }
   const manifest = M.readManifest(dir);
   return new EngineContext(dir, manifest, "an-d23", {
     address: "경기도 남양주시 다산동 100",
     center: CENTER,
-    radiusM: 800,
+    radiusM: options.radiusM ?? 800,
     analysisDate: "2026-09-30",
     pnu: null,
   });
@@ -89,6 +99,27 @@ const forbidden = /도보|\d\s*분|종합/;
   assert.equal(tile.judgment.level, null);
   assert.doesNotMatch(JSON.stringify(tile), forbidden);
   ctx.close();
+}
+
+// counted: 그래프 정비구역 수 = 엔진이 센 「반경과 교차하는 정비구역」 수. 200 m는 두 구역이 모두 반경 가장자리에 걸려 잘린다(800 m는 안 걸린다).
+{
+  const { toTileView, viewWithLayer } = await import("../../lib/v2/ui/tile-view.ts");
+  const { analysisCharts } = await import("../../lib/v2/report/analysis-charts.ts");
+  // 800 m + edgeZone: 북쪽 가장자리의 가는 구역은 엔진이 센다. 그래프(남북 거리를 0.3 % 길게 잼)는 counted 없이는 802.6 m로 밖에 둔다(음성 대조: 3곳 → 2곳).
+  for (const [radiusM, edgeZone, expected] of [[800, false, 2], [800, true, 3], [200, false, 2]]) {
+    const ctx = await make({ maint: "zones", radiusM, edgeZone });
+    const tile = a09ServerModule.compute(ctx);
+    const zones = value(tile, "zones_in_radius");
+    const polygons = tile.presentation.polygons ?? [];
+    assert.equal(zones, expected, `${radiusM} m${edgeZone ? " + 가장자리 구역" : ""}: 반경과 교차하는 정비구역(먼 구역 제외)`);
+    assert.ok(polygons.length > 0 && polygons.every((polygon) => polygon.counted === true), `${radiusM} m: 그린 구역은 모두 counted`);
+    const view = toTileView(tile);
+    const chart = analysisCharts(viewWithLayer(view, view.defaultLayer).map);
+    assert.ok(chart, `${radiusM} m: A09는 정비구역·곳을 밝혀 그래프가 나온다`);
+    assert.equal(chart.total, zones, `${radiusM} m: 그래프 정비구역 수 = 엔진 정비구역 수`);
+    assert.equal(chart.subject + chart.countUnit, "정비구역곳");
+    ctx.close();
+  }
 }
 
 {

@@ -2,6 +2,7 @@ import type { TileClientModule } from "../types";
 
 export const a02ClientModule = {
   code: "A02",
+  chart: { subject: "학교", countUnit: "곳" },
   headline: { ids: ["in_school_zone", "nearest_elem_m"] },
   headlineFor: (result) => {
     const zone = result.metrics.find((metric) => metric.id === "in_school_zone");

@@ -16,7 +16,8 @@ const square = (eastM, northM, halfM = 5) => {
 const pt = (layer, eastM, northM, value) => ({ layer, lng: at(eastM, northM)[0], lat: at(eastM, northM)[1], ...(value === undefined ? {} : { value }) });
 const poly = (layer, eastM, northM, value) => ({ layer, rings: square(eastM, northM), ...(value === undefined ? {} : { value }) });
 const AXIS = { label: "지상 층수", unit: "층", countUnit: "동" };
-const model = (parts) => ({ center: CENTER, radiusM: 1000, features: [], total: 0, notes: [], ...parts });
+// 그래프는 세는 대상을 밝힌 타일에만 나온다 — 기본은 D05(건물·동). 레이어 이름은 이 함수가 보는 것이 아니라 범례 항목일 뿐이다.
+const model = (parts) => ({ center: CENTER, radiusM: 1000, features: [], total: 0, notes: [], tileCode: "D05", ...parts });
 
 // ── 기본 픽스처: 면 5(+반경 밖 1) · 점 3 · 대지
 const base = model({
@@ -91,9 +92,9 @@ assert.deepEqual(noValue.distance.bands[0], { from: 0, to: 100, count: 1 });
 assert.deepEqual(noValue.distance.bands[2], { from: 200, to: 300, count: 2 });
 assert.deepEqual(noValue.distance.bands[9], { from: 900, to: 1000, count: 1 });
 assert.equal(noValue.missing, 0);
-assert.equal(noValue.countUnit, "개");
-assert.equal(noValue.subject, "버스정류장");
-assert.equal(analysisStatLine(noValue), "반경 1 km 안 버스정류장 4개 · 가장 많은 거리 200–300 m");
+assert.equal(noValue.countUnit, "동");
+assert.equal(noValue.subject, "건물");
+assert.equal(analysisStatLine(noValue), "반경 1 km 안 건물 4동 · 가장 많은 거리 200–300 m");
 // 값 키가 전부 undefined(다른 모드 면)여도 bands
 assert.equal(analysisCharts(model({ valueAxis: AXIS, features: [pt("floors_1_4", 10), pt("floors_5_8", 20)] })).distance.kind, "bands");
 
@@ -169,7 +170,7 @@ const b15 = radiusBands(1500);
 assert.equal(b15.length, 8);
 assert.deepEqual(b15[7], { from: 1400, to: 1500, count: 1 });
 assert.equal(radiusBands(500).length, 5, "500 m는 100 m 간격 그대로");
-assert.equal(analysisStatLine(analysisCharts(model({ radiusM: 3000, features: [pt("bus_stop", 350), pt("bus_stop", 360), pt("rail_station", 2000)] }))), "반경 3 km 안 버스정류장 3개 · 가장 많은 거리 300–600 m");
+assert.equal(analysisStatLine(analysisCharts(model({ radiusM: 3000, features: [pt("bus_stop", 350), pt("bus_stop", 360), pt("rail_station", 2000)] }))), "반경 3 km 안 건물 3동 · 가장 많은 거리 300–600 m");
 
 // ── null 경우
 assert.equal(analysisCharts(model({ features: [pt("floors_1_4", 10), pt("floors_1_4", 20)] })), null, "범례 1개");
@@ -250,5 +251,63 @@ assert.deepEqual(trade.composition.map((item) => item.label), ["㎡당 하위 20
 // 앞부분이 같아 구별되지 않으면 전체 이름을 쓴다(지목 · 대지 / 지목 · 도로)
 const jimok = analysisCharts(model({ features: [f("jimok:대", 1), f("jimok:도로", 2)] }));
 assert.deepEqual(jimok.composition.map((item) => item.label), ["지목 · 대지", "지목 · 도로"]);
+
+// ── 그래프는 타일이 세는 대상을 밝혀야만 나온다(선택 참여, 대체값 없음)
+const twoItems = { features: [pt("bus_stop", 10), pt("rail_station", 20), pt("bus_stop", 30)] };
+assert.ok(analysisCharts(model(twoItems)), "전제: 밝힌 타일(D05)은 그래프가 나온다");
+for (const code of ["A01", "A03", "A04", "A08", "D19", "A11", "A12", "D10", "D11", "D16", "D17", "D18", "D28"]) {
+  assert.equal(analysisCharts(model({ ...twoItems, tileCode: code })), null, `${code}: 밝히지 않은 타일은 null`);
+}
+assert.equal(analysisCharts(model({ ...twoItems, tileCode: "Z99" })), null, "없는 타일 코드는 null");
+const { tileCode: _omitted, ...withoutCode } = model(twoItems);
+assert.equal(analysisCharts(withoutCode), null, "tileCode 없는 모델은 null");
+assert.equal(analysisCharts({ ...withoutCode, valueAxis: AXIS }), null, "valueAxis가 있어도 tileCode가 없으면 null");
+
+// 밝힌 대상·단위가 제목과 한 줄 요약에 그대로 흐른다
+for (const [code, subject, unit] of [["D03", "건물", "동"], ["D04", "건물", "동"], ["D05", "건물", "동"], ["A07", "아파트", "단지"], ["A02", "학교", "곳"], ["A05", "주거 건물·단지", "곳"], ["A09", "정비구역", "곳"], ["D12", "도시계획시설", "건"], ["D15", "폐합 블록", "개"]]) {
+  const declared = analysisCharts(model({ ...twoItems, tileCode: code }));
+  assert.ok(declared, `${code}: 밝힌 타일`);
+  assert.equal(declared.subject, subject, `${code} 대상`);
+  assert.equal(declared.countUnit, unit, `${code} 단위`);
+  assert.deepEqual(declared.titles, { composition: `${subject} 구성비`, distance: `대지에서 거리별 ${subject} 수` }, `${code} 제목`);
+  assert.equal(analysisStatLine(declared), `반경 1 km 안 ${subject} 3${unit} · 가장 많은 거리 0–100 m`, `${code} 한 줄 요약`);
+  assert.ok(!JSON.stringify(declared).includes("지물"), `${code}: 어디에도 「지물」이 없다`);
+}
+// 값 축이 있어도 세는 단위는 밝힌 쪽을 따른다(valueAxis.countUnit이 달라도)
+const unitFromDeclaration = analysisCharts(model({ valueAxis: { ...AXIS, countUnit: "개" }, features: [pt("floors_1_4", 10, 0, 3), pt("floors_5_8", 20, 0, 5)] }));
+assert.equal(unitFromDeclaration.countUnit, "동");
+assert.equal(analysisStatLine(unitFromDeclaration), "반경 1 km 안 건물 2동 · 중앙값 4층 · 최고 5층");
+assert.ok(!/지물/.test(analysisStatLine(c)) && !/지물/.test(JSON.stringify(c)), "기본 모델 출력에도 「지물」 없음");
+
+// ── 점·선 지물의 `counted`도 반경 판정을 대신한다(엔진은 UTM-K, 그래프는 웹 메르카토르라 경계에서 판정이 갈린다)
+const flaggedPoints = analysisCharts(model({
+  features: [
+    { ...pt("bus_stop", 1004), counted: true }, // 반경 밖으로 보이지만 엔진은 셌다
+    { ...pt("bus_stop", 500), counted: false }, // 안이지만 엔진이 세지 않았다
+    pt("rail_station", 100), // 표시 없음 → 반경 판정
+    pt("rail_station", 1004), // 표시 없음 + 밖 → 뺀다
+  ],
+}));
+assert.equal(flaggedPoints.total, 2);
+const flaggedLines = analysisCharts(model({
+  features: [pt("bus_stop", 100)],
+  lines: [
+    { layer: "rail_line", fid: "1", points: [at(100, 0), at(200, 0), at(300, 0)], counted: true },
+    { layer: "rail_line", fid: "1", points: [at(400, 0), at(500, 0)], counted: true }, // 같은 fid는 한 번
+    { layer: "rail_line", fid: "2", points: [at(1500, 0), at(1600, 0)], counted: true }, // 밖이어도 counted면 센다
+    { layer: "rail_line", fid: "3", points: [at(600, 0), at(700, 0)], counted: false },
+    { layer: "rail_line", points: [at(800, 0), at(900, 0)] }, // fid·표시 없음 → 반경 판정(안)
+  ],
+}));
+assert.equal(flaggedLines.total, 4, "점 1 + 선 fid 1·2 + fid 없는 선");
+
+// 범례에서 빠지는 「최근접 …」 강조 층도 같은 종류의 지물이라 센다(A02 최근접 초등학교): 본 층이 있으면 그 항목에 합치고, 없으면 항목을 만든다.
+const withBase = analysisCharts(model({ tileCode: "A02", features: [pt("school_nearest", 100), pt("school_elem", 200), pt("school_middle", 300)] }));
+assert.equal(withBase.total, 3);
+assert.deepEqual(Object.fromEntries(withBase.composition.map((item) => [item.label, item.count])), { 초등학교: 2, 중학교: 1 }, "최근접 초등학교는 초등학교 항목에 합친다");
+const nearestOnly = analysisCharts(model({ tileCode: "A02", features: [pt("school_nearest", 100), pt("school_middle", 300)] }));
+assert.equal(nearestOnly.total, 2, "본 층이 없어도 최근접 학교를 센다");
+assert.deepEqual(nearestOnly.composition.map((item) => item.label), ["초등학교", "중학교"]);
+assert.equal(analysisStatLine(nearestOnly), "반경 1 km 안 학교 2곳 · 가장 많은 거리 100–200 m");
 
 console.log("✓ v2 analysis charts");

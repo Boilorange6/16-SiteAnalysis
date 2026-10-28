@@ -251,6 +251,7 @@ export function a07(ctx: EngineContext): TileResult {
         `최근 ${p.recent.map(formatTradeRecent).join(" / ")}`,
       ].join(" · "),
       labelPriority: top3.has(p.pnu) && names.has(p.pnu) ? 1 : 0,
+      counted: true, // 엔진이 센 거래 단지 — 그래프 개수가 반경 판정 대신 따른다
     },
   }));
   const hasDistrictMissing = district.polygons.some((polygon) => polygon.p.layer === "trade_district_missing");

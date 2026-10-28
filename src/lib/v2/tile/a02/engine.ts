@@ -58,6 +58,7 @@ export function a02(ctx: EngineContext): TileResult {
         distanceM: h.distanceM,
         sublabel,
         labelPriority: isNearest ? 2 : 0,
+        counted: true, // 반경 안 운영 학교 — 그래프 개수가 반경 판정 대신 따른다
         ...(isNearest && h.distanceM !== null ? { highlight: true, ...(L.key === "elem" ? { label: `직선 ${formatDistanceM(h.distanceM)}` } : {}) } : {}),
       }));
     }

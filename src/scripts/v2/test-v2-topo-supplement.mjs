@@ -26,7 +26,7 @@ const { TOPO_AFFECTED_TILES } = await import("../../lib/v2/topo/context.ts");
 
 const BASELINE_HASHES = {
   D02: "11f4bb0f56fa4da13f8e0b6a09162fca9f273f6c0f753fc882c6104dc1cec2c3",
-  D03: "53e3271b3aa34b387fc08bd19859a74ebfb77b4d4e9d0c5f01b7574a80ceeab6",
+  D03: "a20a3880c368b84e653f96d6a235102cbf5ffdf7c637128f60c59fc736440096", // 2026-10-28 분석 장 Task 6Q: 건물 면 counted 추가로 갱신(counted를 떼면 옛 53e3271b…와 같다)
   D04: "e0f644a1a96d175c7cd568955cf67d4dc9d98fe9678b3ab5dfd5713dfa41a2e7", // 2026-10-28 분석 장: 지물 value·valueAxis(Task 1), 건물 면 counted(Task 4)로 갱신
   D05: "2b5965a4dcabda48dacc1055e803aaee2be20e6ac14c9959f555dbc527797414", // 2026-10-28 분석 장: 지물 value·valueAxis(Task 1), 건물 면 counted(Task 4)로 갱신
   D06: "4ff7a0359142e9280230ee697f72415683fffef3e7ff80d2b545a83f2c338276", // 2026-10-28 분석 장 Task 4: 건물 면 counted 추가로 갱신
