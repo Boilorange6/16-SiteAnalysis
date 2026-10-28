@@ -1,7 +1,7 @@
 /** D23 정비사업 — 정비구역 경계와 사업 단계별 분포. */
 import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../../engine/context";
-import { areaInCircle, polygonArea } from "../../engine/tiles/geo";
+import { areaInCircle, polygonParts } from "../../engine/tiles/geo";
 import {
   candidate,
   fmt,
@@ -140,14 +140,12 @@ export function d23(ctx: EngineContext): TileResult {
     if (!layers.includes(layer)) layers.push(layer);
 
     const clipped = areaInCircle(ctx.input.center, ctx.input.radiusM, zone.geometry);
-    if (!clipped) {
-      invalidArea = true;
-      continue;
-    }
-    zoneArea += clipped.areaM2;
+    if (clipped) zoneArea += clipped.areaM2;
+    else invalidArea = true;
     let polygonCount = 0;
-    for (const rings of clipped.parts) {
-      const polygon = polygonCandidate(zone.featureId, layer, rings, polygonArea(rings), null, {
+    // 구역은 반경으로 자르지 않고 원래 형태 그대로 그린다(사용자 결정 2026-10-28). 순서·상한은 반경 안 면적 기준.
+    for (const rings of polygonParts(zone.geometry)) {
+      const polygon = polygonCandidate(zone.featureId, layer, rings, clipped?.areaM2 ?? 0, null, {
         name,
         sublabel,
         labelPriority,

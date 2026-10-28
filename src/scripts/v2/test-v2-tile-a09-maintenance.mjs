@@ -36,13 +36,25 @@ const make = async (options) => {
   return new EngineContext(dir, manifest, "an-d23", {
     address: "경기도 남양주시 다산동 100",
     center: CENTER,
-    radiusM: 800,
+    radiusM: options.radiusM ?? 800,
     analysisDate: "2026-09-30",
     pnu: null,
   });
 };
 
-const metric = (tile, id) => tile.metrics.find((m) => m.id === id);
+{
+  // 반경에 걸친 구역은 자르지 않고 원래 형태로 그린다(사용자 결정 2026-10-28). 면적 지표만 반경 안으로 잰다.
+  const ctx = await make({ maint: "zones", radiusM: 250 });
+  const tile = d23(ctx);
+  const [cx, cy] = toUtmk(CENTER);
+  const ring = (tile.presentation.polygons ?? []).find((p) => p.name === "다산1구역")?.rings[0] ?? [];
+  assert.equal(ring.length, 5, "사각형 구역이 원호로 잘리지 않고 꼭짓점 4개 그대로");
+  assert.ok(ring.some(([lng, lat]) => { const [x, y] = toUtmk([lng, lat]); return Math.hypot(x - cx, y - cy) > 250; }), "반경 밖 꼭짓점도 그린다");
+  assert.ok(metric(tile, "zone_area_in_radius_m2").value < 80000, "면적 지표는 반경 안 교차 면적");
+  ctx.close();
+}
+
+function metric(tile, id) { return tile.metrics.find((m) => m.id === id); }
 const value = (tile, id) => metric(tile, id)?.value;
 const forbidden = /도보|\d\s*분|종합/;
 
