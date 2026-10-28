@@ -321,7 +321,8 @@ export const LAYER_STYLES: Record<string, LayerStyle> = {
   "maint_stage:관리처분": S("정비사업 · 관리처분", "#77365F"),
   "maint_stage:착공": S("정비사업 · 착공", "#5F2E52"),
   "maint_stage:준공": S("정비사업 · 준공", "#4A2545"),
-  "maint_stage:미확인": S("정비사업 · 미확인", "#B9BDC6"),
+  // 회색 채움만으로는 바탕 지도의 단지와 구분되지 않아 정비구역 색 테두리로 형태를 보인다(화면·PPT 공통 stroke).
+  "maint_stage:미확인": { ...S("정비사업 · 미확인", "#B9BDC6"), stroke: "#D6478A", strokeWidth: 1.5 },
   pop_dens_0: S("0명/㎢", "#F0F4F8", "weight"),
   pop_dens_1: S("0 초과~1,000명/㎢", "#CFE8E6", "weight"),
   pop_dens_2: S("1,000~5,000명/㎢", "#9CCFCB", "weight"),

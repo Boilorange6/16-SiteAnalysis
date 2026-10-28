@@ -433,7 +433,8 @@ function maintenanceSpec(): DetailSpec {
         { label: "구역 전체 면적", value: cells.zone_area_m2 === null ? null : `${cells.zone_area_m2}㎡` },
         { label: "반경 안 면적", value: cells.area_m2 === null ? null : `${cells.area_m2}㎡` },
       ];
-      return { fid: String(hit.featureId), fids: row.fids, card: { title: String(cells.name), subtitle: `${cells.type} · ${cells.stage}`, chip: { label: String(cells.stage), color: layerStyle(`maint_stage:${cells.stage}`).color }, fields, missing: fields.filter((field) => field.value === null).map((field) => field.label), source: sourceLineOf(maintenanceSources(ctx)) } };
+      const stage = cells.stage === "미확인" ? "단계 미확인" : String(cells.stage);
+      return { fid: String(hit.featureId), fids: row.fids, card: { title: String(cells.name), subtitle: `${cells.type} · ${stage}`, chip: { label: stage, color: layerStyle(`maint_stage:${cells.stage}`).color }, fields, missing: fields.filter((field) => field.value === null).map((field) => field.label), source: sourceLineOf(maintenanceSources(ctx)) } };
     },
   };
 }

@@ -178,7 +178,7 @@ assert.ok(sigunguMatches("경기도 수원시 팔달구", "수원시") && sigung
   assert.equal(val(t, "stage_0"), 1, "zb: 구역 속성(구역지정)");
   assert.equal(val(t, "planned_households"), 1300, "연결 이벤트 1000 + 구역 속성 300");
   assert.equal(metric(t, "type_1").label, "유형: 재개발");
-  assert.match(t.judgment.sentence, /정비구역 2곳\(사업 2건: 구역지정 1건, 조합 1건\)/);
+  assert.match(t.judgment.sentence, /정비구역 2곳\(사업 2건: 재개발 1건·종류 미확인 1건 \/ 구역지정 1건, 조합 1건\)/);
   // 지도는 흡수된 D23의 반경으로 자른 단계 면 하나만(사용자 결정 11) — A09 엔진은 면·대표점을 내지 않는다
   assert.equal((t.presentation.polygons ?? []).length, 0);
   assert.equal((t.presentation.features ?? []).filter((x) => x.layer.startsWith("maint_zone")).length, 0);
