@@ -765,6 +765,9 @@ export const layerStyle =(layer: string): LayerStyle => LAYER_STYLES[layer] ?? F
 
 export const isBuildingLayer = (layer: string): boolean => layer === "building" || layer === "svf_building" || layer.startsWith("bldg_") || layer.includes("building");
 
+/** 반경 원으로 자르지 않고 원래 형태 그대로 그리는 구역 경계 레이어(사용자 결정 2026-10-28). PPT는 원래 반경으로 자르지 않는다. */
+export const isUnclippedZoneLayer = (layer: string): boolean => /^maint_(stage|area):/.test(layer);
+
 /** 지도와 범례 견본이 같은 래스터 준비 조건·건물 중립 스타일을 공유한다. */
 export function buildingStyleForRaster(layer: string, rasterDecoded: boolean): LayerStyle {
   const style = layerStyle(layer);

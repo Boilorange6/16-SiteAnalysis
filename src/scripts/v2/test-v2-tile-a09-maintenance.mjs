@@ -3,6 +3,13 @@ import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import Database from "better-sqlite3";
+import { renderToStaticMarkup } from "react-dom/server";
+import * as React from "react";
+import { createElement } from "react";
+
+globalThis.React = React;
+const { default: MapFigure } = await import("../../components/v2/map-figure.tsx");
+const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
 
 const { buildEngineFixture, CENTER } = await import("./engine-fixture.mjs");
 const M = await import("../../lib/v2/data/manifest.ts");
@@ -51,6 +58,9 @@ const make = async (options) => {
   assert.equal(ring.length, 5, "사각형 구역이 원호로 잘리지 않고 꼭짓점 4개 그대로");
   assert.ok(ring.some(([lng, lat]) => { const [x, y] = toUtmk([lng, lat]); return Math.hypot(x - cx, y - cy) > 250; }), "반경 밖 꼭짓점도 그린다");
   assert.ok(metric(tile, "zone_area_in_radius_m2").value < 80000, "면적 지표는 반경 안 교차 면적");
+  const svg = renderToStaticMarkup(createElement(MapFigure, { model: toTileView(tile).map, width: 800, height: 500, basemap: "none", fixed: true }));
+  const clipAt = svg.indexOf('data-radius-clip="true"');
+  assert.ok(clipAt > 0 && svg.indexOf('data-map-layer="maint_stage:') >= 0 && svg.indexOf('data-map-layer="maint_stage:') < clipAt, "웹 지도도 정비구역 면을 반경 원 clip 밖에 그린다");
   ctx.close();
 }
 
