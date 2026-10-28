@@ -101,6 +101,56 @@ try {
   assert.deepEqual(housingAt?.card.fields.map((field) => field.label), ["구분", "세대·호실", "타입"], "선택 카드의 타입 라벨은 짧게 유지한다");
   assert.equal(housingAt?.card.fields.at(-1)?.value, "59㎡ 1,964");
 
+  const maintenanceZone = (featureId, x0) => ({ featureId, releaseId: "fixture", pnu: null, legalCode: null, distanceM: null, geometry: { type: "Polygon", coordinates: [[[cx + x0, cy - 100], [cx + x0 + 100, cy - 100], [cx + x0 + 100, cy], [cx + x0, cy], [cx + x0, cy - 100]]] } });
+  const maintenanceZones = [
+    { ...maintenanceZone(101, -300), stableId: "m1", kind: "maintenance_zone", name: null, properties: { layer: "zone", announcedDate: "2020-01-01" } },
+    { ...maintenanceZone(102, -150), stableId: "m2", kind: "maintenance_zone", name: null, properties: { layer: "zone" } },
+    { ...maintenanceZone(103, 0), stableId: "m3", kind: "maintenance_zone", name: "구역", properties: { layer: "zone" } },
+    { ...maintenanceZone(104, 150), stableId: "m4", kind: "maintenance_zone", name: "구역", properties: { layer: "zone" } },
+  ];
+  const maintDb = { prepare(sql) {
+    if (sql.includes("GLOB")) return { all: () => [] };
+    if (sql.includes("SELECT 1 FROM feature")) return { get: () => ({}) };
+    if (sql.includes("feature_link")) return { all: () => [{ to_stable_id: "p1" }, { to_stable_id: "p2" }], pluck: () => ({ get: (id) => ["m3", "m4"].includes(id) ? "p1" : undefined }) };
+    if (sql.includes("development_event")) return { all: () => [{ stage: "조합", units: 500 }] };
+    if (sql.includes("coverage_json")) return { pluck: () => ({ all: () => [JSON.stringify({ projects: [{ id: "p1", sido: "41", sigungu: "남양주시", name: "사업명", type: "재건축" }, { id: "p2", sido: "41", sigungu: "남양주시", name: "반경 밖", type: "재개발" }, { id: "p3", sido: "41", sigungu: "남양주시", name: "위치 없음", type: "재개발" }] })] }) };
+    throw new Error(sql);
+  } };
+  const maintenanceCtx = { ...makeFakeContext("reference", maintenanceZones, maintDb), hits: () => maintenanceZones, db: () => maintDb, sigungu: () => [{ code: "41", name: "경기도 남양주시" }] };
+  const maintenanceRows = DETAIL_SPECS.A09.rows(maintenanceCtx);
+  assert.equal(maintenanceRows.length, 3, "이름 없는 구역은 개별 행, 연결 구역은 사업 행");
+  assert.deepEqual(maintenanceRows.find((row) => row.cells.name === "사업명").fids, ["103", "104"]);
+  assert.ok(maintenanceRows.some((row) => row.cells.name === "이름 없는 정비구역 · 고시 2020-01-01"));
+  const maintenanceAt = DETAIL_SPECS.A09.at(maintenanceCtx, ...at(25, -50));
+  assert.deepEqual(maintenanceAt.fids, ["103", "104"]);
+  assert.deepEqual(maintenanceAt.card.fields.map((field) => field.label), ["종류", "단계", "결정고시일", "구역지정일", "예정 세대", "시행자", "구역 전체 면적", "반경 안 면적"]);
+  assert.deepEqual(maintenanceAt.card.missing, ["결정고시일", "구역지정일", "시행자"]);
+  assert.deepEqual(DETAIL_SPECS.A09.columns.filter((column) => !column.csvOnly).map((column) => column.key), ["name", "type", "stage", "households", "area_m2"]);
+  assert.deepEqual(DETAIL_SPECS.A09.columns.filter((column) => column.csvOnly).map((column) => column.key), ["announced_date", "designated_at", "operator", "zone_area_m2", "raw_stage", "zone_type", "linked", "source", "stage_detail", "stage_date", "program", "far", "bcr", "floors"]);
+  const maintenanceSummary = DETAIL_SPECS.A09.summary(maintenanceCtx);
+  assert.equal(maintenanceSummary.subtitle, "사업 3건 · 구역 4곳");
+  assert.equal(maintenanceSummary.fields.at(-1).value, "1건", "반경 밖 경계가 있는 명부 사업은 위치 미확인에서 제외");
+
+  const planProperties = { layer: "seoul_plan", classCode: "BZ105", className: "재건축(공동)", projectType: "재건축", program: "신속통합기획", areaKind: null, projectKey: "seoulplan:GRP1", stageCode: "PP0206", stageName: "조합설립인가", stage: "조합", stageDate: "2024-05-01", areaM2: 10000, households: 500, overview: { bizAreaM2: 9000, floorAreaRatio: 250, buildingCoverage: 20, floors: "2/33", heightM: null, saleUnits: 400, rentUnits: 100, zoningBefore: null, zoningAfter: null }, apiMatched: true, grp: "GRP1", sigungu: "11110", sourceUpdatedAt: null };
+  const planZones = [
+    { ...maintenanceZone(201, -300), legalCode: "1111000000", stableId: "seoulplan:1", kind: "maintenance_zone", name: "서울 사업", properties: planProperties },
+    { ...maintenanceZone(202, -150), legalCode: "1111000000", stableId: "seoulplan:2", kind: "maintenance_zone", name: "서울 사업", properties: planProperties },
+    { ...maintenanceZone(203, -260), legalCode: "1111000000", stableId: "vworld:1", kind: "maintenance_zone", name: "기존 구역", properties: { layer: "zone", announcedDate: "2020-01-01" } },
+    { ...maintenanceZone(204, 0), legalCode: "4136000000", stableId: "vworld:2", kind: "maintenance_zone", name: "경기 사업", properties: { layer: "zone" } },
+  ];
+  const planCtx = { ...maintenanceCtx, hits: () => planZones };
+  const planRows = DETAIL_SPECS.A09.rows(planCtx);
+  assert.equal(planRows.length, 2);
+  const planRow = planRows.find((row) => row.cells.name === "서울 사업");
+  assert.deepEqual(planRow.fids, ["201", "202"]);
+  assert.equal(planRow.cells.type, "재건축 · 신통");
+  assert.equal(planRow.cells.announced_date, "2020-01-01");
+  assert.deepEqual([planRow.cells.stage_detail, planRow.cells.stage_date, planRow.cells.program, planRow.cells.far, planRow.cells.bcr, planRow.cells.floors], ["조합설립인가", "2024-05-01", "신속통합기획", 250, 20, "2/33"]);
+  const planCard = DETAIL_SPECS.A09.at(planCtx, ...at(-275, -50)).card;
+  assert.deepEqual(planCard.fields.slice(8).map((f) => [f.label, f.value]), [["세부 단계", "조합설립인가 · 2024-05-01"], ["사업 방식", "신속통합기획"], ["사업면적", "9000㎡"], ["용적률", "250%"], ["건폐율", "20%"], ["층수", "2/33"], ["분양·임대 세대", "분양 400 · 임대 100"]]);
+  assert.equal(DETAIL_SPECS.A09.at(planCtx, ...at(25, -50)).card.fields.length, 8);
+
+
   const densityStarted = performance.now();
   const densityRows = DETAIL_SPECS.D16.rows(makeFakeContext("buildings", syntheticBuildingHits, syntheticBuildingDb, { metric: "buildings", bandwidth: "100" }));
   const densityElapsed = performance.now() - densityStarted;
@@ -183,6 +233,7 @@ try {
   assert.deepEqual(aggregateRows[0].fids, ["1", "2"]);
   assert.equal(aggregateRows[0].cells.pieces, 2);
   assert.ok(aggregateRows[0].cells.area_m2 > 0);
+
 
   const parcels = collectDetail(ctx, "D19");
   // fixture의 100-9 필지는 중심에서 2km라 800m 상세 목록에서 제외한다.

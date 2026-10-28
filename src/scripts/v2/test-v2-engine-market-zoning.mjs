@@ -152,9 +152,9 @@ assert.ok(sigunguMatches("경기도 수원시 팔달구", "수원시") && sigung
   clean(t);
   assert.equal(t.status, "partial");
   assert.equal(val(t, "roster_projects"), 3, "남양주 2 + 송파 1 (수원·강동은 반경 시군구 밖)");
-  assert.equal(val(t, "stage_0"), 1);
-  assert.equal(val(t, "stage_2"), 1);
-  assert.equal(val(t, "stage_4"), 1);
+  assert.equal(val(t, "stage_1"), 1);
+  assert.equal(val(t, "stage_3"), 1);
+  assert.equal(val(t, "stage_5"), 1);
   assert.equal(val(t, "planned_households"), 1500, "세대수가 있는 두 사업만 합산");
   assert.equal(metric(t, "planned_households").numerator, 2);
   assert.match(metric(t, "planned_households").label, /알려진 사업만/);
@@ -174,11 +174,11 @@ assert.ok(sigunguMatches("경기도 수원시 팔달구", "수원시") && sigung
   clean(t);
   assert.equal(val(t, "zones_in_radius"), 2, "먼구역 제외");
   assert.equal(val(t, "projects_in_radius"), 2);
-  assert.equal(val(t, "stage_2"), 1, "za: 사업 연결의 이벤트 중 가장 나중 단계(조합)");
-  assert.equal(val(t, "stage_0"), 1, "zb: 구역 속성(구역지정)");
+  assert.equal(val(t, "stage_3"), 1, "za: 사업 연결의 이벤트 중 가장 나중 단계(조합)");
+  assert.equal(val(t, "stage_1"), 1, "zb: 구역 속성(구역지정)");
   assert.equal(val(t, "planned_households"), 1300, "연결 이벤트 1000 + 구역 속성 300");
   assert.equal(metric(t, "type_1").label, "유형: 재개발");
-  assert.match(t.judgment.sentence, /정비구역 2곳\(사업 2건: 구역지정 1건, 조합 1건\)/);
+  assert.match(t.judgment.sentence, /정비구역 2곳\(사업 2건: 재개발 1건·종류 미확인 1건 \/ 구역지정 1건, 조합 1건\)/);
   // 지도는 흡수된 D23의 반경으로 자른 단계 면 하나만(사용자 결정 11) — A09 엔진은 면·대표점을 내지 않는다
   assert.equal((t.presentation.polygons ?? []).length, 0);
   assert.equal((t.presentation.features ?? []).filter((x) => x.layer.startsWith("maint_zone")).length, 0);

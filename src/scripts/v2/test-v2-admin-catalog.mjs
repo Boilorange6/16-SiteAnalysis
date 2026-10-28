@@ -34,6 +34,7 @@ assert.deepEqual(TILE_CATALOG.A09.sources, [
   "mzone_improvement",
   "maintenance_integrated",
   "maintenance_std",
+  "seoul_plan_zone",
 ]);
 
 console.log("✓ admin catalog forms and sources");

@@ -324,6 +324,9 @@ export const LAYER_STYLES: Record<string, LayerStyle> = {
   "jimok:forest": S("지목 · 임야", "#3F7D4E", undefined, LEGEND_GROUPS.d19Jimok, 3),
   "jimok:water": S("지목 · 하천·구거", "#4F8FC9", undefined, LEGEND_GROUPS.d19Jimok, 4),
   "jimok:other": S("지목 · 기타", "#C9C0D6", undefined, LEGEND_GROUPS.d19Jimok, 5),
+  "maint_stage:정비계획": { ...S("정비사업 · 정비계획", "#EBA3C4"), stroke: "#A6386C", strokeWidth: 1.5 },
+  "maint_area:모아타운": { ...S("모아타운 관리지역", "#167A80"), fillOpacity: 0.06, stroke: "#167A80", strokeWidth: 1.8 },
+  "maint_area:재정비촉진지구": { ...S("재정비촉진지구", "#986117"), fillOpacity: 0.06, stroke: "#986117", strokeWidth: 1.8 },
   "maint_stage:구역지정": S("정비사업 · 구역지정", "#D6478A"),
   "maint_stage:추진위": S("정비사업 · 추진위", "#C05A8A"),
   "maint_stage:조합": S("정비사업 · 조합", "#A84C7B"),
@@ -331,7 +334,8 @@ export const LAYER_STYLES: Record<string, LayerStyle> = {
   "maint_stage:관리처분": S("정비사업 · 관리처분", "#77365F"),
   "maint_stage:착공": S("정비사업 · 착공", "#5F2E52"),
   "maint_stage:준공": S("정비사업 · 준공", "#4A2545"),
-  "maint_stage:미확인": S("정비사업 · 미확인", "#B9BDC6"),
+  // 회색 채움만으로는 바탕 지도의 단지와 구분되지 않아 정비구역 색 테두리로 형태를 보인다(화면·PPT 공통 stroke).
+  "maint_stage:미확인": { ...S("정비사업 · 미확인", "#B9BDC6"), stroke: "#D6478A", strokeWidth: 1.5 },
   pop_dens_0: S("0명/㎢", "#F0F4F8", "weight"),
   pop_dens_1: S("0 초과~1,000명/㎢", "#CFE8E6", "weight"),
   pop_dens_2: S("1,000~5,000명/㎢", "#9CCFCB", "weight"),
@@ -787,6 +791,9 @@ export const modelLayerStyle = (model: Pick<MapModel, "palette"> | null | undefi
   paletteLayerStyle(layer, layerStyle(layer), model?.palette);
 
 export const isBuildingLayer = (layer: string): boolean => layer === "building" || layer === "svf_building" || layer.startsWith("bldg_") || layer.includes("building");
+
+/** 반경 원으로 자르지 않고 원래 형태 그대로 그리는 구역 경계 레이어(사용자 결정 2026-10-28). PPT는 원래 반경으로 자르지 않는다. */
+export const isUnclippedZoneLayer = (layer: string): boolean => /^maint_(stage|area):/.test(layer);
 
 /** 지도와 범례 견본이 같은 래스터 준비 조건·건물 중립 스타일을 공유한다. */
 export function buildingStyleForRaster(layer: string, rasterDecoded: boolean): LayerStyle {

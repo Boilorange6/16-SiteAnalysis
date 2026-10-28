@@ -16,7 +16,7 @@ import { sidoCodeOfName } from "./school-kapt";
 
 type Db = BetterSqlite3.Database;
 
-export const MAINT_STAGES = ["구역지정", "추진위", "조합", "사업시행", "관리처분", "착공", "준공", "미확인"] as const;
+export const MAINT_STAGES = ["정비계획", "구역지정", "추진위", "조합", "사업시행", "관리처분", "착공", "준공", "미확인"] as const;
 export type MaintStage = (typeof MAINT_STAGES)[number];
 
 const INTEGRATED_STAGE: Record<string, MaintStage> = {

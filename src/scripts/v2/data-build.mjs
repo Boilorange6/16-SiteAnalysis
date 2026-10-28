@@ -4,8 +4,9 @@
  *   buildings 전용: [--sido 11,41] 이 시도만 · [--no-juso] 도로명주소 건물 보조 원천 제외
  * 도형 원천 zip은 풀되, 전유부 전국 zip은 수십 GB라 엔트리 스트림으로만 읽는다.
  */
-import { readdirSync, statSync, existsSync, readFileSync, openSync, readSync, closeSync } from "node:fs";
+import { readdirSync, statSync, existsSync, readFileSync, openSync, readSync, closeSync, mkdtempSync, copyFileSync, rmSync } from "node:fs";
 import { basename, join, relative } from "node:path";
+import { tmpdir } from "node:os";
 import { inspect } from "node:util";
 
 const { extractAll, extractSelected } = await import("../../lib/v2/ingest/unzip.ts");
@@ -527,6 +528,7 @@ const { buildZoning, seedZoningSeen, zoningLayerFiles, ZONING_LAYERS, ZONING_RIG
 
 // 정비구역 경계(VWorld dsId 24 정비 5개 레이어) + 정비사업 명부 매칭: 폴더가 없으면 건너뛴다. 날짜 폴더 아래(maintenance_zone/YYYY-MM-DD/x)에 풀려 있다.
 const { loadMaintenanceZones, finishMaintenanceZones, mzoneLayerFiles, sigunguIndexFromCore, MZONE_LAYERS, MZONE_RIGHTS } = await import("../../lib/v2/ingest/sources/maintenance-zone.ts");
+const { loadSeoulPlanZones, SEOUL_PLAN_SOURCE_ID, SEOUL_PLAN_RIGHTS } = await import("../../lib/v2/ingest/sources/seoul-plan.ts");
 
 // SGIS 1 km 인구·가구 격자(reference): .cache/v2/raw/sgis_grid 폴더가 있고 CSV가 풀려 있을 때만. 시도는 core 시군구 경계로 판정한다.
 const { buildPopGrid, sgisRows, sgisDataYear, locateSigunguFromCore } = await import("../../lib/v2/ingest/sources/sgis-grid.ts");
@@ -565,7 +567,7 @@ if (only.has("reference")) {
   const step = (id, files, rows, slot, run, extra = {}) => steps.push({ file: { path: id, ...fp(files), rows }, slot, run, ...extra });
   let db_; // 단계 실행 중인 reference DB와 core (builder가 채운다)
   let core_ = null;
-  const SLOT = { store: 0, bus_stop: 1, park: 2, subway: 3, planned: 4, roads: 5, landuse: 6, water: 7, school: 8, zones: 9, links: 10, zoning: 11, land_price: 20, mzone: 21, sgis: 22, districts: 23 };
+  const SLOT = { store: 0, bus_stop: 1, park: 2, subway: 3, planned: 4, roads: 5, landuse: 6, water: 7, school: 8, zones: 9, links: 10, zoning: 11, land_price: 20, mzone: 21, sgis: 22, districts: 23, seoul_plan: 24 };
   const provider = "한국교육시설안전원";
 
   // 학교·학구: 점(CSV) → 학구 폴리곤(VWorld GeoJSON) → 학교-학구 연계(CSV, 폴리곤 id로 걸러냄)
@@ -844,6 +846,37 @@ if (only.has("reference")) {
       finishMaintenanceZones(db_, prior.filter((s) => MZONE_LAYERS.some((l) => l.sourceId === s.sourceId)), roster);
       return [];
     }, { atomic: false });
+  }
+
+  // 서울플랜+는 가장 최신 공간 파일과 가장 최신 API 날짜 폴더를 쓴다.
+  const seoulDir = join(raw, "seoul_plan");
+  if (existsSync(seoulDir)) {
+    const archives = readdirSync(seoulDir, { withFileTypes: true }).filter((e) => e.isFile() && /^532_UQ120_.*_20\d{4}\.zip$/i.test(e.name)).map((e) => join(seoulDir, e.name)).sort((a, b) => nameDate(b).localeCompare(nameDate(a)));
+    if (archives.length) {
+      const archive = archives[0];
+      const apiDir = join(seoulDir, "api");
+      const dates = existsSync(apiDir) ? readdirSync(apiDir, { withFileTypes: true }).filter((e) => e.isDirectory() && /^\d{4}-\d{2}-\d{2}$/.test(e.name)).map((e) => e.name).sort().reverse() : [];
+      const apiFiles = dates.length ? ["vnBsnsNmtn", "vnBsnsSmalNmtn"].map((s) => join(apiDir, dates[0], `${s}.json`)).filter((f) => existsSync(f)) : [];
+      step("seoul_plan/zones", [archive, ...apiFiles], 0, SLOT.seoul_plan, async () => {
+        const st = statSync(archive), d = nameDate(archive);
+        const releaseId = insertRelease(db_, { sourceId: SEOUL_PLAN_SOURCE_ID, provider: "서울특별시", sourceUrl: "https://data.seoul.go.kr/dataList/OA-22712/S/1/datasetView.do", sourceAsOf: `${d.slice(0, 4)}-${d.slice(4, 6)}-01`, fetchedAt: st.mtime.toISOString(), checksum: `size-mtime:${st.size}-${Math.round(st.mtimeMs)}`, licenseCode: "KOGL_4", rights: SEOUL_PLAN_RIGHTS });
+        const api = apiFiles.flatMap((f) => {
+          const data = JSON.parse(readFileSync(f, "utf8"));
+          if (!Array.isArray(data.rows) || data.rows.length !== data.totalCount) throw new Error(`서울플랜+ API 원본 불완전: ${f}`);
+          return data.rows;
+        });
+        const temp = mkdtempSync(join(tmpdir(), "siteanalysis-seoul-plan-"));
+        try {
+          copyFileSync(archive, join(temp, basename(archive)));
+          extractAll(temp);
+          const shps = [...walk(temp)].filter((f) => /^UPIS_C_UQ120\.shp$/i.test(basename(f)));
+          if (shps.length !== 1) throw new Error(`서울플랜+ SHP 개수 오류: ${shps.length}`);
+          return [await loadSeoulPlanZones(db_, { releaseId, records: readShp(shps[0]), api, sigungu: core_ ? sigunguIndexFromCore(core_) : undefined })];
+        } finally {
+          rmSync(temp, { recursive: true, force: true });
+        }
+      });
+    }
   }
 
   // SGIS 1 km 인구·가구 격자: .cache/v2/raw/sgis_grid 폴더가 있고 CSV가 풀려 있을 때만. 시도는 core 시군구 경계로 판정한다.

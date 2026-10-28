@@ -1,6 +1,6 @@
 import * as React from "react";
 import { memo, useCallback, useContext, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { buildingStyleForRaster, isBuildingLayer, layerStyle, legendItems, modelLayerStyle, RASTER_STYLES, type MapModel, type RasterStyle } from "@/lib/v2/ui/map-layers";
+import { buildingStyleForRaster, isBuildingLayer, isUnclippedZoneLayer, layerStyle, legendItems, modelLayerStyle, RASTER_STYLES, type MapModel, type RasterStyle } from "@/lib/v2/ui/map-layers";
 import { badgeTextColor, mapLabelText as formatMapLabelText } from "@/lib/v2/ui/map-labels";
 import { applyView, basemapAttribution, BASEMAP_STACK, framedViewport, makeProjector, metersPerPixel, scaleBar, tilesFor, tileUrl, worldPx, type BasemapChoice, type MapView, type Viewport } from "@/lib/v2/ui/map-projection";
 import { rasterAffine, rasterLegendColor, rasterLegendEntries, resolveRasterStyle } from "@/lib/v2/ui/raster-image";
@@ -1276,8 +1276,30 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseT
     </g>
   );
 
+  const drawPolygon = (polygon: ScreenPolygon) => {
+    if (isSiteParcelLayer(polygon.polygon.layer) || !shouldRasterizeLayer(polygon.polygon.layer)) return null;
+    const st = modelLayerStyle(model, polygon.polygon.layer);
+    const estimated = isEstimated(polygon);
+    const neutralBuilding = rasterImages.length > 0 && isBuildingLayer(polygon.polygon.layer);
+    const buildingStyle = buildingStyleForRaster(polygon.polygon.layer, rasterImages.length > 0);
+    const polygonFid = polygon.polygon.fid;
+    const polygonCenter = centerOf(polygon.polygon.rings[0] ?? []);
+    const polygonSelected = isSelected(polygonFid);
+    const polygonKey = mapElementKey("polygon", polygon.polygon.layer, polygonFid, polygon.index);
+    const elementSelected = selectedElementKey === polygonKey;
+    const strong = isElementStrong(polygon.polygon.layer, polygonKey);
+    const pick = pickProps({ fid: polygonFid, lng: polygonCenter[0], lat: polygonCenter[1], kind: "polygon" }, polygonKey, labelText(polygon.polygon.layer, "polygon", polygon.polygon));
+    return (
+      <g key={`poly${polygon.index}`}>
+        {elementSelected && <path data-map-selection-band={polygonKey} d={polygonPath(polygon.rings)} fill="none" stroke="#dbeafe" strokeWidth={5 * u} strokeLinejoin="round" pointerEvents="none" />}
+        <path data-poly="true" data-map-layer={polygon.polygon.layer} d={polygonPath(polygon.rings)} fillRule="evenodd" fill={neutralBuilding ? buildingStyle.fill : estimated ? `url(#${hatchId(polygon.index)})` : st.fill ?? st.color} fillOpacity={neutralBuilding ? buildingStyle.fillOpacity : estimated ? 1 : st.fillOpacity ?? polygonOpacity} opacity={isElementDimmed(polygon.polygon.layer, polygonKey) ? 0.2 : undefined} stroke={elementSelected ? "#1d5bd8" : strong || polygonSelected ? INK : neutralBuilding ? buildingStyle.stroke : st.stroke ?? st.color} strokeWidth={(elementSelected ? 1.5 : strong ? 1.6 : polygonSelected ? 3 : neutralBuilding ? buildingStyle.strokeWidth ?? 0.8 : st.strokeWidth ?? 1) * u} strokeDasharray={st.dash} {...pick} />
+        {Object.keys(pick).length > 0 && <path data-map-hit="polygon" d={polygonPath(polygon.rings)} fill="transparent" stroke="transparent" {...hitProps(pick)} />}
+      </g>
+    );
+  };
+
   const north = scene.north ?? { x: northX ?? (W - rightInset - 20 * u), y: 22 * u };
-  const dim = `M0 0H${W}V${H}H0Z M${cx - R} ${cy}a${R} ${R} 0 1 0 ${2 * R} 0a${R} ${R} 0 1 0 ${-2 * R} 0Z`;
+  const dim =`M0 0H${W}V${H}H0Z M${cx - R} ${cy}a${R} ${R} 0 1 0 ${2 * R} 0a${R} ${R} 0 1 0 ${-2 * R} 0Z`;
 
   return (
     <svg
@@ -1413,28 +1435,9 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseT
 
         {(!backgroundOnlyActive || (backgroundLayerSet?.size ?? 0) > 0) && <>
         {showNativeChrome && showRadius && <path d={dim} fillRule="evenodd" fill="#14161c" fillOpacity={0.09} />}
+        {showRadius && polygons.filter((polygon) => isUnclippedZoneLayer(polygon.polygon.layer)).map(drawPolygon)}
         <g clipPath={showRadius ? `url(#r${uid})` : undefined} data-radius-clip={showRadius ? "true" : undefined}>
-          {polygons.map((polygon) => {
-            if (isSiteParcelLayer(polygon.polygon.layer) || !shouldRasterizeLayer(polygon.polygon.layer)) return null;
-            const st = modelLayerStyle(model, polygon.polygon.layer);
-            const estimated = isEstimated(polygon);
-            const neutralBuilding = rasterImages.length > 0 && isBuildingLayer(polygon.polygon.layer);
-            const buildingStyle = buildingStyleForRaster(polygon.polygon.layer, rasterImages.length > 0);
-            const polygonFid = polygon.polygon.fid;
-            const polygonCenter = centerOf(polygon.polygon.rings[0] ?? []);
-            const polygonSelected = isSelected(polygonFid);
-            const polygonKey = mapElementKey("polygon", polygon.polygon.layer, polygonFid, polygon.index);
-            const elementSelected = selectedElementKey === polygonKey;
-            const strong = isElementStrong(polygon.polygon.layer, polygonKey);
-            const pick = pickProps({ fid: polygonFid, lng: polygonCenter[0], lat: polygonCenter[1], kind: "polygon" }, polygonKey, labelText(polygon.polygon.layer, "polygon", polygon.polygon));
-            return (
-              <g key={`poly${polygon.index}`}>
-                {elementSelected && <path data-map-selection-band={polygonKey} d={polygonPath(polygon.rings)} fill="none" stroke="#dbeafe" strokeWidth={5 * u} strokeLinejoin="round" pointerEvents="none" />}
-                <path data-poly="true" data-map-layer={polygon.polygon.layer} d={polygonPath(polygon.rings)} fillRule="evenodd" fill={neutralBuilding ? buildingStyle.fill : estimated ? `url(#${hatchId(polygon.index)})` : st.fill ?? st.color} fillOpacity={neutralBuilding ? buildingStyle.fillOpacity : estimated ? 1 : st.fillOpacity ?? polygonOpacity} opacity={isElementDimmed(polygon.polygon.layer, polygonKey) ? 0.2 : undefined} stroke={elementSelected ? "#1d5bd8" : strong || polygonSelected ? INK : neutralBuilding ? buildingStyle.stroke : st.stroke ?? st.color} strokeWidth={(elementSelected ? 1.5 : strong ? 1.6 : polygonSelected ? 3 : neutralBuilding ? buildingStyle.strokeWidth ?? 0.8 : st.strokeWidth ?? 1) * u} strokeDasharray={st.dash} {...pick} />
-                {Object.keys(pick).length > 0 && <path data-map-hit="polygon" d={polygonPath(polygon.rings)} fill="transparent" stroke="transparent" {...hitProps(pick)} />}
-              </g>
-            );
-          })}
+          {polygons.filter((polygon) => !showRadius || !isUnclippedZoneLayer(polygon.polygon.layer)).map(drawPolygon)}
           {linePaths.filter((d) => backgroundOnlyActive ? shouldRasterizeLayer(d.l.layer) : (d.l.layer !== "rail_line" && d.l.layer !== "rail_station_axis")).map((d) => {
             const st = modelLayerStyle(model, d.l.layer);
             const sectionId = d.l.layer === "terrain_section_a" ? "A" : d.l.layer === "terrain_section_b" ? "B" : null;

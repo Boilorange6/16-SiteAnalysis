@@ -114,6 +114,7 @@ export const SOURCE_DETAIL_DEFINITIONS: Readonly<Record<string, SourceDefinition
   move_in: { usedFor: null, collect: "수동 파일", cycle: "반기", group: "청약·입주예정" },
   maintenance_integrated: { usedFor: null, collect: "수동 파일", cycle: "연 1회", group: "정비사업 명부" },
   maintenance_std: { usedFor: null, collect: "수동 파일", cycle: "수시", group: "정비사업 명부" },
+  seoul_plan_zone: { role: "보강", usedFor: "서울 정비·소규모정비 사업의 이름·종류·단계·단계일·개요", collect: "수동 API 배치", cycle: "반기(경계)·분기(현황)" },
   rtms_apt_trade: { usedFor: null, collect: "수동 API 배치", cycle: "수시 신고", group: "RTMS 아파트" },
   rtms_apt_rent: { usedFor: null, collect: "수동 API 배치", cycle: "수시 신고", group: "RTMS 아파트" },
   rtms_offi_trade: { usedFor: null, collect: "수동 API 배치", cycle: "수시 신고", group: "RTMS 오피스텔" },
@@ -161,6 +162,7 @@ function licenseOf(meta: SourceMeta | undefined, fallback = "미기록"): string
   if (!raw || /^(?:UNKNOWN|UNRECORDED|미기록)$/i.test(raw)) return fallback;
   if (/^UNRESTRICTED$/i.test(raw)) return "이용허락범위 제한 없음";
   if (/^attribution$/i.test(raw)) return "출처 표시";
+  if (/^KOGL_4$/i.test(raw)) return "공공누리 제4유형(출처표시·상업적 이용금지·변경금지)";
   return raw;
 }
 

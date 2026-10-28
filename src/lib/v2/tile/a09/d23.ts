@@ -1,10 +1,9 @@
 /** D23 정비사업 — 정비구역 경계와 사업 단계별 분포. */
 import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../../engine/context";
-import { areaInCircle, polygonArea } from "../../engine/tiles/geo";
+import { areaInCircle, polygonParts } from "../../engine/tiles/geo";
 import {
   candidate,
-  fallbackCandidate,
   fmt,
   makeTile,
   missing,
@@ -14,7 +13,7 @@ import {
   type PolygonCandidate,
   type TileDraft,
 } from "../../engine/tiles/common";
-import { collectMaintenance, collectMaintenanceRoster, maintenanceSourceIds, maintenanceSources, STAGES, type Project } from "./engine";
+import { collectMaintenance, collectMaintenanceRoster, maintenanceSourceIds, maintenanceSources, projectZoneGeometry, STAGES, type Project } from "./engine";
 import { notProvided } from "../../engine/tiles/not-provided";
 
 const SOURCE_KEYS = ["market", "reference"] as const;
@@ -79,8 +78,8 @@ function baseMetrics(ctx: EngineContext, projects: readonly Project[], boundaryP
     fillMetric("fill_boundary_pct", "경계 확인 사업 / 반경 걸친 시군구 명부", boundaryProjects, boundaryDenominator, "d23-boundary-fill@1:경계가 있는 고유 사업÷반경 걸친 시군구 명부 사업"),
     fillMetric("fill_stage_pct", "단계 확인 사업", stageKnown, projects.length, "d23-stage-fill@1:미확인 이외 단계 사업÷반경 관련 고유 사업"),
     zoneArea === null
-      ? missing("zone_area_in_radius_m2", "반경과 교차하는 정비구역 면적 합", "㎡", "d23-zone-area@1:EPSG:5179 교차 면적 합")
-      : obs("zone_area_in_radius_m2", "반경과 교차하는 정비구역 면적 합", zoneArea, "㎡", "d23-zone-area@1:EPSG:5179 교차 면적 합, 구역 간 중첩 미제거", zoneArea, null),
+      ? missing("zone_area_in_radius_m2", "반경과 교차하는 정비구역 면적 합", "㎡", "d23-zone-area@2:EPSG:5179 교차 면적 합")
+      : obs("zone_area_in_radius_m2", "반경과 교차하는 정비구역 면적 합", zoneArea, "㎡", "d23-zone-area@2:EPSG:5179 교차 면적 합, 사업 안 구역은 합집합·사업 간 중첩 미제거", zoneArea, null),
     plannedHouseholds(projects),
   ];
 }
@@ -126,34 +125,42 @@ export function d23(ctx: EngineContext): TileResult {
   let zoneArea = 0;
   let invalidArea = false;
   const order = [...zones].sort((a, b) => a.featureId - b.featureId);
+  const drawn = new Set<string>();
+  const countedProjects = new Set<string>();
 
   for (const zone of order) {
-    const project = projectMap.get(zoneProject.get(zone.featureId) ?? "");
+    const key = zoneProject.get(zone.featureId) ?? "";
+    // 한 사업의 구역은 도형 하나로 그리고 면적도 한 번만 센다. 합치기에 실패하면 예전처럼 구역마다 그린다.
+    if (drawn.has(key)) continue;
+    const merged = projectZoneGeometry(order.filter((hit) => zoneProject.get(hit.featureId) === key));
+    if (merged) drawn.add(key);
+    const geometry = merged ?? zone.geometry;
+    const project = projectMap.get(key);
     const stage = project?.stage ?? "미확인";
-    const layer = `maint_stage:${stage}`;
+    const areaKind = zone.properties.layer === "seoul_plan" ? zone.properties.areaKind : null;
+    const layer = areaKind === "모아타운" || areaKind === "재정비촉진지구" ? `maint_area:${areaKind}` : `maint_stage:${stage}`;
     const zoneName = [zone.name, zone.properties.zoneName]
       .map((value) => typeof value === "string" ? value.trim() : "")
       .find((value) => value !== "") ?? null;
     const name = project?.name ?? zoneName;
+    const sublabel = `${project?.type ?? "종류 미확인"} · ${stage === "미확인" ? "단계 미확인" : stage}`;
     const labelPriority = name === null ? 0 : 1;
     if (!layers.includes(layer)) layers.push(layer);
 
-    const clipped = areaInCircle(ctx.input.center, ctx.input.radiusM, zone.geometry);
-    if (!clipped) {
-      invalidArea = true;
-      // 면적은 못 구해도 「정비구역 N곳」에는 든 구역이다 — 대표점 하나를 counted로 싣는다.
-      const point = fallbackCandidate(zone, layer, { label: null, name, sublabel: stage, labelPriority, counted: true });
-      if (point) points.push(point);
-      continue;
-    }
-    zoneArea += clipped.areaM2;
+    const clipped = areaInCircle(ctx.input.center, ctx.input.radiusM, geometry);
+    if (clipped) zoneArea += clipped.areaM2;
+    else invalidArea = true;
+    // 그래프는 문장의 「사업 N건」을 센다: 사업마다 한 번만 counted(합치기에 실패해 구역마다 그릴 때는 첫 구역만).
+    const counted = !countedProjects.has(key);
+    countedProjects.add(key);
     let polygonCount = 0;
-    for (const rings of clipped.parts) {
-      const polygon = polygonCandidate(zone.featureId, layer, rings, polygonArea(rings), null, {
+    // 구역은 반경으로 자르지 않고 원래 형태 그대로 그린다(사용자 결정 2026-10-28). 순서·상한은 반경 안 면적 기준.
+    for (const rings of polygonParts(geometry)) {
+      const polygon = polygonCandidate(zone.featureId, layer, rings, clipped?.areaM2 ?? 0, null, {
         name,
-        sublabel: stage,
+        sublabel,
         labelPriority,
-        counted: true, // 반경과 교차해 「정비구역 N곳」에 든 구역 — 그래프 개수가 반경 판정 대신 따른다
+        counted,
       });
       if (polygon) {
         polygons.push(polygon);
@@ -161,7 +168,7 @@ export function d23(ctx: EngineContext): TileResult {
       }
     }
     // 면을 그릴 수 있는 지물은 같은 fid의 대표점을 만들지 않는다. 도형 변환에 실패한 경우만 점을 fallback으로 둔다.
-    if (polygonCount === 0) points.push(candidate(zone, layer, { label: null, name, sublabel: stage, labelPriority, counted: true }));
+    if (polygonCount === 0) points.push(candidate(zone, layer, { label: null, name, sublabel, labelPriority, counted }));
   }
 
   // makeTile도 상한 처리에서 면적순을 보장하지만, 타일 엔진의 후보 배열 자체도 교차 면적순으로 고정한다.
@@ -171,7 +178,7 @@ export function d23(ctx: EngineContext): TileResult {
     { kind: "partial", note: "경계가 확보된 사업만 반경 안 여부와 면적을 판단합니다. 경계가 없는 명부 사업은 면적에 포함하지 않았습니다." },
     { kind: "unknown", note: "정비구역 간 면적은 합치지 않아 중첩될 수 있습니다." },
     { kind: "unknown", note: "예정 세대는 사업 전체 값이며 반경 안 배분값이 아닙니다." },
-    ...(zones.length > 0 && linked < zones.length ? [{ kind: "unknown" as const, note: `사업 연결(zone_of_project)이 없는 구역 ${zones.length - linked}곳은 구역 속성으로 단계·유형을 표시합니다.` }] : []),
+    ...(zones.length > 0 && linked < zones.length ? [{ kind: "unknown" as const, note: `사업 연결이 없는 구역 ${zones.length - linked}곳은 구역 속성으로 단계·유형을 표시합니다.` }] : []),
     ...(invalidArea ? [{ kind: "unknown" as const, note: "일부 정비구역 도형의 반경 교차 면적을 계산하지 못했습니다." }] : []),
     ...coverageLimitations(ctx),
   ];

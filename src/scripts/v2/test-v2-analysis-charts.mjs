@@ -287,7 +287,7 @@ assert.equal(analysisCharts(withoutCode), null, "tileCode 없는 모델은 null"
 assert.equal(analysisCharts({ ...withoutCode, valueAxis: AXIS }), null, "valueAxis가 있어도 tileCode가 없으면 null");
 
 // 밝힌 대상·단위가 제목과 한 줄 요약에 그대로 흐른다
-for (const [code, subject, unit] of [["D03", "건물", "동"], ["D04", "건물", "동"], ["D05", "건물", "동"], ["A07", "아파트", "단지"], ["A02", "학교", "곳"], ["A05", "주거 건물·단지", "곳"], ["A09", "정비구역", "곳"], ["D12", "도시계획시설", "건"], ["D15", "폐합 블록", "개"]]) {
+for (const [code, subject, unit] of [["D03", "건물", "동"], ["D04", "건물", "동"], ["D05", "건물", "동"], ["A07", "아파트", "단지"], ["A02", "학교", "곳"], ["A05", "주거 건물·단지", "곳"], ["A09", "정비사업", "건"], ["D12", "도시계획시설", "건"], ["D15", "폐합 블록", "개"]]) {
   const declared = analysisCharts(model({ ...twoItems, tileCode: code }));
   assert.ok(declared, `${code}: 밝힌 타일`);
   assert.equal(declared.subject, subject, `${code} 대상`);
