@@ -6,7 +6,7 @@
 import PptxGenJS from "pptxgenjs";
 import { groupTaggedShapes } from "../../pptx-shape-group";
 import { calloutPageTitleTail } from "../ui/callout-layout";
-import { legendItemsOf, STRIP_COLORS } from "../ui/map-layers";
+import { legendItemsOf, modelWithHiddenLayers, STRIP_COLORS } from "../ui/map-layers";
 import { SLIDE, SLIDE_LEGEND, layoutRects, slideGeometry, slideLayout, slideLegend, slideLegendGeometry, slidePanelRects, slidePanelScale, slideSize, terrainSectionLayout, type Rect, type SlideFormat, type SlideLegendOptions } from "../ui/overlay-layout";
 import type { Badge, TileView } from "../ui/tile-view";
 import type { RoseModel } from "../ui/wind-rose";
@@ -22,6 +22,8 @@ import type { BaseThemeRef } from "../ui/map-theme";
 import { badgeTextColor } from "../ui/map-labels";
 import type { PageStyle } from "../ui/board-state";
 import { drawTerrainSectionPptx } from "./terrain-section-pptx";
+import { analysisCharts } from "./analysis-charts";
+import { drawAnalysisColumn } from "./analysis-column-pptx";
 import { pageElementDeleted, TEXT_BOX_DEFAULTS, type MapFrameState, type ReportLayout } from "./report-doc";
 
 /** 지도 이미지(PNG/JPEG data URL) — 키는 report-plan의 mapKeyOf */
@@ -479,6 +481,8 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
   const terrainShown = v.code === "D17" && !!v.terrainSections && !!p.terrainSection;
   const terrainLayout = terrainShown ? terrainSectionLayout(panels, layout, format) : null;
   const summaryRect = terrainLayout?.summary ?? panels.summary;
+  // 「지도 + 그래프」 그래프 열: 화면(slide-surface)과 같은 판정·같은 모델(끈 레이어 반영). 설명선 상세 장·요약 칸 없는 장·그래프 자료가 없는 쪽은 map-summary 그대로.
+  const columnCharts = p.page?.layout === "map-charts" && hasSummary && summaryRect && p.map ? analysisCharts(modelWithHiddenLayers(p.map, frameOf(p)?.hiddenLayers ?? [])) : null;
   const summaryX = summaryRect?.x ?? g.w;
   const contentBox = summaryRect ? innerInfoBox(summaryRect, summaryScale) : { x: g.edge, w: Math.max(0.2, g.w - 2 * g.edge), h: 0.2 };
   const calloutReport = tileReportModuleFor(v.code)?.report;
@@ -580,9 +584,18 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
   } else if (co) calloutReport?.render({ slide: s, planned: p, part: "overview" });
   else legendPlate(s, p, hasSummary, format, style);
 
-  infoPanel(s, items, summaryRect, summaryScale);
-  pageTextBoxes(s, p, format);
-  pageNotes(s, p, fallbackNotes);
+  if (columnCharts && summaryRect) {
+    // 「지도 + 그래프」: 같은 요약 판 위에 화면과 같은 칸 배치로 그린다. 각주(주의·메모)는 장 본문 대신 발표자 노트에 둔다.
+    const summaryGroup = panelTag("summary", "요약", "plate");
+    plate(s, summaryRect, 0.16, summaryGroup);
+    drawAnalysisColumn(s, { charts: columnCharts, view: v, sentence: summaryText, rect: summaryRect, summaryPt, panel: summaryGroup });
+    pageTextBoxes(s, p, format);
+    pageNotes(s, p, [...new Set([...fallbackNotes, ...notes])]);
+  } else {
+    infoPanel(s, items, summaryRect, summaryScale);
+    pageTextBoxes(s, p, format);
+    pageNotes(s, p, fallbackNotes);
+  }
   strip(s, p, !chart, format, look.basemap);
 }
 

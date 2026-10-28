@@ -455,6 +455,47 @@ function addCustom(
   });
 }
 
+/**
+ * 같은 색 점 여러 개를 custGeom 한 도형으로 그린다(점마다 원 하위 경로). 좌표·반지름은 슬라이드 inch.
+ * 점이 수천 개여도 도형은 하나라 PPT에서 색 하나 = 선택 대상 하나다. stroke의 widthPt는 pt(배율 없음).
+ */
+export function addDots(slide: Slide, points: readonly (readonly [number, number])[], r: number, fillColor: string, opacity: number, objectName: string, stroke?: { color: string; widthPt: number }): void {
+  if (points.length === 0) return;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const [x, y] of points) {
+    if (x - r < minX) minX = x - r;
+    if (x + r > maxX) maxX = x + r;
+    if (y - r < minY) minY = y - r;
+    if (y + r > maxY) maxY = y + r;
+  }
+  const parts: NonNullable<PptxGenJS.ShapeProps["points"]> = [];
+  for (const [x, y] of points) {
+    const left = x - r - minX;
+    const right = x + r - minX;
+    const cy = y - minY;
+    // 왼쪽 끝에서 위쪽을 지나 오른쪽 끝까지, 다시 아래쪽을 지나 왼쪽 끝까지 반원 둘.
+    parts.push(
+      { x: left, y: cy, moveTo: true },
+      { x: right, y: cy, curve: { type: "arc", wR: r, hR: r, stAng: 180, swAng: 180 } },
+      { x: left, y: cy, curve: { type: "arc", wR: r, hR: r, stAng: 0, swAng: 180 } },
+      { close: true },
+    );
+  }
+  slide.addShape("custGeom" as PptxGenJS.SHAPE_NAME, {
+    x: minX,
+    y: minY,
+    w: Math.max(0.005, maxX - minX),
+    h: Math.max(0.005, maxY - minY),
+    points: parts,
+    fill: { color: color(fillColor), transparency: transparency(opacity) },
+    line: stroke ? { color: color(stroke.color), width: stroke.widthPt } : { color: color(fillColor), width: 0, transparency: 100 },
+    objectName,
+  });
+}
+
 function addSegment(slide: Slide, a: PixelPoint, b: PixelPoint, lineColor: string, width: number, objectName: string, transparencyValue = 0, dash?: string): void {
   const clipped = clipSegmentToFrame(a, b, activeSceneWidth, activeClipBottom);
   if (!clipped) return;

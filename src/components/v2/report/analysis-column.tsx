@@ -5,7 +5,8 @@ import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSP
 import { analysisStatLine, type AnalysisCharts } from "@/lib/v2/report/analysis-charts";
 import { compositionShapes, distanceShapes, type ChartBox, type ChartShape } from "@/lib/v2/report/chart-geometry";
 import { DEFAULT_REPORT_FONT_SIZES } from "@/lib/v2/report/report-doc";
-import { CHIP, fitBlock, textIn } from "@/lib/v2/report/pptx-kit";
+import { ANALYSIS_LINE, analysisColumnFit } from "@/lib/v2/report/analysis-column-fit";
+import { CHIP } from "@/lib/v2/report/pptx-kit";
 import { chartsColumnLayout, type Rect } from "@/lib/v2/ui/overlay-layout";
 import type { TileView } from "@/lib/v2/ui/tile-view";
 import { fontStyle } from "./surface-style";
@@ -14,7 +15,7 @@ import { fontStyle } from "./surface-style";
 
 type Styles = Record<string, string>;
 
-const LINE = 1.25; // fitBlock이 줄 높이로 가정하는 값
+const LINE = ANALYSIS_LINE; // fitBlock이 줄 높이로 가정하는 값
 const POPOVER_WIDTH = 288;
 const POPOVER_GAP = 6;
 const VIEWPORT_MARGIN = 8;
@@ -147,35 +148,14 @@ export function AnalysisColumn({ styles, charts, view, sentence, rect, unit, sum
   const distShapes = useMemo(() => distanceShapes(charts.distance, charts.radiusM, col.distance, scale, charts.titles.distance), [charts, col.distance, scale]);
   const at = (r: Rect): CSSProperties => ({ position: "absolute", left: (r.x - rect.x) * unit, top: (r.y - rect.y) * unit, width: r.w * unit, height: r.h * unit, overflow: "hidden" });
 
-  // 큰 숫자 칸: 배지 줄 + 라벨 + 값. 칸 높이를 넘으면 배율을 줄여 맞춘다.
+  // 글자 맞춤(큰 숫자 칸 배율·통계·해석 문장 pt와 줄 수)은 PPT와 같은 순수 함수.
   const badges = view.badges;
   const headline = view.headline;
   const hr = col.headline;
-  const chipRows = (e: number) => {
-    let rows = badges.length ? 1 : 0;
-    let x = 0;
-    for (const b of badges) {
-      const w = Math.min(hr.w, textIn(b.text, 9 * e) + 0.24 * e);
-      if (x > 0 && x + w > hr.w) { rows += 1; x = 0; }
-      x += w + 0.08 * e;
-    }
-    return rows;
-  };
-  const needed = (e: number) => chipRows(e) * 0.32 * e + (headline ? 0.9 * e : 0);
-  let e = scale;
-  while (e > 0.4 && needed(e) > hr.h) e -= 0.05;
-
-  // 한 줄 통계 칸: 통계 + (있으면) 필터 줄. 같은 글자 크기로 칸에 맞추고, 그래도 넘치면 줄 수를 묶는다(필터 줄은 한 줄).
   const statText = analysisStatLine(charts);
   const filterLine = view.filterLine;
-  const statPt = fitBlock(filterLine ? [statText, filterLine] : [statText], { w: col.stat.w, h: col.stat.h }, 10 * scale, 7);
-  const statRows = Math.max(1, Math.floor(col.stat.h / ((statPt / 72) * LINE) + 1e-9));
-  const statClamp = Math.max(1, statRows - (filterLine ? 1 : 0));
+  const { e, labelPt, valuePt, statPt, statClamp, sentPt, sentLines } = analysisColumnFit({ col, scale, summaryPt, badges, headline, statText, filterLine, sentence });
   const clamp = (lines: number): CSSProperties => ({ display: "-webkit-box", WebkitLineClamp: lines, WebkitBoxOrient: "vertical", overflow: "hidden", lineHeight: LINE });
-
-  // 해석 문장 칸: 요약 크기에서 시작해 10 pt까지 줄이고, 그래도 넘치면 줄 수를 묶는다.
-  const sentPt = fitBlock([sentence ?? ""], { w: col.sentence.w, h: col.sentence.h }, summaryPt, 10);
-  const sentLines = Math.max(1, Math.floor(col.sentence.h / ((sentPt / 72) * LINE) + 1e-9));
   const notes = [...new Set([...view.caveats, ...view.notes])];
   const pct = (item: AnalysisCharts["composition"][number]) => (item.share > 0 && Math.round(item.share * 100) === 0 ? "1% 미만" : `${Math.round(item.share * 100)}%`);
   const compLabel = `${charts.titles.composition} 막대 그래프. ${charts.composition.map((item) => `${item.label} ${pct(item)}`).join(", ")}`;
@@ -194,8 +174,8 @@ export function AnalysisColumn({ styles, charts, view, sentence, rect, unit, sum
           )}
           {headline && (
             <>
-              <div className={styles.slideMetricLabel} style={fontStyle(fitBlock([headline.label], { w: hr.w, h: 0.24 * e }, 11 * e, 7), unit)}>{headline.label}</div>
-              <div className={styles.slideMetricValue} style={fontStyle(fitBlock([headline.value], { w: hr.w, h: 0.66 * e }, 36 * e, 7), unit, { textAlign: "left" })}>{headline.value}</div>
+              <div className={styles.slideMetricLabel} style={fontStyle(labelPt ?? 7, unit)}>{headline.label}</div>
+              <div className={styles.slideMetricValue} style={fontStyle(valuePt ?? 7, unit, { textAlign: "left" })}>{headline.value}</div>
             </>
           )}
         </div>
