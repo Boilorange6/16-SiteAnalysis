@@ -86,6 +86,7 @@ export function analysisCharts(model: MapModel): AnalysisCharts | null {
   const countByItem = new Map<(typeof items)[number], number>();
   for (const c of counted) countByItem.set(c.item, (countByItem.get(c.item) ?? 0) + 1);
   const present = items.filter((item) => countByItem.has(item));
+  if (present.length < 2) return null; // 반경 안에 실제로 있는 범례 항목이 하나뿐이면 구성비·거리 비교가 의미 없다
   const total = counted.length;
   const toComposition = (item: (typeof items)[number]): CompositionItem => ({ label: item.label, color: item.color, count: countByItem.get(item)!, share: countByItem.get(item)! / total });
   let composition = present.map(toComposition);
@@ -107,10 +108,29 @@ export function analysisCharts(model: MapModel): AnalysisCharts | null {
     const values = valued.map((c) => c.value).sort((a, b) => a - b);
     const sitePx = (model.siteParcel ?? []).map((p) => toPx(p.rings));
     const inSite = valued.filter((c) => sitePx.some((rings) => inPolygon(c.at, rings)));
-    // ponytail: 거리순 균등 추출 — 극값이 빠질 수 있다(통계는 전체로 계산). 부족하면 구간별 최대 보존으로 바꾼다.
     const sorted = valued.map((c, i) => ({ c, i })).sort((a, b) => a.c.d - b.c.d || a.i - b.i).map(({ c }) => c);
     const sampled = sorted.length > MAX_POINTS;
-    const picked = sampled ? Array.from({ length: MAX_POINTS }, (_, i) => sorted[Math.floor((i * (sorted.length - 1)) / (MAX_POINTS - 1))]!) : sorted;
+    let picked = sorted;
+    if (sampled) {
+      // 거리순 균등 추출 + 최댓값 점·대지 안 점은 반드시 남긴다: 빠진 점은 거리순 번호가 가장 가까운(같으면 앞쪽) 일반 점 자리를 대신한다.
+      // ponytail: 그 밖의 극값은 빠질 수 있다(통계는 전체로 계산). 부족하면 구간별 최대 보존으로 바꾼다.
+      const maxAt = sorted.findIndex((c) => c.value === values[values.length - 1]);
+      const must = new Set(sorted.flatMap((c, i) => (i === maxAt || inSite.includes(c) ? [i] : [])));
+      const chosen = new Set(Array.from({ length: MAX_POINTS }, (_, i) => Math.floor((i * (sorted.length - 1)) / (MAX_POINTS - 1))));
+      for (const k of [...must].filter((m) => !chosen.has(m))) {
+        let swap = -1;
+        for (const j of chosen) {
+          if (must.has(j)) continue;
+          const dj = Math.abs(j - k);
+          const ds = Math.abs(swap - k);
+          if (swap < 0 || dj < ds || (dj === ds && j < swap)) swap = j;
+        }
+        if (swap < 0) break; // 지킬 점이 2,000개를 넘는 극단 — 나머지는 포기한다
+        chosen.delete(swap);
+        chosen.add(k);
+      }
+      picked = [...chosen].sort((a, b) => a - b).map((i) => sorted[i]!);
+    }
     distance = {
       kind: "scatter",
       axis: { label: model.valueAxis?.label ?? "값", unit: model.valueAxis?.unit ?? "" },

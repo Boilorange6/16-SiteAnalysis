@@ -112,8 +112,26 @@ assert.equal(bigA.distance.max, 40);
 const ds = bigA.distance.points.map((point) => point.d);
 assert.deepEqual(ds, [...ds].sort((a, b) => a - b), "거리순");
 
+// ── 표본 추출은 최댓값·대지 안 점을 지킨다 (거리순 j번째 = 2,500점 중 floor(j×1.25) 근처, 건너뛰는 자리를 일부러 쓴다)
+const evenly = new Set(Array.from({ length: 2000 }, (_, j) => Math.floor((j * 2499) / 1999)));
+const skipped = Array.from({ length: 2500 }, (_, i) => i).filter((i) => !evenly.has(i) && i > 200);
+const [maxAt, siteAt] = [skipped[0], skipped[40]];
+const EAST_STEP = 0.39; // m — 거리순이 곧 i순
+const keyFeatures = Array.from({ length: 2500 }, (_, i) => pt(i % 2 ? "floors_1_4" : "floors_5_8", i * EAST_STEP, 0, i === maxAt ? 99 : i === siteAt ? 77 : 5));
+const keyModel = model({ valueAxis: AXIS, features: keyFeatures, siteParcel: [{ layer: "parcel_site", rings: square(siteAt * EAST_STEP, 0, 0.15) }] });
+const keyA = analysisCharts(keyModel);
+assert.equal(keyA.distance.sampled, true);
+assert.equal(keyA.distance.points.length, 2000);
+assert.ok(keyA.distance.points.some((point) => point.v === 99), "최댓값 점 유지");
+assert.ok(keyA.distance.points.some((point) => point.v === 77), "대지 안 점 유지");
+assert.equal(keyA.distance.site, 77);
+assert.deepEqual(keyA, analysisCharts(structuredClone(keyModel)), "결정적");
+const keyDs = keyA.distance.points.map((point) => point.d);
+assert.deepEqual(keyDs, [...keyDs].sort((a, b) => a - b), "거리순 유지");
+
 // ── null 경우
 assert.equal(analysisCharts(model({ features: [pt("floors_1_4", 10), pt("floors_1_4", 20)] })), null, "범례 1개");
+assert.equal(analysisCharts(model({ features: [pt("floors_1_4", 10), pt("floors_1_4", 20), pt("floors_5_8", 1500)] })), null, "범례는 2개여도 반경 안은 한 항목뿐");
 assert.equal(analysisCharts(model({ features: [pt("floors_1_4", 1500), pt("floors_5_8", 1600)] })), null, "반경 안 지물 0");
 assert.equal(analysisCharts(model({})), null, "빈 모델");
 
