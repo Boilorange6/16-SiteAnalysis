@@ -35,7 +35,7 @@ const FACILITY_SOURCES = [
   "facility_environmental_basic",
   "facility_other_infrastructure",
 ] as const;
-const MAINTENANCE_SOURCES = ["mzone_zone", "mzone_redevelopment", "mzone_promotion", "mzone_planned", "mzone_improvement", "maintenance_integrated", "maintenance_std"] as const;
+const MAINTENANCE_SOURCES = ["mzone_zone", "mzone_redevelopment", "mzone_promotion", "mzone_planned", "mzone_improvement", "maintenance_integrated", "maintenance_std", "seoul_plan_zone"] as const;
 
 export const TILE_CATALOG = {
   A01: { title: "입지·대중교통", kind: "analysis", description: "지하철·버스·출입구·노선과 대지의 접근 거리를 같은 집계 기준으로 확인합니다.", calculation: "반경 내 운영역·출입구·철도 노선·버스정류장 원천 feature를 세고, 최근접 거리는 대표점·출입구 직선 기준으로 분리", sources: ["osm_subway", "bus_stop", "osm_roads"], forms: ["vector"], color: "#6A50D3", mapZoom: { maxDelta: 3 } },
@@ -143,6 +143,7 @@ export const SOURCE_NAMES: Record<string, string> = {
   maintenance_integrated: "정비사업 현황(통합)",
   maintenance_std: "정비사업 현황(표준데이터)",
   maintenance_zone: "정비구역 경계",
+  seoul_plan_zone: "서울플랜+ 정비사업",
   osm_roads: "OSM 도로(Geofabrik)",
   osm_landuse: "OSM 토지이용·자연 면(Geofabrik)",
   osm_water: "OSM 수계 면(Geofabrik)",
