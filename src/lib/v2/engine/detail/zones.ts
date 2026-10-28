@@ -1,5 +1,5 @@
-import { booleanPointInPolygon, feature, featureCollection, union } from "@turf/turf";
-import type { Geometry, MultiPolygon, Polygon } from "geojson";
+import { booleanPointInPolygon } from "@turf/turf";
+import type { Geometry } from "geojson";
 import { toLngLat, toUtmk } from "../../crs";
 import type { FeatureHit } from "../../data/features";
 import { sourceLineOf } from "../../ui/tile-view";
@@ -9,7 +9,7 @@ import { areaInCircle, polygonArea, lineLengthInCircle } from "../tiles/geo";
 import { buildingRows, isCounted } from "../tiles/buildings-shared";
 import { hitPoint } from "../tiles/common";
 import { SCHOOL_ZONE_KINDS, schoolZoneSources, zoneBaseDate, zoneName, zoneOffice } from "../tiles/school-zone-shared";
-import { collectMaintenance, collectMaintenanceRoster, maintenanceSources, STAGES, type Project } from "../../tile/a09/engine";
+import { collectMaintenance, collectMaintenanceRoster, maintenanceSources, projectZoneGeometry, STAGES, type Project } from "../../tile/a09/engine";
 import { layerStyle } from "../../ui/map-layers";
 
 const ZONING_SOURCES = ["zoning_urban", "zoning_management", "zoning_agri_forest", "zoning_nature", "zoning_other"] as const;
@@ -381,16 +381,6 @@ const MAINTENANCE_COLUMNS: DetailColumn[] = [
 ];
 
 const MAINTENANCE_LAYERS: Record<string, string> = { zone: "정비구역", redevelopment: "재개발구역", promotion: "재정비촉진지구", planned: "정비계획을수립중인지역", improvement: "주거환경개선지구" };
-/** 한 사업의 구역은 겹칠 수 있어(같은 부지의 신통·재건축 구역) 면적을 합집합으로 센다. */
-function projectGeometry(hits: readonly FeatureHit[]): Geometry | null {
-  if (hits.length === 1) return hits[0].geometry;
-  try {
-    return union(featureCollection(hits.map((hit) => feature(hit.geometry as Polygon | MultiPolygon))))?.geometry ?? null;
-  } catch {
-    return null;
-  }
-}
-
 const maintenanceName = (project: Project) => project.name ?? `이름 없는 정비구역${project.announcedDate ? ` · 고시 ${project.announcedDate}` : ""}`;
 
 function maintenanceRows(ctx: DetailContext): DetailRow[] {
@@ -400,7 +390,7 @@ function maintenanceRows(ctx: DetailContext): DetailRow[] {
   return [...collection.projects.values()].map((project) => {
     const hits = collection.zones.filter((hit) => collection.zoneProject.get(hit.featureId) === project.key);
     const fids = hits.map((hit) => String(hit.featureId));
-    const geometry = projectGeometry(hits);
+    const geometry = projectZoneGeometry(hits);
     const clipped = geometry ? areaInCircle(ctx.input.center, ctx.input.radiusM, geometry) : null;
     const parts = geometry ? shapeParts(geometry) : [];
     const [lng, lat] = hitPoint(hits[0]);

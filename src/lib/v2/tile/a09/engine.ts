@@ -6,7 +6,7 @@
  */
 import type { FeatureHit } from "../../data/features";
 import type { Geometry, MultiPolygon, Polygon } from "geojson";
-import { bbox, feature, featureCollection, intersect } from "@turf/turf";
+import { bbox, feature, featureCollection, intersect, union } from "@turf/turf";
 import type { TileResult } from "../../tile-result";
 import type { EngineContext, FileKey, Limitation } from "../../engine/context";
 import { fmt, makeTile, missing, obs, type TileDraft } from "../../engine/tiles/common";
@@ -93,6 +93,21 @@ function areaOf(geometry: Polygon | MultiPolygon): number {
 
 function polygonGeometry(geometry: Geometry): geometry is Polygon | MultiPolygon {
   return geometry?.type === "Polygon" || geometry?.type === "MultiPolygon";
+}
+
+/**
+ * 한 사업의 구역들을 도형 하나로 합친다. 같은 경계로 둘 실린 기록(서울시·구 고시)은 원래 도형을 그대로 쓰고,
+ * 경계가 다르면 합집합. 지도에 면을 사업당 하나만 그리고(같은 색 면이 겹치면 PPT 채움이 지워짐) 면적도 한 번만 센다.
+ */
+export function projectZoneGeometry(hits: readonly FeatureHit[]): Geometry | null {
+  const keys = hits.map((hit) => JSON.stringify(hit.geometry));
+  const unique = hits.filter((_, i) => keys.indexOf(keys[i]) === i);
+  if (unique.length === 1) return unique[0].geometry;
+  try {
+    return union(featureCollection(unique.map((hit) => feature(hit.geometry as Polygon | MultiPolygon))))?.geometry ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /** 서울의 기존 경계만 작은 면적의 절반 이상 겹칠 때 제외한다. */

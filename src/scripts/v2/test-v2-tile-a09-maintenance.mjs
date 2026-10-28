@@ -107,6 +107,19 @@ const forbidden = /도보|\d\s*분|종합/;
 }
 
 {
+  // 한 사업의 구역 기록이 같은 경계로 둘 실려도(서울시·구 고시) 면은 하나만 그린다. 같은 색 면이 겹치면 PPT에서 채움이 지워진다.
+  const ctx = await make({ maint: "zones" });
+  const [x, y] = toUtmk(CENTER);
+  const square = { type: "Polygon", coordinates: [[[x, y], [x + 100, y], [x + 100, y + 100], [x, y + 100], [x, y]]] };
+  const hit = (id, name) => ({ featureId: id, stableId: `fixture:${id}`, kind: "maintenance_zone", releaseId: "fixture", pnu: null, legalCode: "1168000000", name, properties: { layer: "seoul_plan", projectKey: "seoulplan:GRP188", projectType: "재건축", stage: "사업시행" }, distanceM: null, geometry: square });
+  ctx.hits = () => [hit(301, "은마아파트"), hit(302, "대치은마")];
+  const tile = d23(ctx);
+  assert.equal((tile.presentation.polygons ?? []).length, 1, "같은 경계의 두 기록은 면 하나");
+  assert.equal(value(tile, "zone_area_in_radius_m2"), 10000, "면적도 한 번만 센다");
+  ctx.close();
+}
+
+{
   const zones = [
     { featureId: 1, stableId: "z1", name: "구역 이름", properties: { layer: "zone", announcedDate: "2020-05-01" } },
     { featureId: 2, stableId: "z2", name: "다른 구역", properties: { layer: "zone", announcedDate: "2019-01-02" } },
