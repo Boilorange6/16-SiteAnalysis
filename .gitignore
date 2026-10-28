@@ -33,3 +33,6 @@ tmp_oa*.zip
 
 # 디버그·QA 스크린샷
 /*.png
+
+# QA runner 로그인 세션
+tools/qa/.auth.json
