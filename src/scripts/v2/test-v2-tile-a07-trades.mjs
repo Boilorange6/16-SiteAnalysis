@@ -4,7 +4,7 @@ import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-const { buildEngineFixture, CENTER } = await import("./engine-fixture.mjs");
+const { buildEngineFixture, CENTER, at } = await import("./engine-fixture.mjs");
 const { initDataFileSchema } = await import("../../lib/v2/data/schema.ts");
 const { insertFeature } = await import("../../lib/v2/data/features.ts");
 const { insertRelease } = await import("../../lib/v2/ingest/build.ts");
@@ -33,6 +33,19 @@ const make = async (options) => {
   });
   insertFeature(core, { stableId: "housing:trade-a", kind: "housing_complex", sourceKey: "trade-a", releaseId: nameRelease, geometry: { type: "Point", coordinates: CENTER }, pnu: "4136011800100010000", name: "다산 센트럴" });
   insertFeature(core, { stableId: "housing:trade-b", kind: "housing_complex", sourceKey: "trade-b", releaseId: nameRelease, geometry: { type: "Point", coordinates: CENTER }, pnu: "4136011800100020000", name: "다산 리버" });
+  if (options.edgeTrade) {
+    // 북쪽 가장자리(799.7 m) 단지 하나: 엔진(UTM-K)은 800 m 안으로 세지만 그래프(남북 거리를 0.3 % 길게 잼)는 counted 없이는 802.6 m로 밖에 둔다.
+    const pnu = "4136011800100050000";
+    const parcelRelease = core.prepare("SELECT release_id FROM source_release WHERE source_id = 'parcel'").pluck().get();
+    core.prepare("INSERT INTO parcel_point VALUES (?, ?, ?, ?, ?)").run(pnu, ...at(0, 799.7), "대", parcelRelease);
+    const market = new Database(join(dir, "versions", "v1", "market.sqlite"));
+    const tradeRelease = market.prepare("SELECT release_id FROM source_release WHERE source_id = 'rtms_apt_trade'").pluck().get();
+    const ins = market.prepare(`INSERT INTO property_transaction (transaction_id, source_record_key, lawd_cd, deal_date, property_type, contract_type, price_krw, deposit_krw, rent_krw, area_m2, floor, cancelled_at, location_id, match_status, release_id)
+      VALUES (?, ?, '41360', ?, 'apt', 'trade', ?, NULL, NULL, 100, 5, NULL, ?, 'located', ?)`);
+    ins.run("edge1", "edge-k1", "2026-08-20", 1100 * 100 * 10_000, pnu, tradeRelease);
+    ins.run("edge2", "edge-k2", "2026-08-21", 1200 * 100 * 10_000, pnu, tradeRelease);
+    market.close();
+  }
   core.close();
   const manifest = M.readManifest(dir);
   return (radiusM = 800, analysisDate = "2026-09-30") =>
@@ -147,6 +160,18 @@ const clean = (tile) => {
       assert.ok(analysisStatLine(chart).startsWith(`반경 ${radiusM === 800 ? "800 m" : "400 m"} 안 아파트 ${engineComplexes}단지`), analysisStatLine(chart));
       radiusCtx.close();
     }
+    // 가장자리 단지(북쪽 799.7 m)가 있는 픽스처: 800 m에서 엔진 4단지, 그래프도 4. counted를 떼면 3.
+    const edgeAt = await make({ trades: true, edgeTrade: true });
+    const edgeCtx = edgeAt(800);
+    const edgeTile = a07(edgeCtx);
+    assert.equal(collectTrades(edgeCtx).points.length, 4, "전제: 엔진 단지 4(가장자리 포함)");
+    const edgeView = toTileView(edgeTile);
+    assert.equal(analysisCharts(viewWithLayer(edgeView, edgeView.defaultLayer).map).total, 4, "가장자리 단지까지 센다");
+    const stripped = JSON.parse(JSON.stringify(edgeTile));
+    for (const feature of stripped.presentation.features) delete feature.counted;
+    const strippedView = toTileView(stripped);
+    assert.equal(analysisCharts(viewWithLayer(strippedView, strippedView.defaultLayer).map).total, 3, "음성 대조: counted를 떼면 가장자리 단지가 빠진다");
+    edgeCtx.close();
   }
   assert.ok(a.presentation.features.every((feature) => !Object.hasOwn(feature, "label")), "A07는 옛 label을 내지 않는다");
   const cuts = [0.2, 0.4, 0.6, 0.8].map((p) => {

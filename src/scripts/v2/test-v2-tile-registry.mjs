@@ -42,7 +42,7 @@ const EXPECTED_CACHE_VERSIONS = {
   D05: "v2-p4-ext-1+height3-r1+w3-merge-r1+w2b-r1+w4-names-r1+d05-nearest-cap-r1+clip-r1+chart-value-r1",
   D10: "v2-p4-ext-1+w2b-r1+clip-r1+composition-r1",
   D11: "v2-p4-ext-1+w2b-r1+clip-r1",
-  D12: "v2-p4-ext-1+w2b-r1+clip-r1+chart-count-r1",
+  D12: "v2-p4-ext-1+w2b-r1+clip-r1+chart-count-r2",
   D13: "v2-p4-ext-1+w2b-r1",
   D15: "v2-p4-ext-1+w2b-r1+clip-r1+chart-count-r1",
   D16: "v2-p4-ext-1+height3-r1+w2b-r1+clip-r1",

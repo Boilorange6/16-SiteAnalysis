@@ -126,6 +126,8 @@ const SYNTHETIC_EXPECTED = {
   assert.equal(metric(tile, "median_block_ha").value, 4);
   assert.ok(tile.presentation.polygons.some((polygon) => polygon.layer === "block_2_5"));
   assert.ok(tile.presentation.polygons.some((polygon) => polygon.layer === "block_open"));
+  assert.ok(tile.presentation.polygons.filter((polygon) => polygon.layer === "block_open").every((polygon) => polygon.counted === false), "미폐합 면은 counted=false");
+  assert.ok(tile.presentation.polygons.filter((polygon) => polygon.layer !== "block_open").every((polygon) => polygon.counted === true), "블록 면은 counted=true");
   assert.ok(tile.presentation.polygons.every((polygon) => polygon.name === null), "D15 polygons have no fallback names");
   assert.ok(tile.presentation.polygons.every((polygon) => polygon.labelPriority === 0), "D15 polygons stay out of automatic labels");
   assert.equal(tile.presentation.polygons.find((polygon) => polygon.layer === "block_2_5")?.sublabel, "4ha", "D15 block sublabel uses original area in ha");
@@ -260,6 +262,13 @@ const SYNTHETIC_EXPECTED = {
   assert.equal(chart.total, blocks, `그래프 블록 수 = 엔진 폐합 블록 수(${blocks})`);
   assert.equal(chart.subject + chart.countUnit, "폐합 블록개");
   assert.ok(chart.composition.every((item) => item.label !== "미폐합"), "미폐합 면은 구성비에 들지 않는다");
+  // 음성 대조: counted를 떼면 반경 판정으로 돌아가 반경 가장자리에 걸린 블록 조각이 빠진다.
+  const stripped = JSON.parse(JSON.stringify(tile));
+  for (const polygon of stripped.presentation.polygons) delete polygon.counted;
+  const strippedView = toTileView(stripped);
+  const strippedChart = analysisCharts(viewWithLayer(strippedView, strippedView.defaultLayer).map);
+  assert.notEqual(strippedChart.total, blocks, `counted를 떼면 그래프(${strippedChart.total})가 엔진 블록 수(${blocks})와 달라진다`);
+  assert.ok(strippedChart.total < blocks, "가장자리 조각이 빠져 엔진 수보다 작다");
   ctx.close();
 }
 

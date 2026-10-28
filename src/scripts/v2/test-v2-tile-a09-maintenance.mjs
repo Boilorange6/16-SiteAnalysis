@@ -118,6 +118,15 @@ const forbidden = /도보|\d\s*분|종합/;
     assert.ok(chart, `${radiusM} m: A09는 정비구역·곳을 밝혀 그래프가 나온다`);
     assert.equal(chart.total, zones, `${radiusM} m: 그래프 정비구역 수 = 엔진 정비구역 수`);
     assert.equal(chart.subject + chart.countUnit, "정비구역곳");
+    if (edgeZone) {
+      // 음성 대조: counted를 떼면 가장자리 구역이 빠진다 — 이 픽스처가 정말 가장자리에 걸쳐 있다는 증거.
+      const stripped = JSON.parse(JSON.stringify(tile));
+      for (const polygon of stripped.presentation.polygons ?? []) delete polygon.counted;
+      for (const feature of stripped.presentation.features ?? []) delete feature.counted;
+      const strippedView = toTileView(stripped);
+      const strippedChart = analysisCharts(viewWithLayer(strippedView, strippedView.defaultLayer).map);
+      assert.equal(strippedChart.total, zones - 1, `counted를 떼면 ${zones}곳이 ${zones - 1}곳으로 줄어든다`);
+    }
     ctx.close();
   }
 }

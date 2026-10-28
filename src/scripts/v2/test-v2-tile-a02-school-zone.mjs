@@ -125,6 +125,12 @@ assert.doesNotMatch(JSON.stringify(toTileView(a)), /도보|\d\s*분|종합/);
 {
   const { viewWithLayer } = await import("../../lib/v2/ui/tile-view.ts");
   const { analysisCharts } = await import("../../lib/v2/report/analysis-charts.ts");
+  // 북쪽 가장자리(799.7 m)의 학교 하나: 엔진(UTM-K)은 800 m 안으로 세지만 그래프(남북 거리를 0.3 % 길게 잼)는 counted 없이는 802.6 m로 밖에 둔다.
+  {
+    const edgeDb = new Database(referencePath);
+    insertFeature(edgeDb, { stableId: "school:test-edge", kind: "school", sourceKey: "test-edge", releaseId: schoolRelease, geometry: { type: "Point", coordinates: at(0, 799.7) }, name: "가장자리고등학교", properties: { schoolId: "test-edge", level: "고등학교", operatingStatus: "운영" } });
+    edgeDb.close();
+  }
   for (const radiusM of [800, 250]) {
     const countCtx = new EngineContext(dataDir, M.readManifest(dataDir), `a02-counted-${radiusM}`, { address: "대구광역시 북구 칠성동2가 395-1", center: CENTER, radiusM, analysisDate: "2026-10-01" });
     const tile = parseTileResult(a02WithSchoolZones(countCtx));
@@ -136,6 +142,13 @@ assert.doesNotMatch(JSON.stringify(toTileView(a)), /도보|\d\s*분|종합/);
     assert.ok(chart, `${radiusM} m: A02는 학교·곳을 밝혀 그래프가 나온다`);
     assert.equal(chart.total, engineSchools, `${radiusM} m: 그래프 학교 수 = 엔진 학교 수(${engineSchools})`);
     assert.equal(chart.subject + chart.countUnit, "학교곳");
+    if (radiusM === 800) {
+      assert.ok(tile.presentation.features.some((f) => f.name === "가장자리고등학교"), "전제: 가장자리 학교가 지도에 있다");
+      const stripped = JSON.parse(JSON.stringify(tile));
+      for (const f of stripped.presentation.features) delete f.counted;
+      const strippedView = toTileView(stripped);
+      assert.equal(analysisCharts(viewWithLayer(strippedView, strippedView.defaultLayer).map).total, engineSchools - 1, "음성 대조: counted를 떼면 가장자리 학교가 빠진다");
+    }
     countCtx.close();
   }
 }

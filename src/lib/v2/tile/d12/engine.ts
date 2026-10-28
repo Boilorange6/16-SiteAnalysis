@@ -84,6 +84,8 @@ export function d12(ctx: EngineContext): TileResult {
   const lines: LineCandidate[] = [];
   const map: MapCandidate[] = [];
   const shapeByFeature = new Map<number, FacilityShape>();
+  // 반경에 닿기만 해 그릴 도형이 없는 시설(면적 0 면·길이 0 선·도형 오류)도 「N건」에는 든다 — 그래프가 N을 그대로 세도록 대표점 하나를 counted로 싣는다.
+  const drawn = new Set<number>();
   let failed = 0;
   for (const h of hits) {
     const cls = classOf(h);
@@ -111,7 +113,10 @@ export function d12(ctx: EngineContext): TileResult {
           labelPriority: name === null ? 0 : 1,
           counted: true, // 문장의 「N건」에 든 시설 — 그래프 개수가 반경 판정 대신 따른다
         });
-        if (poly) polygons.push(poly);
+        if (poly) {
+          polygons.push(poly);
+          drawn.add(h.featureId);
+        }
       }
     } else if (shape === "line") {
       let length = 0;
@@ -126,6 +131,7 @@ export function d12(ctx: EngineContext): TileResult {
         if (!line) continue;
         length += line.lengthM;
         lines.push(line);
+        drawn.add(h.featureId);
       }
       if (length <= 0) continue;
       lengths.set(cls, (lengths.get(cls) ?? 0) + length);
@@ -138,7 +144,19 @@ export function d12(ctx: EngineContext): TileResult {
         labelPriority: name === null ? 0 : 1,
         counted: true,
       }));
+      drawn.add(h.featureId);
     }
+  }
+  // 같은 featureId가 다른 형상으로 또 오면(DB에선 나올 수 없는 방어 분기) 같은 시설이라 한 번만 센다.
+  const facilities = new Set(hits.map((h) => h.featureId)).size;
+  const fallbackLayers = new Set<string>();
+  for (const h of hits) {
+    if (drawn.has(h.featureId)) continue;
+    drawn.add(h.featureId);
+    const name = nameOf(h);
+    const layer = `facility:${classOf(h)}`;
+    fallbackLayers.add(layer);
+    map.push(candidate(h, layer, { label: textValue(h.name) ?? name, name, sublabel: null, labelPriority: name === null ? 0 : 1, counted: true }));
   }
 
   const areaClasses = [...areas.keys()].sort((a, b) => a.localeCompare(b));
@@ -160,9 +178,9 @@ export function d12(ctx: EngineContext): TileResult {
     ...lengthClasses.map((cls) => `${cls} ${formatLengthM(lengths.get(cls)!)}`),
     ...countClasses.map((cls) => `${cls} ${fmt(counts.get(cls)!)}개`),
   ].join("·");
-  const sentence = hits.length === 0
+  const sentence = facilities === 0
     ? "반경과 교차하는 도시계획시설 도형이 확인되지 않음 → 자료 범위가 없거나 아직 확인되지 않을 수 있음 → 도시계획시설 결정·고시와 현장 운영 상태 확인 필요"
-    : `반경과 교차하는 도시계획시설 ${fmt(hits.length)}건${summary ? `(${summary})` : ""} → 면·선·점 도형을 원천 형상별로 집계했으며 계획 결정이 곧 운영을 뜻하지 않음 → 시설 결정·고시와 실제 운영 여부 확인 필요`;
+    : `반경과 교차하는 도시계획시설 ${fmt(facilities)}건${summary ? `(${summary})` : ""} → 면·선·점 도형을 원천 형상별로 집계했으며 계획 결정이 곧 운영을 뜻하지 않음 → 시설 결정·고시와 실제 운영 여부 확인 필요`;
   const limitations: TileResult["limitations"] = [
     { kind: "unknown", note: "원천에 지정·운영 상태의 구분이 없어 계획시설 결정만으로 현재 운영 여부는 판단하지 않습니다." },
     { kind: "unknown", note: "시설 분류와 형상은 원천 속성 기준이며, 면적·길이·점 개수는 서로 합산하지 않습니다." },
@@ -176,7 +194,7 @@ export function d12(ctx: EngineContext): TileResult {
     metrics,
     judgment: { ruleId: "d12-plan-facility@1", basisMetricIds: metrics.length ? [metrics[0].id] : [], sentence, level: null, criteria: null },
     sources,
-    layers: [...new Set([...areaClasses, ...lengthClasses, ...countClasses].map((cls) => `facility:${cls}`))],
+    layers: [...new Set([...[...areaClasses, ...lengthClasses, ...countClasses].map((cls) => `facility:${cls}`), ...fallbackLayers])],
     map,
     polygons,
     lines,

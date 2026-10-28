@@ -37,7 +37,7 @@ const TILE_CACHE_REVISION: Readonly<Record<string, string>> = {
   D05: "height3-r1+w3-merge-r1+w2b-r1+w4-names-r1+d05-nearest-cap-r1+clip-r1+chart-value-r1",
   D10: "w2b-r1+clip-r1+composition-r1",
   D11: "w2b-r1+clip-r1",
-  D12: "w2b-r1+clip-r1+chart-count-r1",
+  D12: "w2b-r1+clip-r1+chart-count-r2",
   D13: "w2b-r1",
   D15: "w2b-r1+clip-r1+chart-count-r1",
   D16: "height3-r1+w2b-r1+clip-r1",

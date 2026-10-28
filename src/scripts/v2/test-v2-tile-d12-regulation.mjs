@@ -100,7 +100,8 @@ assert.equal(metric(facility, "back_length_교통").value, 1600);
 assert.equal(facility.presentation.lines?.length, 1, "a clipped facility line becomes one MapLine");
 assert.equal(facility.presentation.lines?.[0]?.points.length >= 2, true);
 assert.equal(facility.presentation.lines?.[0]?.layer, "facility:교통");
-assert.equal(facility.presentation.features?.length, 1, "only actual point facilities remain in features");
+assert.equal(facility.presentation.features?.length, 2, "실제 점 시설 하나 + 그릴 도형이 없는 시설(2번 선)의 대표점 하나");
+assert.deepEqual(facility.presentation.features?.filter((feature) => feature.fid !== "4").map((feature) => [feature.fid, feature.counted]), [["2", true]], "도형 없는 시설은 counted 대표점으로만 남는다");
 assert.equal(facility.presentation.features?.some((feature) => feature.fid === "1"), false, "line facilities do not produce a sampled feature chain");
 assert.equal(facility.presentation.features?.some((feature) => feature.fid === "3"), false, "polygon facilities do not produce representative-point features");
 assert.equal(facility.presentation.features?.some((feature) => feature.fid === "4"), true, "the real point facility remains in features");
@@ -143,16 +144,37 @@ assert.equal(outside.metrics.some((item) => item.id === "back_length_교통"), f
     hit(13, line, "line", "교통"),
     hit(14, point, "point", "교통"),
     hit(15, { type: "LineString", coordinates: [[cx - 300, cy + 300], [cx + 300, cy + 300]] }, "line", "공간"),
+    // 반경에 닿기만 해 반경 안 도형이 없는 시설: 「N건」에는 들지만 그릴 면·선이 없다 → counted 대표점으로 한 번 센다.
+    hit(16, box(800, 900, -20, 20), "polygon", "교통"),
+    hit(17, { type: "LineString", coordinates: [[cx + 800, cy + 60], [cx + 900, cy + 60]] }, "line", "공간"),
   ]);
   const counted = d12(countCtx);
   const engineCount = Number(/도시계획시설 (\d+)건/.exec(counted.judgment.sentence)?.[1]);
-  assert.equal(engineCount, 5, "문장의 건수(전제)");
-  assert.ok([...(counted.presentation.polygons ?? []), ...(counted.presentation.features ?? []), ...(counted.presentation.lines ?? [])].every((item) => item.counted === true), "그린 시설은 모두 counted");
+  assert.equal(engineCount, 7, "문장의 건수(전제): 닿기만 한 두 시설 포함");
+  const everything = [...(counted.presentation.polygons ?? []), ...(counted.presentation.features ?? []), ...(counted.presentation.lines ?? [])];
+  assert.ok(everything.every((item) => item.counted === true), "그린 시설은 모두 counted");
+  for (const fid of ["16", "17"]) {
+    const shapes = everything.filter((item) => item.fid === fid);
+    assert.equal(shapes.length, 1, `${fid}번 시설(반경에 닿기만 함)은 대표점 하나만 낸다`);
+    assert.ok((counted.presentation.features ?? []).some((feature) => feature.fid === fid && feature.counted === true), `${fid}번의 counted 대표점`);
+  }
+  assert.equal(new Set(everything.map((item) => item.fid)).size, engineCount, "시설마다 정확히 한 번(fid 7개)");
   const view = toTileView(counted);
   const chart = analysisCharts(viewWithLayer(view, view.defaultLayer).map);
   assert.ok(chart, "D12는 도시계획시설·건을 밝혀 그래프가 나온다");
-  assert.equal(chart.total, engineCount, "그래프 시설 수 = 엔진 시설 수(면·선·점 합)");
+  assert.equal(chart.total, engineCount, "그래프 시설 수 = 엔진 시설 수(면·선·점·닿기만 한 시설 합)");
   assert.equal(chart.subject + chart.countUnit, "도시계획시설건");
+  // 음성 대조: counted를 떼면 북쪽 가장자리 조각, 그리고 반경 밖에 놓인 닿기만 한 두 시설이 빠져 그래프가 엔진 수보다 작아진다.
+  const stripCounted = (result) => {
+    const copy = JSON.parse(JSON.stringify(result));
+    for (const key of ["polygons", "features", "lines"]) for (const item of copy.presentation[key] ?? []) delete item.counted;
+    return copy;
+  };
+  const stripped = stripCounted(counted);
+  const strippedView = toTileView(stripped);
+  const strippedChart = analysisCharts(viewWithLayer(strippedView, strippedView.defaultLayer).map);
+  assert.ok(strippedChart.total < engineCount, `counted를 떼면 그래프(${strippedChart.total})가 엔진 수(${engineCount})보다 작다`);
+  assert.equal(strippedChart.total, 4, "음성 대조 값: 가장자리 조각 1 + 닿기만 한 시설 2 = 3건이 빠진다");
   countCtx.close();
 }
 
