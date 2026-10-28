@@ -12,7 +12,7 @@ import { SLIDE_LEGEND, calloutLegendEntries, layoutRects, slideCalloutAvoidance,
 import { coverLayout, fitBlock, fitFooterText, fontSizeForStyle, footerBasemaps, sourceLayout, titlePlateRect, type Slide } from "@/lib/v2/report/pptx-kit";
 import { SLIDE_OVERVIEW_FILL, calloutHoverText, calloutKeyFromTag, calloutKeyTag, calloutPageTitleTail, slideCalloutFrame } from "@/lib/v2/ui/callout-layout";
 import { a05ReportModule } from "@/lib/v2/tile/a05/report";
-import { layerStyle, legendItemsOf, legendLabelOf } from "@/lib/v2/ui/map-layers";
+import { layerStyle, legendItemsOf, legendLabelOf, modelWithHiddenLayers } from "@/lib/v2/ui/map-layers";
 import { reportSummaryNotes, terrainCrossingLayer, terrainElevationLabel, terrainSectionAxisStops, terrainSectionBands, terrainSectionElevationAt, terrainSectionMarkerGeometry, terrainSectionPosition, terrainSectionTotal, sortTerrainCrossings, TERRAIN_CROSSING_LABELS, TERRAIN_SECTION_LABELS, TERRAIN_SECTION_TABLE_MAX_ROWS } from "@/lib/v2/ui/terrain-section";
 import MapFigure, { type MapFigureElementPick } from "../map-figure";
 import { locatorBox, northArrowBox, scaleBarBox, scaleChromeScaleForBox } from "@/lib/v2/ui/map-scene";
@@ -25,6 +25,7 @@ import { labelBoxFramePatch, labelFramePatch, mapLabelSwitchState, reportPageMap
 import { mapLayoutUnitForFrame, placeActionBar, type ActionBarPixelBox } from "@/lib/v2/report/report-geometry";
 import { analysisCharts, type AnalysisCharts } from "@/lib/v2/report/analysis-charts";
 import { AnalysisColumn } from "./analysis-column";
+import { fontStyle } from "./surface-style";
 
 type SurfaceStyles = Record<string, string>;
 const FALLBACK_STYLES: SurfaceStyles = new Proxy<SurfaceStyles>({} as SurfaceStyles, { get: (_target, key) => String(key) });
@@ -214,11 +215,6 @@ function hasSummaryPanel(slide: PlannedSlide): boolean {
 
 function rectStyle(rect: Rect, unit: number): CSSProperties {
   return { left: rect.x * unit, top: rect.y * unit, width: rect.w * unit, height: rect.h * unit };
-}
-
-function fontStyle(pt: number, unit: number, extra: CSSProperties = {}): CSSProperties {
-  // 슬라이드 축소본이므로 글자도 배치와 같은 비율로 줄인다(하한을 두면 좁은 화면에서 줄이 겹친다).
-  return { ...extra, fontSize: (pt / 72) * unit };
 }
 
 function canvasStyle(unit: number): CSSProperties {
@@ -459,20 +455,6 @@ function snapDecorationBox(key: SurfaceDecorationKey, proposed: DecorationBox, a
   if (x) box = clampDecorationBox({ ...box, x0: box.x0 + x.delta, x1: box.x1 + x.delta }, width, height);
   if (y) box = clampDecorationBox({ ...box, y0: box.y0 + y.delta, y1: box.y1 + y.delta }, width, height);
   return { box, xGuides: x ? [x.target] : [], yGuides: y ? [y.target] : [] };
-}
-
-function hiddenLayer(layer: string, hidden: readonly string[]): boolean {
-  return hidden.includes(layer) || hidden.includes(layerStyle(layer).label);
-}
-
-export function modelWithHiddenLayers(model: NonNullable<ReturnType<typeof mapForSlide>>, hidden: readonly string[]): NonNullable<ReturnType<typeof mapForSlide>> {
-  if (hidden.length === 0) return model;
-  return {
-    ...model,
-    features: model.features.filter((feature) => !hiddenLayer(feature.layer, hidden)),
-    polygons: model.polygons?.filter((polygon) => !hiddenLayer(polygon.layer, hidden)),
-    lines: model.lines?.filter((line) => !hiddenLayer(line.layer, hidden)),
-  };
 }
 
 function recordPreviewMetric(name: string): void {

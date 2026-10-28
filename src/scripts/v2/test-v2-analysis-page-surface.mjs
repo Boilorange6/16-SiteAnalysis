@@ -7,7 +7,9 @@ const { GODEOK_RESULTS, GODEOK_SUMMARY } = await import("../../lib/v2/ui/fixture
 const { initBoard } = await import("../../lib/v2/ui/board-state.ts");
 const { toSummaryView, toTileView, viewWithLayer } = await import("../../lib/v2/ui/tile-view.ts");
 const { EMPTY_REPORT_DOC, defaultFrame } = await import("../../lib/v2/report/report-doc.ts");
-const { planReportDoc, recommendedPages } = await import("../../lib/v2/report/report-doc-plan.ts");
+const { importLegacyReport, pagesForTile, planReportDoc, recommendedPages } = await import("../../lib/v2/report/report-doc-plan.ts");
+const { tileReportSettingsFromBoard } = await import("../../lib/v2/report/report-plan.ts");
+const { terrainSectionLayout, slideLayout } = await import("../../lib/v2/ui/overlay-layout.ts");
 const { analysisCharts, analysisStatLine } = await import("../../lib/v2/report/analysis-charts.ts");
 const { SlideSurface } = await import("../../components/v2/report/slide-surface.tsx");
 
@@ -79,9 +81,17 @@ for (const kind of ["composition", "distance"]) {
   assert.match(svg, /role="img"/, `${kind} SVG는 role=img`);
   assert.match(svg, /aria-label="[^"]*[가-힣][^"]*"/, `${kind} SVG는 한국어 aria-label`);
 }
-assert.doesNotMatch(markup, /표본 한계 문구 가나다|보조 메모 라마바/, "각주 문구는 장 본문에 없다");
+const POPOVER = /<div[^>]*role="tooltip"[^>]*>[\s\S]*?<\/ul><\/div><\/div>/;
+const popover = POPOVER.exec(markup)?.[0];
+assert.ok(popover, "팝오버 요소는 늘 있다");
+assert.match(popover, /^<div[^>]*\shidden=""/, "닫혀 있으면 숨김");
+assert.doesNotMatch(markup.replace(POPOVER, ""), /표본 한계 문구 가나다|보조 메모 라마바/, "각주 문구는 장 본문에 없다(숨긴 팝오버 안에만 있다)");
+assert.match(popover, /표본 한계 문구 가나다[\s\S]*보조 메모 라마바/, "팝오버에 각주 목록");
 assert.match(markup, /<button[^>]*aria-expanded="false"[^>]*>주석 2<\/button>/, "중복을 뺀 주석 2개 칩");
-assert.doesNotMatch(markup, /aria-controls|aria-describedby/, "팝오버가 닫혀 있으면 가리킬 대상이 없다");
+const popoverId = /id="([^"]+)"/.exec(popover)[1];
+assert.match(markup, new RegExp(`<button[^>]*aria-controls="${popoverId}"[^>]*aria-describedby="${popoverId}"`), "칩은 첫 포커스부터 유효한 팝오버를 가리킨다");
+// 제목(J1): 데이터와 기하에서 온 같은 글이 두 그래프 맨 위에 있다
+assert.ok(markup.includes(">지상 층수 구성비</text>") && markup.includes(">대지에서 거리와 지상 층수</text>"), "그래프 제목");
 assert.ok(markup.includes(view.badges[0].text), "배지 문구는 있다");
 assert.ok(markup.includes(view.headline.value), "큰 숫자(기존 headline)");
 assert.ok(markup.includes(view.headline.label), "큰 숫자 라벨");
@@ -137,10 +147,9 @@ const a01Views = new Map([[a01.tileId, toTileView(a01)]]);
 const a01Board = initBoard([a01]);
 const a01Page = recommendedPages(EMPTY_REPORT_DOC, a01Views, a01Board, { summary: toSummaryView(GODEOK_SUMMARY, [a01]), analysisDate: "2026-10-27", views: a01Views }).find((page) => page.kind === "tile");
 const a01Plan = (layout) => planReportDoc({ ...EMPTY_REPORT_DOC, pages: [{ ...a01Page, layout }] }, a01Views, { summary: toSummaryView(GODEOK_SUMMARY, [a01]), analysisDate: "2026-10-27", views: a01Views }).find((slide) => slide.kind === "tile");
-if (!analysisCharts(a01Plan("map-summary").map)) {
-  assert.equal(a01Page.layout, "map-summary", "그래프 자료가 없는 A01 쪽은 map-summary");
-  assert.equal(render(a01Plan("map-charts")).replaceAll("map-charts", "map-summary"), render(a01Plan("map-summary")), "자료 없는 map-charts는 map-summary와 같은 화면");
-}
+assert.equal(analysisCharts(a01Plan("map-summary").map), null, "고덕 A01 지도에는 그래프 자료가 없다(이 비교의 전제)");
+assert.equal(a01Page.layout, "map-summary", "그래프 자료가 없는 A01 쪽은 map-summary");
+assert.equal(render(a01Plan("map-charts")).replaceAll("map-charts", "map-summary"), render(a01Plan("map-summary")), "자료 없는 map-charts는 map-summary와 같은 화면");
 
 // ── 오른쪽 열 칸에 그래프 기하를 놓아도 글자가 칸 안에 있고 서로 겹치지 않는다(16:9·A3·A4 × 글자 배율 1·1.85)
 const { compositionShapes, distanceShapes } = await import("../../lib/v2/report/chart-geometry.ts");
@@ -152,11 +161,119 @@ for (const format of ["wide", "a3", "a4"]) {
   for (const scale of [1, 1.85]) {
     const column = chartsColumnLayout(slidePanelRects({}, true, undefined, format).summary, scale);
     for (const data of [charts, bandsCharts]) {
-      for (const [name, shapes, box] of [["구성비", compositionShapes(data.composition, column.composition, scale), column.composition], ["거리", distanceShapes(data.distance, data.radiusM, column.distance, scale), column.distance]]) {
+      for (const [name, shapes, box] of [["구성비", compositionShapes(data.composition, column.composition, scale, data.titles.composition), column.composition], ["거리", distanceShapes(data.distance, data.radiusM, column.distance, scale, data.titles.distance), column.distance]]) {
         const texts = shapes.filter((shape) => shape.kind === "text");
         assert.ok(texts.length > 0, `${format} ${scale} ${name}: 글자가 있다`);
+        assert.ok(texts.some((t) => t.name.endsWith("-title")), `${format} ${scale} ${name}: 제목이 있다`);
         for (const t of texts) assert.ok(t.x >= box.x - 1e-9 && t.y >= box.y - 1e-9 && t.x + t.w <= box.x + box.w + 1e-9 && t.y + t.h <= box.y + box.h + 1e-9, `${format} ${scale} ${name}: ${t.name}이 칸 안`);
         for (let i = 0; i < texts.length; i += 1) for (let j = i + 1; j < texts.length; j += 1) assert.equal(areaOf(texts[i], texts[j]), 0, `${format} ${scale} ${name} ${data.distance.kind}: ${texts[i].name} ↔ ${texts[j].name} 겹침`);
+      }
+    }
+  }
+}
+
+// ── 필터 줄: 옛 요약이 그리던 「적용 필터」 줄을 한 줄 통계 칸의 둘째 줄로 그린다(고덕 A05, 설명선 없는 쪽)
+{
+  const a05 = GODEOK_RESULTS.find((result) => result.tileCode === "A05");
+  const a05View = { ...toTileView(a05, null, null, { distance: { max: 900 } }), callout: null };
+  assert.ok(a05View.filterLine, "A05 필터 줄이 있다(이 검사의 전제)");
+  const a05Views = new Map([[a05.tileId, a05View]]);
+  const a05Ctx = { summary: toSummaryView(GODEOK_SUMMARY, [a05]), analysisDate: "2026-10-27", views: a05Views };
+  const a05Pages = recommendedPages(EMPTY_REPORT_DOC, a05Views, initBoard([a05]), a05Ctx);
+  const a05Page = a05Pages.find((page) => page.kind === "tile");
+  assert.equal(a05Page.layout, "map-charts", "그래프 자료가 있는 A05 쪽은 map-charts");
+  for (const fontSizes of [undefined, { summary: 24 }]) {
+    const slide = planReportDoc({ ...EMPTY_REPORT_DOC, pages: [{ ...a05Page, ...(fontSizes ? { fontSizes } : {}) }] }, a05Views, a05Ctx).find((s) => s.kind === "tile");
+    const m = render(slide);
+    const stat = analysisStatLine(analysisCharts(slide.map));
+    const at = m.indexOf(`>${a05View.filterLine}</div>`);
+    assert.ok(at > 0, `필터 줄이 장에 있다 (${fontSizes ? "24 pt" : "기본"})`);
+    assert.ok(m.indexOf(`>${stat}</div>`) > 0 && m.indexOf(`>${stat}</div>`) < at, "통계 줄 아래에 필터 줄");
+    assert.match(m.slice(Math.max(0, at - 400), at), /-webkit-line-clamp:\s*1/, "필터 줄은 한 줄로 묶는다");
+  }
+  // 필터 줄이 없으면 통계 칸에는 통계만 있다
+  assert.ok(!render(planOf({ ...tilePage, layout: "map-charts" })).includes("적용 필터"), "필터가 없으면 필터 줄이 없다");
+}
+
+// ── 「지도 + 그래프」는 요약 칸이 있는 장에서만 고른다
+{
+  const a05 = GODEOK_RESULTS.find((result) => result.tileCode === "A05");
+  const raw = toTileView(a05);
+  assert.ok(raw.callout, "A05는 설명선 타일");
+  // 설명선 상세 장(page > 0)은 요약 칸이 없어 map-charts가 map-summary와 다르게 그려지지 않는다. 개요(page 0)는 요약 칸이 있다.
+  const calloutView = { ...raw, backdrop: raw.map };
+  const calloutPages = pagesForTile(EMPTY_REPORT_DOC, a05.tileId, calloutView, tileReportSettingsFromBoard(initBoard([a05]), a05.tileId), { summary: toSummaryView(GODEOK_SUMMARY, [a05]), analysisDate: "2026-10-27", views: new Map([[a05.tileId, calloutView]]) });
+  assert.deepEqual(calloutPages.map((page) => page.layout), ["map-charts", "map-summary"], "개요는 map-charts, 설명 상세 장은 map-summary");
+}
+
+// ── 옛 보고서 가져오기는 쪽 모양을 바꾸지 않는다
+{
+  const legacy = importLegacyReport(EMPTY_REPORT_DOC, board, views, ctx);
+  const legacyTile = legacy.find((page) => page.kind === "tile");
+  assert.ok(legacyTile, "가져온 D05 쪽");
+  assert.equal(legacyTile.layout, "map-summary", "가져온 쪽은 map-summary(새 추천 구성만 map-charts)");
+}
+
+// ── 주석 칩은 아래로 자라 해석 문장을 가리지 않고, 요약 칸을 벗어나지 않는다(슬라이드 폭 850 px 이상 = unit 64 이상)
+{
+  const summary = slidePanelRects({}, true, undefined, "wide").summary;
+  const column = chartsColumnLayout(summary, 1);
+  for (const unit of [55, 64, 80, 96, 140]) {
+    const chipTop = column.notesChip.y * unit;
+    const chipBottom = chipTop + Math.max(24, column.notesChip.h * unit);
+    assert.ok(chipTop >= (column.sentence.y + column.sentence.h) * unit - 1e-9, `unit ${unit}: 칩이 해석 문장 아래에서 시작`);
+    assert.ok(chipBottom <= (summary.y + summary.h) * unit + 1e-9, `unit ${unit}: 칩(24 px 이상)이 요약 칸 안`);
+  }
+}
+
+// ── 주석 팝오버 자리: 1024·1440 화면에서 화면과 슬라이드 표면 안에 머문다
+{
+  const { placeNotesPopover } = await import("../../components/v2/report/analysis-column.tsx");
+  const summary = slidePanelRects({}, true, undefined, "wide").summary;
+  const column = chartsColumnLayout(summary, 1);
+  for (const [W, H] of [[1024, 900], [1440, 900], [1440, 600]]) {
+    // 왼쪽 도구 막대 72 px, 위 머리 줄 56 px, 아래 페이지 줄 120 px을 뺀 무대에 16:9를 맞춘다.
+    const stageW = W - 72 - 16;
+    const stageH = H - 56 - 120;
+    const unit = Math.min(stageW / 13.333, stageH / 7.5);
+    const surface = { left: 72, top: 56 + 8, right: 72 + 13.333 * unit, bottom: 56 + 8 + 7.5 * unit };
+    const chip = { left: surface.left + column.notesChip.x * unit, top: surface.top + column.notesChip.y * unit, right: 0, bottom: 0 };
+    chip.right = chip.left + 54;
+    chip.bottom = chip.top + 24;
+    const bounds = { left: Math.max(0, surface.left), top: Math.max(0, surface.top), right: Math.min(W, surface.right), bottom: Math.min(H, surface.bottom) };
+    const p = placeNotesPopover(chip, bounds);
+    assert.ok(p.width <= 288 && chip.left + p.width <= bounds.right, `${W}×${H}: 폭이 288 px 이하이고 슬라이드 오른쪽 끝 안`);
+    const top = p.up ? chip.top - 6 - p.maxHeight : chip.bottom + 6;
+    const bottom = p.up ? chip.top - 6 : chip.bottom + 6 + p.maxHeight;
+    assert.ok(top >= bounds.top - 1e-9 && bottom <= bounds.bottom + 1e-9 && top >= 0 && bottom <= H, `${W}×${H}: 최대 높이(${Math.round(p.maxHeight)} px)까지 커져도 화면 안 (${Math.round(top)}–${Math.round(bottom)})`);
+  }
+  // 위가 좁고 아래가 넓으면 아래로 연다
+  const down = placeNotesPopover({ left: 700, right: 754, top: 100, bottom: 124 }, { left: 72, top: 64, right: 1000, bottom: 700 });
+  assert.equal(down.up, false, "위 여유가 작으면 아래로");
+  assert.equal(down.maxHeight, 700 - 124 - 6 - 8, "아래 여유가 최대 높이");
+  const narrow = placeNotesPopover({ left: 800, right: 854, top: 500, bottom: 524 }, { left: 72, top: 64, right: 1000, bottom: 700 });
+  assert.equal(narrow.width, 1000 - 800 - 8, "슬라이드 끝까지 남은 폭이 288보다 작으면 그 폭");
+}
+
+// ── D17처럼 요약 칸이 위쪽만 남은 경우에도 여섯 칸이 칸 안에서 겹치지 않고 그래프 글자가 칸 안에 있다
+{
+  const panels = slidePanelRects({}, true, undefined, "wide");
+  const squeezed = terrainSectionLayout(panels, slideLayout("wide"), "wide");
+  assert.equal(squeezed.mode, "summary", "16:9 D17은 단면을 요약 열 아래에 둔다");
+  assert.ok(squeezed.summary.h < panels.summary.h, "요약 칸이 줄었다");
+  for (const scale of [1, 1.85]) {
+    const column = chartsColumnLayout(squeezed.summary, scale);
+    const names = Object.keys(column);
+    for (const name of names) {
+      const r = column[name];
+      assert.ok(r.w > 0 && r.h > 0 && r.x >= squeezed.summary.x - 1e-9 && r.y >= squeezed.summary.y - 1e-9 && r.x + r.w <= squeezed.summary.x + squeezed.summary.w + 1e-9 && r.y + r.h <= squeezed.summary.y + squeezed.summary.h + 1e-9, `D17 ${scale}: ${name}이 줄어든 요약 칸 안`);
+    }
+    for (let i = 0; i < names.length; i += 1) for (let j = i + 1; j < names.length; j += 1) assert.equal(areaOf(column[names[i]], column[names[j]]), 0, `D17 ${scale}: ${names[i]}↔${names[j]} 겹침`);
+    for (const data of [charts, bandsCharts]) {
+      for (const [shapes, box] of [[compositionShapes(data.composition, column.composition, scale, data.titles.composition), column.composition], [distanceShapes(data.distance, data.radiusM, column.distance, scale, data.titles.distance), column.distance]]) {
+        const texts = shapes.filter((shape) => shape.kind === "text");
+        for (const t of texts) assert.ok(t.x >= box.x - 1e-9 && t.y >= box.y - 1e-9 && t.x + t.w <= box.x + box.w + 1e-9 && t.y + t.h <= box.y + box.h + 1e-9, `D17 ${scale}: ${t.name}이 칸 안`);
+        for (let i = 0; i < texts.length; i += 1) for (let j = i + 1; j < texts.length; j += 1) assert.equal(areaOf(texts[i], texts[j]), 0, `D17 ${scale} ${data.distance.kind}: ${texts[i].name}↔${texts[j].name} 겹침`);
       }
     }
   }

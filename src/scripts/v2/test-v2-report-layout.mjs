@@ -51,6 +51,7 @@ assert.deepEqual(withCharts.choices.map((choice) => choice.value), ["map-full", 
 assert.equal(withCharts.choices.find((choice) => choice.value === "map-charts")?.label, "지도 + 그래프", "map-charts 이름");
 assert.ok(!reportLayoutDecision({ pageKind: "tile", hasMap: true, hasSummary: true, hasCharts: false }).choices.some((choice) => choice.value === "map-charts"), "그래프 자료가 없으면 map-charts를 고를 수 없다");
 assert.ok(!map.choices.some((choice) => choice.value === "map-charts"), "hasCharts를 주지 않으면 map-charts가 없다");
+assert.ok(!reportLayoutDecision({ pageKind: "tile", hasMap: true, hasSummary: false, hasCharts: true }).choices.some((choice) => choice.value === "map-charts"), "요약 칸이 없으면 map-charts는 「지도 크게」와 같은 모양이라 뺀다");
 assert.deepEqual(reportLayoutDecision({ pageKind: "tile", hasMap: true, hasSummary: true, hasCharts: true, renderSignatures: { "map-charts": "지도:summary:summary" } }).choices.map((choice) => choice.value), ["map-full", "map-summary", "numbers-first"], "시그니처가 같으면 map-charts도 중복으로 뺀다");
 
 const { restoreReportDoc } = await import("../../lib/v2/ui/board-state.ts");

@@ -13,7 +13,7 @@ import type { RoseModel } from "../ui/wind-rose";
 import { sheetCells, type SheetGrid } from "../ui/sheet";
 import { reportSummaryNotes } from "../ui/terrain-section";
 import { COVER_MAP_KEY, mapKeyOf, type PlannedSlide } from "./report-plan";
-import { E, FONT, INK, L, LINE, MUTED, coverLayout, fitBlock, fitFooterText, fitPt, footerBasemaps, fontSizeForStyle, hex, linesOf, plate, sourceLayout, textIn, titlePlateRect, type Border, type ReportItem, type Slide } from "./pptx-kit";
+import { CHIP, E, FONT, INK, L, LINE, MUTED, coverLayout, fitBlock, fitFooterText, fitPt, footerBasemaps, fontSizeForStyle, hex, linesOf, plate, sourceLayout, textIn, titlePlateRect, type Border, type ReportItem, type Slide } from "./pptx-kit";
 import { tileReportModuleFor } from "../tile/report";
 import { addEditableMap, mapDrawPlan, nativeMapFallbackNote, nativeMapStatus } from "./map-pptx";
 import { exportBasemap } from "../ui/basemap";
@@ -29,12 +29,6 @@ export type MapImages = Record<string, string>;
 export type PptxMapDrawing = "editable" | "image";
 
 const underline = (pt: number): [Border, Border, Border, Border] => [{ type: "none" }, { type: "none" }, { type: "solid", pt, color: LINE }, { type: "none" }];
-
-const CHIP: Record<Badge["tone"], { fill: string; color: string }> = {
-  status: { fill: "FCE9C7", color: "7A4B00" },
-  limit: { fill: "F0E8DC", color: "5B4A2F" },
-  model: { fill: "E6E1F7", color: "3D2E8C" },
-};
 
 const panelTag = (key: string, display: string, part: string): string => `GRP|panel-${key}|${display}|${part}`;
 const legendDashType = (dash?: string): "solid" | "dash" | "sysDot" => dash === "1 3" ? "sysDot" : dash ? "dash" : "solid";

@@ -6,7 +6,7 @@ export type CompositionItem = { label: string; color: string; count: number; sha
 export type DistanceData =
   | { kind: "scatter"; axis: { label: string; unit: string }; points: { d: number; v: number; color: string }[]; median: number; mean: number; max: number; site: number | null; sampled: boolean }
   | { kind: "bands"; bands: { from: number; to: number; count: number }[] };
-export type AnalysisCharts = { radiusM: number; total: number; countUnit: string; subject: string; missing: number; composition: CompositionItem[]; distance: DistanceData };
+export type AnalysisCharts = { radiusM: number; total: number; countUnit: string; subject: string; missing: number; titles: { composition: string; distance: string }; composition: CompositionItem[]; distance: DistanceData };
 
 const MAX_POINTS = 2000;
 const OTHER = { label: "그 밖", color: "#B9BDC6" };
@@ -37,6 +37,14 @@ function ringCentroid(ring: readonly Px[]): Px {
   }
   if (Math.abs(area) < 1e-9) return [ring.reduce((s, p) => s + p[0], 0) / ring.length, ring.reduce((s, p) => s + p[1], 0) / ring.length];
   return [ox + cx / (3 * area), oy + cy / (3 * area)];
+}
+
+/** 고리 넓이(세계 픽셀², 첫 꼭짓점 기준으로 옮겨 계산). */
+function ringArea(ring: readonly Px[]): number {
+  const [ox, oy] = ring[0]!;
+  let twice = 0;
+  for (let i = 0; i < ring.length - 1; i++) twice += (ring[i]![0] - ox) * (ring[i + 1]![1] - oy) - (ring[i + 1]![0] - ox) * (ring[i]![1] - oy);
+  return Math.abs(twice) / 2;
 }
 
 function inRing(p: Px, ring: readonly Px[]): boolean {
@@ -78,7 +86,17 @@ export function analysisCharts(model: MapModel): AnalysisCharts | null {
     if (d <= model.radiusM) counted.push({ d, value, at, item });
   };
   for (const f of model.features) consider(f.layer, worldPx(f.lng, f.lat, Z), f.value);
-  for (const p of model.polygons ?? []) if (p.rings[0]?.length) consider(p.layer, ringCentroid(toPx(p.rings)[0]!), p.value);
+  // 같은 fid의 면(여러 조각으로 나뉜 건물)은 한 번만 센다. 첫 고리 넓이가 가장 큰(같으면 앞선) 조각이 대표라 점도 값도 그 조각의 것이다. fid 없는 면은 하나씩 센다.
+  const rings = (model.polygons ?? []).map((p) => (p.rings[0]?.length ? toPx([p.rings[0]])[0]! : null));
+  const biggest = new Map<string, number>();
+  (model.polygons ?? []).forEach((p, i) => {
+    if (p.fid === undefined || !rings[i]) return;
+    const at = biggest.get(p.fid);
+    if (at === undefined || ringArea(rings[i]!) > ringArea(rings[at]!)) biggest.set(p.fid, i);
+  });
+  (model.polygons ?? []).forEach((p, i) => {
+    if (rings[i] && (p.fid === undefined || biggest.get(p.fid) === i)) consider(p.layer, ringCentroid(rings[i]!), p.value);
+  });
   if (counted.length === 0) return null;
 
   // 구성비: 범례 항목 순서, 6개를 넘으면 수가 많은 상위 5개 + 그 밖
@@ -87,7 +105,10 @@ export function analysisCharts(model: MapModel): AnalysisCharts | null {
   const present = items.filter((item) => countByItem.has(item));
   if (present.length < 2) return null; // 반경 안에 실제로 있는 범례 항목이 하나뿐이면 구성비·거리 비교가 의미 없다
   const total = counted.length;
-  const toComposition = (item: (typeof items)[number]): CompositionItem => ({ label: item.label, color: item.color, count: countByItem.get(item)!, share: countByItem.get(item)! / total });
+  // 범례 이름의 ` · ` 뒤(A07 가격대 등)는 지도 범례에 이미 있으니 앞부분만 쓴다. 앞부분이 다른 항목과 같으면(예: `지목 · …`) 전체를 쓴다.
+  const headOf = (item: (typeof items)[number]) => item.label.split(" · ")[0]!;
+  const labelOf = (item: (typeof items)[number]) => (present.filter((other) => headOf(other) === headOf(item)).length > 1 ? item.label : headOf(item));
+  const toComposition = (item: (typeof items)[number]): CompositionItem => ({ label: labelOf(item), color: item.color, count: countByItem.get(item)!, share: countByItem.get(item)! / total });
   let composition = present.map(toComposition);
   if (composition.length > 6) {
     const keep = new Set([...present].sort((a, b) => countByItem.get(b)! - countByItem.get(a)!).slice(0, 5));
@@ -149,7 +170,11 @@ export function analysisCharts(model: MapModel): AnalysisCharts | null {
     distance = { kind: "bands", bands };
   }
 
-  return { radiusM: model.radiusM, total, countUnit, subject, missing, composition, distance };
+  const titles = {
+    composition: `${model.valueAxis?.label ?? subject} 구성비`,
+    distance: distance.kind === "scatter" ? `대지에서 거리와 ${distance.axis.label}` : `대지에서 거리별 ${subject} 수`,
+  };
+  return { radiusM: model.radiusM, total, countUnit, subject, missing, titles, composition, distance };
 }
 
 const num = (v: number, unit: string) => {

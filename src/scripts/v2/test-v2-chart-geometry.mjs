@@ -185,6 +185,8 @@ assert.deepEqual(tickValues(y1950), ["1950", "1960", "1970", "1980", "1990", "20
 
 // ── 실제 크기 상자(3.9 x 1.9 in)에서 층수·가격·연도 차트 900개를 무작위(고정 시드)로: 큰 글자(1.85)까지 글자끼리 안 겹치고 box 안
 const REAL = { x: 8.6, y: 3.2, w: 3.9, h: 1.9 };
+const { chartsColumnLayout, slidePanelRects } = await import("../../lib/v2/ui/overlay-layout.ts");
+const COLUMN_BOXES = ["wide", "a4"].map((format) => chartsColumnLayout(slidePanelRects({}, true, undefined, format).summary, 1).distance); // 3.91×1.92 · 3.38×2.17 (칸 크기는 글자 배율과 무관)
 let bseed = 11;
 const brand = () => ((bseed = (bseed * 1103515245 + 12345) % 2147483648) / 2147483648);
 const medianOf = (a) => {
@@ -209,14 +211,20 @@ const failures = [];
 for (const kind of ["floors", "price", "year"]) {
   for (let k = 0; k < 300; k++) {
     const fx = genScatter(kind);
-    for (const box of [REAL, { x: 8.6, y: 3.2, w: 3.4, h: 2.0 }]) // 뒤쪽은 A4 폭에 가까운 더 좁은 상자
+    for (const box of [REAL, { x: 8.6, y: 3.2, w: 3.4, h: 2.0 }, ...COLUMN_BOXES]) // 둘째는 A4 폭에 가까운 더 좁은 상자, 나머지는 chartsColumnLayout의 실제 칸(16:9·A4)
       for (const scale of [1, 1.85]) {
-        const shapes = distanceShapes(fx, 1000, box, scale);
-        try {
-          assertInside(shapes, box, `${kind} #${k} ${box.w}x${scale}`);
-          assertNoTextOverlap(shapes, `${kind} #${k} ${box.w}x${scale}`);
-        } catch (e) {
-          failures.push(e.message);
+        for (const title of ["", `대지에서 거리와 ${kind === "floors" ? "지상 층수" : kind === "price" ? "㎡당 가격" : "사용승인 연도"}`]) {
+          const shapes = distanceShapes(fx, 1000, box, scale, title);
+          try {
+            assertInside(shapes, box, `${kind} #${k} ${box.w.toFixed(2)}x${scale} 제목 ${title ? "있음" : "없음"}`);
+            assertNoTextOverlap(shapes, `${kind} #${k} ${box.w.toFixed(2)}x${scale} 제목 ${title ? "있음" : "없음"}`);
+            if (title) {
+              const shown = byName(shapes, "chart-distance-title").text;
+              assert.ok(shown === title || (shown.endsWith("…") && title.startsWith(shown.slice(0, -1))), `제목은 그대로이거나 줄임표로 자른다: ${shown}`);
+            }
+          } catch (e) {
+            failures.push(e.message);
+          }
         }
       }
   }

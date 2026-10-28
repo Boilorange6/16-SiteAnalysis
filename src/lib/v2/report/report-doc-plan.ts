@@ -136,7 +136,8 @@ function pageLayoutForSlide(slide: ReportSlide): ReportPage["layout"] {
         : false;
   if (!hasMap) return "numbers-first";
   // 새로 만드는 쪽만: 이 쪽이 실제로 그리는 지도(slide.map — 레이어 고르기는 view에 이미 반영됨)에 그래프 자료가 있으면 「지도 + 그래프」.
-  return slide.kind === "tile" && slide.map && analysisCharts(slide.map) ? "map-charts" : "map-summary";
+  // 요약 칸이 없는 설명선 상세 장은 「지도 + 요약」과 다르게 그려지지 않으므로 고르지 않는다.
+  return slide.kind === "tile" && slide.map && !(slide.callout && slide.callout.page > 0) && analysisCharts(slide.map) ? "map-charts" : "map-summary";
 }
 
 function partForSlide(view: TileView, settings: TileReportSettings, slide: ReportSlide, sheetIndex: number): TilePart {

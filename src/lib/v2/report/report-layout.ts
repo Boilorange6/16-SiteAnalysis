@@ -65,7 +65,8 @@ export function reportLayoutDecision(input: ReportLayoutInput): ReportLayoutDeci
   const defaults: Record<ReportLayout, string> = {
     "map-full": `${mapWord}:full:${input.hasSummary ? "summary" : "none"}`,
     "map-summary": `${mapWord}:summary:${input.hasSummary ? "summary" : "none"}`,
-    "map-charts": `${mapWord}:charts`,
+    // 요약 칸이 없으면 그래프 열을 그릴 곳이 없어 「크게」와 같은 모양이다.
+    "map-charts": input.hasSummary ? `${mapWord}:charts` : `${mapWord}:full:none`,
     "numbers-first": "numbers-first",
     "side-by-side": "legacy-hidden",
   };

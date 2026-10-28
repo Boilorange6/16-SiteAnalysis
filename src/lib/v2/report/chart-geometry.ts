@@ -52,7 +52,23 @@ const textMaker = (box: ChartBox, prefix: string) => (name: string, text: string
   return { kind: "text", x: clamp(x0, box.x, box.x + box.w - w), y: clamp(y, box.y, box.y + box.h - h), w, h, text, pt, bold, color, align, name: `${prefix}-${name}` };
 };
 
-export function compositionShapes(items: CompositionItem[], box: ChartBox, scale: number): ChartShape[] {
+const TITLE_PT = AXIS_PT * 1.15;
+
+/** 제목은 box 맨 위 왼쪽에 굵게 한 줄. 차트는 그 아래 남은 칸에 그린다. 제목이 빈 글이면 box 전부를 차트에 쓴다. */
+function withTitle(box: ChartBox, scale: number, title: string, prefix: string, draw: (rest: ChartBox) => ChartShape[]): ChartShape[] {
+  if (!title) return draw(box);
+  const pt = TITLE_PT * scale;
+  const rest = { x: box.x, y: box.y + textH(pt) + 0.04 * scale, w: box.w, h: box.h - textH(pt) - 0.04 * scale };
+  const shapes = draw(rest);
+  if (!shapes.length) return shapes;
+  return [textMaker(box, prefix)("title", fit(title, pt, box.w / 1.05), pt, C.strong, "left", box.x, box.y, true), ...shapes];
+}
+
+export function compositionShapes(items: CompositionItem[], box: ChartBox, scale: number, title = ""): ChartShape[] {
+  return withTitle(box, scale, title, "chart-composition", (rest) => compositionRows(items, rest, scale));
+}
+
+function compositionRows(items: CompositionItem[], box: ChartBox, scale: number): ChartShape[] {
   if (!items.length) return [];
   const text = textMaker(box, "chart-composition");
   const rh = Math.min(0.23 * scale, box.h / items.length);
@@ -217,6 +233,6 @@ function bandShapes(bands: { from: number; to: number; count: number }[], box: C
   return out;
 }
 
-export function distanceShapes(d: DistanceData, radiusM: number, box: ChartBox, scale: number): ChartShape[] {
-  return d.kind === "scatter" ? scatterShapes(d, radiusM, box, scale) : bandShapes(d.bands, box, scale);
+export function distanceShapes(d: DistanceData, radiusM: number, box: ChartBox, scale: number, title = ""): ChartShape[] {
+  return withTitle(box, scale, title, "chart-distance", (rest) => (d.kind === "scatter" ? scatterShapes(d, radiusM, rest, scale) : bandShapes(d.bands, rest, scale)));
 }

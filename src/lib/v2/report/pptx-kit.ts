@@ -6,6 +6,7 @@ import { VECTOR_ATTRIBUTION, type BasemapChoice } from "../ui/map-projection";
 import { exportBasemap } from "../ui/basemap";
 import type { MapModel } from "../ui/map-layers";
 import type { PlannedSlide } from "./report-plan";
+import type { Badge } from "../ui/tile-view";
 import { OV, SLIDE, slideLayout, slidePanelRects, slidePanelScale, slideSize, stripText, layoutRects, type Rect, type SlideFormat } from "../ui/overlay-layout";
 
 export { SLIDE, layoutRects, slideSize };
@@ -16,6 +17,12 @@ export type Border = PptxGenJS.BorderProps;
 export type ReportItem = { h: number; draw: (y: number, slide?: Slide) => void };
 
 export { FONT };
+/** 배지 칩 색(# 없는 hex). PPT 칩과 화면 「지도 + 그래프」 배지가 같은 값을 쓴다. */
+export const CHIP: Record<Badge["tone"], { fill: string; color: string }> = {
+  status: { fill: "FCE9C7", color: "7A4B00" },
+  limit: { fill: "F0E8DC", color: "5B4A2F" },
+  model: { fill: "E6E1F7", color: "3D2E8C" },
+};
 export const INK = "15171C";
 export const MUTED = "5B606B";
 export const LINE = "D9DCE2";

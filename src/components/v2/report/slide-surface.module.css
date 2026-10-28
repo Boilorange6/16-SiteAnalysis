@@ -454,7 +454,7 @@
 
 .analysisNotes {
   display: flex;
-  align-items: flex-end;
+  align-items: flex-start;
 }
 
 .analysisNotesChip {
@@ -484,13 +484,25 @@
   outline-offset: 2px;
 }
 
+/* 바깥 상자는 투명하고 칩과 카드 사이 틈(패딩)까지 덮어, 포인터가 틈을 건너 카드로 가도 닫히지 않는다. 위·아래·폭·최대 높이는 칩 위치에서 계산해 인라인으로 준다. */
 .analysisNotesPopover {
   position: absolute;
   z-index: 5;
-  right: 0;
-  bottom: calc(100% + 6px);
+  left: 0;
   box-sizing: border-box;
-  width: 288px;
+  display: flex;
+  flex-direction: column;
+}
+
+.analysisNotesPopover[hidden] {
+  display: none;
+}
+
+.analysisNotesCard {
+  box-sizing: border-box;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 12px;
   color: #15171c;
   background: #fff;
@@ -500,10 +512,9 @@
   font-size: 12px;
   font-weight: 500;
   line-height: 1.5;
-  pointer-events: none;
 }
 
-.analysisNotesPopover ul {
+.analysisNotesCard ul {
   display: grid;
   gap: 6px;
   margin: 0;

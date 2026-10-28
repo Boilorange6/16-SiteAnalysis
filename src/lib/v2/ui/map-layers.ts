@@ -772,6 +772,19 @@ export function compactLegendItems(model: MapModel, limit = 3) {
 
 export const layerStyle =(layer: string): LayerStyle => LAYER_STYLES[layer] ?? FALLBACK;
 
+const hiddenLayer = (layer: string, hidden: readonly string[]): boolean => hidden.includes(layer) || hidden.includes(layerStyle(layer).label);
+
+/** 보고서 쪽이 끈 레이어(id 또는 표시명)를 뺀 모델. 끈 것이 없으면 같은 모델. 화면·그래프 자료가 쪽이 실제로 그리는 지도를 같게 얻는다. */
+export function modelWithHiddenLayers<M extends MapModel>(model: M, hidden: readonly string[]): M {
+  if (hidden.length === 0) return model;
+  return {
+    ...model,
+    features: model.features.filter((feature) => !hiddenLayer(feature.layer, hidden)),
+    polygons: model.polygons?.filter((polygon) => !hiddenLayer(polygon.layer, hidden)),
+    lines: model.lines?.filter((line) => !hiddenLayer(line.layer, hidden)),
+  };
+}
+
 /** 모델의 다이어그램 팔레트를 입힌 레이어 스타일. 팔레트가 없으면 layerStyle과 같은 객체. */
 export const modelLayerStyle = (model: Pick<MapModel, "palette"> | null | undefined, layer: string): LayerStyle =>
   paletteLayerStyle(layer, layerStyle(layer), model?.palette);

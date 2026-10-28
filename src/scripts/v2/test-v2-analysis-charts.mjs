@@ -188,4 +188,40 @@ assert.equal(analysisStatLine(year), "반경 500 m 안 아파트 단지 42단지
 const bands = { radiusM: 1000, total: 42, countUnit: "개", subject: "버스정류장", missing: 0, composition: [], distance: { kind: "bands", bands: [{ from: 0, to: 100, count: 1 }, { from: 100, to: 200, count: 9 }, { from: 200, to: 300, count: 9 }] } };
 assert.equal(analysisStatLine(bands), "반경 1 km 안 버스정류장 42개 · 가장 많은 거리 100–200 m");
 
+// ── 제목: 데이터와 함께 정한다(화면·PPT 공용)
+assert.deepEqual(c.titles, { composition: "지상 층수 구성비", distance: "대지에서 거리와 지상 층수" });
+const bandsOnly = analysisCharts(model({ features: [pt("bus_stop", 10), pt("rail_station", 20)] }));
+assert.deepEqual(bandsOnly.titles, { composition: `${bandsOnly.subject} 구성비`, distance: `대지에서 거리별 ${bandsOnly.subject} 수` }, "값 축이 없으면 구성비는 대상 이름, 거리는 거리별 개수");
+
+// ── 같은 fid의 면(여러 조각으로 나뉜 건물)은 한 번만 센다. 넓이가 가장 큰 조각이 점과 값을 정한다.
+const piece = (layer, eastM, halfM, value, fid) => ({ layer, rings: square(eastM, 0, halfM), value, ...(fid === undefined ? {} : { fid }) });
+const multipart = analysisCharts(model({
+  valueAxis: AXIS,
+  polygons: [
+    piece("floors_1_4", 600, 5, 3, "a"), // 작은 조각이 먼저 나와도
+    piece("floors_1_4", 100, 20, 10, "a"), // 큰 조각이 대표
+    piece("floors_5_8", 200, 5, 6, "b"),
+    piece("floors_5_8", 300, 5, 7), // fid 없음: 하나씩
+    piece("floors_5_8", 310, 5, 8),
+  ],
+}));
+assert.equal(multipart.total, 4, "같은 fid는 한 번 — 조각 5개 → 건물 4동");
+assert.deepEqual(multipart.distance.points.map((p) => p.v).sort((x, y) => x - y), [6, 7, 8, 10], "대표 조각의 값(10)을 쓰고 작은 조각의 값(3)은 쓰지 않는다");
+assert.ok(Math.abs(multipart.distance.points.find((p) => p.v === 10).d - 100) < 1, "대표 조각의 위치");
+assert.equal(multipart.composition.find((item) => item.label === "1~4층").count, 1);
+const tied = analysisCharts(model({ valueAxis: AXIS, polygons: [piece("floors_1_4", 50, 5, 1, "t"), piece("floors_1_4", 400, 5, 2, "t"), piece("floors_5_8", 200, 5, 6)] }));
+assert.deepEqual(tied.distance.points.map((p) => p.v).sort((x, y) => x - y), [1, 6], "넓이가 같으면 앞선 조각");
+
+// ── 구성비 이름은 범례 이름의 ` · ` 앞부분(A07 가격대 범례는 지도 범례에 이미 있다)
+const f = (layer, i) => ({ layer, lng: CENTER[0] + (i * 40) / M_LNG, lat: CENTER[1], weight: 100 });
+const trade = analysisCharts(model({
+  features: ["trade_q1", "trade_q2", "trade_q3"].map(f),
+  legend: [{ label: "㎡당 하위 20%", min: null, max: 300 }, { label: "㎡당 20~40%", min: 300, max: 500 }, { label: "㎡당 40~60%", min: 500, max: 700 }, { label: "㎡당 60~80%", min: 700, max: 900 }, { label: "㎡당 상위 20%", min: 900, max: null }],
+}));
+assert.ok(legendItemsForModel(model({ features: ["trade_q1", "trade_q2", "trade_q3", "trade_q4", "trade_q5"].map(f), legend: [{ label: "㎡당 하위 20%", min: null, max: 300 }, { label: "㎡당 20~40%", min: 300, max: 500 }, { label: "㎡당 40~60%", min: 500, max: 700 }, { label: "㎡당 60~80%", min: 700, max: 900 }, { label: "㎡당 상위 20%", min: 900, max: null }] })).every((item) => item.label.includes(" · ")), "전제: 범례 이름에 가격대가 붙는다");
+assert.deepEqual(trade.composition.map((item) => item.label), ["㎡당 하위 20%", "㎡당 20~40%", "㎡당 40~60%"], "구성비 이름은 가격대를 뗀 앞부분");
+// 앞부분이 같아 구별되지 않으면 전체 이름을 쓴다(지목 · 대지 / 지목 · 도로)
+const jimok = analysisCharts(model({ features: [f("jimok:대", 1), f("jimok:도로", 2)] }));
+assert.deepEqual(jimok.composition.map((item) => item.label), ["지목 · 대지", "지목 · 도로"]);
+
 console.log("✓ v2 analysis charts");

@@ -23,7 +23,8 @@ import { legendItemsForModel, type MapLegendLayerItem, type MapModel } from "@/l
 import { useFocusTrap } from "../use-focus-trap";
 import { mapLabelEntries } from "../map-figure";
 import { analysisCharts } from "@/lib/v2/report/analysis-charts";
-import { SlideSurface, modelWithHiddenLayers, type FontTargetKey, type SurfaceContextMenuTarget, type SurfaceContextTarget, type SurfaceSelection } from "./slide-surface";
+import { modelWithHiddenLayers } from "@/lib/v2/ui/map-layers";
+import { SlideSurface, type FontTargetKey, type SurfaceContextMenuTarget, type SurfaceContextTarget, type SurfaceSelection } from "./slide-surface";
 import DrawerPages, { type PageAddKind } from "./drawer-pages";
 import DrawerTiles from "./drawer-tiles";
 import PageStrip, { type PageStripItem } from "./page-strip";
@@ -1363,6 +1364,8 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   const layoutHasSummary = selectedSlide?.kind === "tile"
     ? selectedSlide.style.summary !== false && !(selectedSlide.callout && selectedSlide.callout.page > 0)
     : false;
+  // 「지도 + 그래프」 후보: 요약 칸이 있고 그래프 자료가 있을 때만(레이아웃 창이 열려 있는 동안 한 번만 계산).
+  const layoutHasCharts = useMemo(() => layoutPopoverOpen && layoutHasSummary && pageHasCharts(selectedSlide, selectedPage), [layoutPopoverOpen, layoutHasSummary, selectedSlide, selectedPage]);
   // 지도 색: 「이 쪽만」은 지도가 있는 쪽에서만 쓴다. 지도 없는 쪽으로 옮겨 가면 보고서 전체로 돌아간다.
   const mapColorTarget: "document" | "page" = mapColorScope === "page" && layoutHasMap && !!selectedPage ? "page" : "document";
   const mapColorValue = resolveMapColors(board, history.present, mapColorTarget === "page" ? selectedPage : undefined);
@@ -1850,7 +1853,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
             </div>
             <div className={styles.railPopoverRoot}>
               <button ref={layoutTriggerRef} type="button" className={`${styles.railButton} ${layoutPopoverOpen ? styles.railButtonActive : ""}`} aria-haspopup="dialog" aria-pressed={layoutPopoverOpen} aria-expanded={layoutPopoverOpen} aria-controls={layoutPopoverOpen ? "report-layout-menu" : undefined} aria-label="페이지 레이아웃 메뉴" onClick={(event) => toggleLayoutPopover(event.currentTarget)} disabled={!selectedPage}><span aria-hidden="true"><RailIcon name="layout" /></span><span className={styles.railTooltip} role="tooltip">레이아웃</span></button>
-               {layoutPopoverOpen && selectedPage && <div ref={layoutPopoverRef} id="report-layout-menu" className={`${styles.floatCard} ${styles.sidePanelCard} ${styles.anchoredCard} ${styles.railPopover}`} style={{ ...anchoredCardStyle, ...sidePanelStyle }} role="dialog" aria-label="페이지 레이아웃"><LayoutSwitcher compact pageNumber={selectedPageNumber ?? 1} value={selectedPage.layout} pageKind={layoutPageKind} hasMap={layoutHasMap} hasSummary={layoutHasSummary} hasCharts={pageHasCharts(selectedSlide, selectedPage)} grid={selectedPage.kind === "compare" ? selectedPage.grid : undefined} deletedItems={deletedLayoutItems} opacity={sidePanelOpacity} onOpacityChange={changeSidePanelOpacity} onChange={(layout) => apply({ type: "layout", id: selectedPage.id, layout })} onGridChange={(grid) => apply({ type: "grid", id: selectedPage.id, grid })} onClose={() => closePopover(true)} /></div>}
+               {layoutPopoverOpen && selectedPage && <div ref={layoutPopoverRef} id="report-layout-menu" className={`${styles.floatCard} ${styles.sidePanelCard} ${styles.anchoredCard} ${styles.railPopover}`} style={{ ...anchoredCardStyle, ...sidePanelStyle }} role="dialog" aria-label="페이지 레이아웃"><LayoutSwitcher compact pageNumber={selectedPageNumber ?? 1} value={selectedPage.layout} pageKind={layoutPageKind} hasMap={layoutHasMap} hasSummary={layoutHasSummary} hasCharts={layoutHasCharts} grid={selectedPage.kind === "compare" ? selectedPage.grid : undefined} deletedItems={deletedLayoutItems} opacity={sidePanelOpacity} onOpacityChange={changeSidePanelOpacity} onChange={(layout) => apply({ type: "layout", id: selectedPage.id, layout })} onGridChange={(grid) => apply({ type: "grid", id: selectedPage.id, grid })} onClose={() => closePopover(true)} /></div>}
             </div>
             <div className={styles.railPopoverRoot}>
               <button ref={notesTriggerRef} type="button" className={`${styles.railButton} ${notesPopoverOpen ? styles.railButtonActive : ""}`} aria-haspopup="dialog" aria-pressed={notesPopoverOpen} aria-expanded={notesPopoverOpen} aria-controls={notesPopoverOpen ? "report-notes-popover" : undefined} aria-label={selectedPage?.notes.trim() ? "발표 메모 있음" : "발표 메모"} data-has-notes={selectedPage?.notes.trim() ? "true" : "false"} onClick={(event) => toggleNotesPopover(event.currentTarget)} disabled={!selectedPage}><span aria-hidden="true"><RailIcon name="notes" /></span><span className={styles.railTooltip} role="tooltip">메모</span>{selectedPage?.notes.trim() && <span className={styles.noteDot} aria-hidden="true" />}</button>
