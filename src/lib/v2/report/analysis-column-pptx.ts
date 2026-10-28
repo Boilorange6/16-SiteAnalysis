@@ -4,15 +4,12 @@
  */
 import { analysisStatLine, type AnalysisCharts } from "./analysis-charts";
 import { analysisColumnFit } from "./analysis-column-fit";
-import { compositionShapes, distanceShapes, type ChartShape } from "./chart-geometry";
+import { RECT_STROKE_PT, compositionShapes, distanceShapes, type ChartShape } from "./chart-geometry";
 import { addDots } from "./map-pptx";
 import { CHIP, FONT, INK, MUTED, hex, type Slide } from "./pptx-kit";
 import { DEFAULT_REPORT_FONT_SIZES } from "./report-doc";
 import { chartsColumnLayout, type Rect } from "../ui/overlay-layout";
 import type { TileView } from "../ui/tile-view";
-
-/** 화면 SVG의 사각형 테두리 굵기(pt) */
-const RECT_STROKE_PT = 0.75;
 
 /**
  * 그래프 도형 목록(슬라이드 inch·pt)을 pptxgenjs 도형으로 옮긴다. 도형 이름은 `${namePrefix}${shape.name}`.
@@ -89,13 +86,14 @@ export function drawAnalysisColumn(s: Slide, { charts, view, sentence, rect, sum
   }
 
   // 한 줄 통계 + 필터 줄: 한 글상자 두 문단
+  // 통계·필터 줄·해석 문장은 fit이 줄 수에 맞게 자른 글을 그대로 쓴다(PowerPoint의 shrink는 편집할 때만 적용돼 믿을 수 없다).
   s.addText(
-    [{ text: statText, options: { breakLine: !!view.filterLine } }, ...(view.filterLine ? [{ text: view.filterLine, options: {} }] : [])],
-    { ...col.stat, valign: "top", fontFace: FONT, fontSize: fit.statPt, color: INK, margin: 0, fit: "shrink", objectName: panel },
+    [{ text: fit.statText, options: { breakLine: !!fit.filterLine } }, ...(fit.filterLine ? [{ text: fit.filterLine, options: {} }] : [])],
+    { ...col.stat, valign: "top", fontFace: FONT, fontSize: fit.statPt, color: INK, margin: 0, objectName: panel },
   );
 
   addChartShapes(s, compositionShapes(charts.composition, col.composition, scale, charts.titles.composition), `GRP|chart-composition-${view.code}|그래프 · 구성비|`);
   addChartShapes(s, distanceShapes(charts.distance, charts.radiusM, col.distance, scale, charts.titles.distance), `GRP|chart-distance-${view.code}|그래프 · 거리|`);
 
-  if (sentence) s.addText(sentence, { ...col.sentence, valign: "top", fontFace: FONT, fontSize: fit.sentPt, bold: true, color: INK, margin: 0, fit: "shrink", objectName: panel });
+  if (fit.sentence) s.addText(fit.sentence, { ...col.sentence, valign: "top", fontFace: FONT, fontSize: fit.sentPt, bold: true, color: INK, margin: 0, objectName: panel });
 }

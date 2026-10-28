@@ -2,7 +2,7 @@
 import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../../engine/context";
 import { buildingRetirementLimitations, buildingRows, BUILDING_SOURCES, isCounted, type BuildingRow } from "../../engine/tiles/buildings-shared";
-import { makeTile, missing, obs, polygonCandidate, type PolygonCandidate, type TileDraft } from "../../engine/tiles/common";
+import { fallbackCandidate, makeTile, missing, obs, polygonCandidate, type MapCandidate, type PolygonCandidate, type TileDraft } from "../../engine/tiles/common";
 import { areaInCircle, polygonArea, polygonParts } from "../../engine/tiles/geo";
 import { notProvided } from "../../engine/tiles/not-provided";
 
@@ -84,6 +84,7 @@ export function d03(ctx: EngineContext): TileResult {
   const counts = emptyClassCounts();
   const areaByClass = emptyClassCounts();
   const polygons: PolygonCandidate[] = [];
+  const points: MapCandidate[] = [];
   let confirmed = 0;
   let areaDenominator = 0;
   let invalidGeometry = 0;
@@ -95,11 +96,19 @@ export function d03(ctx: EngineContext): TileResult {
     if (counted && useClass !== "미상") confirmed += 1;
 
     const clipped = areaInCircle(ctx.input.center, ctx.input.radiusM, row.hit.geometry);
+    // 동수에 든 건물인데 그릴 면이 없으면(도형 오류·교차 실패) 대표점 하나를 counted로 싣는다 — 그래프가 동수를 그대로 센다.
+    const fallback = () => {
+      const name = row.hit.name ?? null;
+      const point = counted ? fallbackCandidate(row.hit, `use:${useClass}`, { name, sublabel: useLabelOf(row.useCode), labelPriority: name === null ? 0 : 1, counted: true }) : null;
+      if (point) points.push(point);
+    };
     if (clipped === null) {
       invalidGeometry += 1;
+      fallback();
       continue;
     }
 
+    let drawn = false;
     for (const rings of clipped.parts) {
       const name = row.hit.name ?? null;
       const polygon = polygonCandidate(row.hit.featureId, `use:${useClass}`, rings, polygonArea(rings), null, {
@@ -108,8 +117,12 @@ export function d03(ctx: EngineContext): TileResult {
         labelPriority: name === null ? 0 : 1,
         counted, // 그래프 동수가 엔진 동수(중심점이 반경 안)를 따른다
       });
-      if (polygon) polygons.push(polygon);
+      if (polygon) {
+        polygons.push(polygon);
+        drawn = true;
+      }
     }
+    if (!drawn) fallback();
 
     if (row.footprintM2 !== null && clipped.areaM2 > 0) {
       const geometryArea = fullGeometryArea(row);
@@ -176,6 +189,7 @@ export function d03(ctx: EngineContext): TileResult {
     sources: ctx.sources("buildings", BUILDING_SOURCES),
     layers: USE_CLASSES.map((useClass) => `use:${useClass}`),
     polygons,
+    ...(points.length > 0 ? { map: points } : {}),
     limitations,
   });
 }

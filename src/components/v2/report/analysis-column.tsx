@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { analysisStatLine, type AnalysisCharts } from "@/lib/v2/report/analysis-charts";
-import { compositionShapes, distanceShapes, type ChartBox, type ChartShape } from "@/lib/v2/report/chart-geometry";
+import { RECT_STROKE_PT, compositionShapes, distanceShapes, type ChartBox, type ChartShape } from "@/lib/v2/report/chart-geometry";
 import { DEFAULT_REPORT_FONT_SIZES } from "@/lib/v2/report/report-doc";
 import { ANALYSIS_LINE, analysisColumnFit } from "@/lib/v2/report/analysis-column-fit";
 import { CHIP } from "@/lib/v2/report/pptx-kit";
@@ -38,7 +38,7 @@ export function ChartSvg({ shapes, box, panel, unit, kind, label, styles }: { sh
       style={{ position: "absolute", left: (box.x - panel.x) * unit, top: (box.y - panel.y) * unit }}
     >
       {shapes.map((s) => {
-        if (s.kind === "rect") return <rect key={s.name} x={n(X(s.x))} y={n(Y(s.y))} width={n(s.w * unit)} height={n(s.h * unit)} fill={s.fill} {...(s.stroke ? { stroke: s.stroke, strokeWidth: 0.75 * ptPx } : {})} />;
+        if (s.kind === "rect") return <rect key={s.name} x={n(X(s.x))} y={n(Y(s.y))} width={n(s.w * unit)} height={n(s.h * unit)} fill={s.fill} {...(s.stroke ? { stroke: s.stroke, strokeWidth: RECT_STROKE_PT * ptPx } : {})} />;
         if (s.kind === "line") {
           const w = s.width * ptPx;
           return <line key={s.name} x1={n(X(s.x1))} y1={n(Y(s.y1))} x2={n(X(s.x2))} y2={n(Y(s.y2))} stroke={s.stroke} strokeWidth={w} {...(s.dash ? { strokeDasharray: `${n(w * 4)} ${n(w * 3)}` } : {})} />;
@@ -46,7 +46,7 @@ export function ChartSvg({ shapes, box, panel, unit, kind, label, styles }: { sh
         if (s.kind === "dots") {
           const r = s.r * unit;
           const d = s.points.map(([x, y]) => `M${n(X(x) - r)} ${n(Y(y))}a${n(r)} ${n(r)} 0 1 0 ${n(2 * r)} 0a${n(r)} ${n(r)} 0 1 0 ${n(-2 * r)} 0`).join("");
-          return <path key={s.name} d={d} fill={s.color} fillOpacity={s.opacity} {...(s.stroke ? { stroke: s.stroke, strokeWidth: (s.strokeWidth ?? 0.75) * ptPx } : {})} />;
+          return <path key={s.name} d={d} fill={s.color} fillOpacity={s.opacity} {...(s.stroke ? { stroke: s.stroke, strokeWidth: (s.strokeWidth ?? RECT_STROKE_PT) * ptPx } : {})} />;
         }
         const anchor = s.align === "left" ? "start" : s.align === "right" ? "end" : "middle";
         const x = s.align === "left" ? s.x : s.align === "right" ? s.x + s.w : s.x + s.w / 2;
@@ -152,14 +152,14 @@ export function AnalysisColumn({ styles, charts, view, sentence, rect, unit, sum
   const badges = view.badges;
   const headline = view.headline;
   const hr = col.headline;
-  const statText = analysisStatLine(charts);
-  const filterLine = view.filterLine;
-  const { e, labelPt, valuePt, statPt, statClamp, sentPt, sentLines } = analysisColumnFit({ col, scale, summaryPt, badges, headline, statText, filterLine, sentence });
+  const fullStatText = analysisStatLine(charts);
+  // 통계·필터 줄·해석 문장은 줄 수에 맞게 잘린 글(PPT와 같은 문자열)을 그린다. CSS line-clamp는 줄 나눔이 어긋날 때를 위한 안전망이다.
+  const { e, labelPt, valuePt, statPt, statClamp, sentPt, sentLines, statText, filterLine, sentence: sentenceText } = analysisColumnFit({ col, scale, summaryPt, badges, headline, statText: fullStatText, filterLine: view.filterLine, sentence });
   const clamp = (lines: number): CSSProperties => ({ display: "-webkit-box", WebkitLineClamp: lines, WebkitBoxOrient: "vertical", overflow: "hidden", lineHeight: LINE });
   const notes = [...new Set([...view.caveats, ...view.notes])];
   const pct = (item: AnalysisCharts["composition"][number]) => (item.share > 0 && Math.round(item.share * 100) === 0 ? "1% 미만" : `${Math.round(item.share * 100)}%`);
   const compLabel = `${charts.titles.composition} 막대 그래프. ${charts.composition.map((item) => `${item.label} ${pct(item)}`).join(", ")}`;
-  const distLabel = `${charts.titles.distance} ${charts.distance.kind === "scatter" ? "산점도" : "막대 그래프"}. ${statText}`;
+  const distLabel = `${charts.titles.distance} ${charts.distance.kind === "scatter" ? "산점도" : "막대 그래프"}. ${fullStatText}`;
 
   return (
     <div data-analysis-column="true">
@@ -186,7 +186,7 @@ export function AnalysisColumn({ styles, charts, view, sentence, rect, unit, sum
       </div>
       <ChartSvg shapes={compShapes} box={col.composition} panel={rect} unit={unit} kind="composition" label={compLabel} styles={styles} />
       <ChartSvg shapes={distShapes} box={col.distance} panel={rect} unit={unit} kind="distance" label={distLabel} styles={styles} />
-      {sentence && <div className={styles.slideText + " " + styles.slideTextStrong} style={{ ...at(col.sentence), ...fontStyle(sentPt, unit), lineHeight: LINE, ...clamp(sentLines) }}>{sentence}</div>}
+      {sentenceText && <div className={styles.slideText + " " + styles.slideTextStrong} style={{ ...at(col.sentence), ...fontStyle(sentPt, unit), lineHeight: LINE, ...clamp(sentLines) }}>{sentenceText}</div>}
       {showNotes && notes.length > 0 && <NotesChip notes={notes} rect={col.notesChip} panel={rect} unit={unit} styles={styles} />}
     </div>
   );

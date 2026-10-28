@@ -147,7 +147,7 @@ assert.doesNotMatch(JSON.stringify(toTileView(a)), /도보|\d\s*분|종합/);
       const stripped = JSON.parse(JSON.stringify(tile));
       for (const f of stripped.presentation.features) delete f.counted;
       const strippedView = toTileView(stripped);
-      assert.equal(analysisCharts(viewWithLayer(strippedView, strippedView.defaultLayer).map).total, engineSchools - 1, "음성 대조: counted를 떼면 가장자리 학교가 빠진다");
+      assert.equal(analysisCharts(viewWithLayer(strippedView, strippedView.defaultLayer).map), null, "음성 대조: counted가 없는 옛 분석은 그래프를 그리지 않는다(반경 판정으로 돌아가지 않는다)");
     }
     countCtx.close();
   }

@@ -4,7 +4,7 @@ import { MAX_MAP_POLYGONS, type TileResult } from "../../tile-result";
 import type { EngineContext } from "../../engine/context";
 import { areaInCircle, polygonArea } from "../../engine/tiles/geo";
 import { BUILDING_SOURCES, assumedOneFloorLimitation, buildingRetirementLimitations, buildingRows, isConfirmedHeightMethod, isCounted, isAssumedOneFloor, type BuildingRow } from "../../engine/tiles/buildings-shared";
-import { capD05BuildingCandidates, est, makeTile, missing, obs, polygonCandidate, type TileDraft } from "../../engine/tiles/common";
+import { capD05BuildingCandidates, d05CountedCapped, est, fallbackCandidate, makeTile, missing, obs, polygonCandidate, type TileDraft } from "../../engine/tiles/common";
 import { notProvided } from "../../engine/tiles/not-provided";
 import { buildingMapExtra, sortBuildingRows } from "./presentation";
 
@@ -43,11 +43,13 @@ function heightBucket(row: BuildingRow): (typeof HEIGHT_BUCKETS)[number]["id"] |
   return found?.id ?? null;
 }
 
+// 그래프 값: 확인된 지상 층수만. 층수 미상·1층 가정(추정)은 null.
+const graphValue = (row: BuildingRow, layer: string) => (layer === "floors_unknown" || layer === "floors_assumed_1f_est" ? null : row.floorsAbove);
+
 function polygonsFor(ctx: EngineContext, row: BuildingRow, layer: string) {
   const clipped = areaInCircle(ctx.input.center, ctx.input.radiusM, row.hit.geometry as Geometry);
   if (!clipped) return [];
-  // 그래프 값: 확인된 지상 층수만. 층수 미상·1층 가정(추정)은 null.
-  const value = layer === "floors_unknown" || layer === "floors_assumed_1f_est" ? null : row.floorsAbove;
+  const value = graphValue(row, layer);
   return clipped.parts.flatMap((rings, index) => {
     const polygon = polygonCandidate(row.hit.featureId * 1000 + index, layer, rings, polygonArea(rings), null, { ...buildingMapExtra(row, layer), value, counted: isCounted(ctx, row) });
     return polygon ? [polygon] : [];
@@ -63,6 +65,7 @@ export function d05(ctx: EngineContext): TileResult {
   const floorCounts = new Map<string, number>(FLOOR_BUCKETS.map(({ layer }) => [layer, 0]));
   const heightCounts = new Map<string, number>(HEIGHT_BUCKETS.map(({ id }) => [id, 0]));
   const polygons: NonNullable<TileDraft["polygons"]> = [];
+  const points: NonNullable<TileDraft["map"]> = [];
   let floorsKnown = 0;
   let sourceHeights = 0;
   let assumedFloors = 0;
@@ -83,7 +86,12 @@ export function d05(ctx: EngineContext): TileResult {
 
     const rowPolygons = polygonsFor(ctx, row, floorLayer);
     if (rowPolygons.length > 0) polygons.push(...rowPolygons);
-    else geometryFailures += 1;
+    else {
+      geometryFailures += 1;
+      // 동수에 든 건물인데 그릴 면이 없으면 대표점 하나를 counted로 싣는다 — 그래프가 동수를 그대로 센다.
+      const point = counted ? fallbackCandidate(row.hit, floorLayer, { ...buildingMapExtra(row, floorLayer), value: graphValue(row, floorLayer), counted: true }) : null;
+      if (point) points.push(point);
+    }
   }
 
   const metrics: TileDraft["metrics"] = [
@@ -122,6 +130,7 @@ export function d05(ctx: EngineContext): TileResult {
     ? "반경 안 건물이 확인되지 않아 지상층수 분포를 산출하지 못함 → 건물 자료와 현장 확인 필요"
     : `반경 안 건물 ${total.toLocaleString("en-US")}동 중 지상층수 확인 ${pct(floorsKnown, total)}%, 1층 가정(추정) ${assumedFloors}동 → 확인·추정·미상을 분리해 표시 → 건축물대장 층수 확인 필요`;
 
+  const mapPolygons = capD05BuildingCandidates(polygons, ctx.input.center);
   return makeTile(ctx, {
     code: "D05",
     type: "diagram",
@@ -130,7 +139,9 @@ export function d05(ctx: EngineContext): TileResult {
     judgment: { ruleId: "D05-floors@1", basisMetricIds: ["fill_floors_pct"], sentence, level: null, criteria: null },
     sources: ctx.sources("buildings", BUILDING_SOURCES),
     layers: FLOOR_BUCKETS.map(({ layer }) => layer),
-    polygons: capD05BuildingCandidates(polygons, ctx.input.center),
+    polygons: mapPolygons,
+    ...(points.length > 0 ? { map: points } : {}),
+    countedCapped: d05CountedCapped(polygons, mapPolygons),
     polygonTotal: polygons.length,
     polygonCap: MAX_MAP_POLYGONS,
     valueAxis: { label: "지상 층수", unit: "층", countUnit: "동" },

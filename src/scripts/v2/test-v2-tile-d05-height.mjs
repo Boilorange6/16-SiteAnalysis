@@ -161,6 +161,32 @@ try {
   }
 }
 
+// ── 도형 오류로 면을 못 그리는 건물도 동수에는 든다: 대표점 하나를 counted로 싣고, 그래프 건물 수는 엔진 동수와 같다
+{
+  const { viewWithLayer } = await import("../../lib/v2/ui/tile-view.ts");
+  const { analysisCharts } = await import("../../lib/v2/report/analysis-charts.ts");
+  const { toUtmk } = await import("../../lib/v2/crs.ts");
+  const [ux, uy] = toUtmk(CENTER);
+  const brokenCtx = makeContext(dataDir, "d05-broken-footprint");
+  const originalHits = brokenCtx.hits.bind(brokenCtx);
+  brokenCtx.hits = (key, kinds, radiusM) => originalHits(key, kinds, radiusM).map((hit) => hit.stableId === "building:b_unknown"
+    ? { ...hit, geometry: { type: "Polygon", coordinates: [[[ux - 10, uy - 10], [ux + 10, uy - 10], [ux, uy + 10]]] } }
+    : hit);
+  try {
+    const tile = d05(brokenCtx);
+    const points = tile.presentation.features ?? [];
+    assert.equal(points.length, 1, "면을 못 그린 건물은 대표점 하나");
+    assert.equal(points[0].counted, true);
+    assert.ok(points[0].layer.startsWith("floors_"), "층수 레이어 위의 점");
+    assert.ok(!tile.presentation.polygons.some((polygon) => Math.floor(Number(polygon.fid) / 1000) === Number(points[0].fid)), "면이 있는 건물에는 점을 더하지 않는다");
+    const view = toTileView(tile);
+    assert.equal(analysisCharts(viewWithLayer(view, view.defaultLayer).map).total, metric(tile, "share_floors_1").denominator, "그래프 건물 수 = 엔진 동수(대표점 포함)");
+    assert.equal(tile.presentation.countedCapped, undefined, "상한에 걸리지 않았다");
+  } finally {
+    brokenCtx.close();
+  }
+}
+
 const absentDir = mkdtempSync(join(tmpdir(), "v2-d05-d07-absent-"));
 await buildEngineFixture(absentDir, "v1", { buildings: false });
 const absentCtx = makeContext(absentDir, "d05-d07-absent");

@@ -170,7 +170,7 @@ const clean = (tile) => {
     const stripped = JSON.parse(JSON.stringify(edgeTile));
     for (const feature of stripped.presentation.features) delete feature.counted;
     const strippedView = toTileView(stripped);
-    assert.equal(analysisCharts(viewWithLayer(strippedView, strippedView.defaultLayer).map).total, 3, "음성 대조: counted를 떼면 가장자리 단지가 빠진다");
+    assert.equal(analysisCharts(viewWithLayer(strippedView, strippedView.defaultLayer).map), null, "음성 대조: counted가 없는 옛 분석은 그래프를 그리지 않는다(반경 판정으로 돌아가지 않는다)");
     edgeCtx.close();
   }
   assert.ok(a.presentation.features.every((feature) => !Object.hasOwn(feature, "label")), "A07는 옛 label을 내지 않는다");

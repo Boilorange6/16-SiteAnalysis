@@ -354,6 +354,7 @@ export function runHeavyTiles(appDb: Db, dataDir: string, analysisId: string): v
             console.warn(`v2 analysis job ${analysisId}/${code} cancelled-result save skipped: ${String(saveError instanceof Error ? saveError.message : saveError).slice(0, 200)}`);
           }
         } else {
+          console.warn(`v2 analysis job ${analysisId}/${code} failed: ${String(error instanceof Error ? error.message : error).slice(0, 200)}`);
           saveFailedJob(appDb, run, code, elapsedMs, jobFailureReason(error), engine, key);
         }
       }

@@ -239,6 +239,8 @@ export const TileResultSchema = z
       basemap: z.enum(["Satellite"]).optional(),
       /** 지물 `value`의 뜻: 축 이름·값 단위·세는 단위(예: 지상 층수·층·동). 값을 싣는 타일만 둔다. */
       valueAxis: z.object({ label: z.string().min(1), unit: z.string(), countUnit: z.string().min(1) }).optional(),
+      /** 상한이 `counted` 지물을 떨어뜨렸다. 있으면(true) 지도 페이로드가 센 대상 전부가 아니라서 「지도 + 그래프」를 그리지 않는다. 없으면 false. */
+      countedCapped: z.boolean().optional(),
     }),
     provenance: z.object({
       manifestHash: z.string().regex(/^[0-9a-f]{64}$/),

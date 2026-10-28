@@ -31,9 +31,9 @@ const buildingMapExtra = (name: string | null, year: number | null) => ({
   labelPriority: name === null ? 0 : 1,
   value: year, // 그래프 값: 사용승인 연도(미상 null)
 });
-const fallbackPoint = (hit: Parameters<typeof candidate>[0], layer: string, year: number | null) => {
+const fallbackPoint = (hit: Parameters<typeof candidate>[0], layer: string, year: number | null, counted: boolean) => {
   try {
-    return candidate(hit, layer, buildingMapExtra(hit.name ?? null, year));
+    return candidate(hit, layer, { ...buildingMapExtra(hit.name ?? null, year), counted });
   } catch {
     return null;
   }
@@ -57,7 +57,7 @@ export function d04(ctx: EngineContext): TileResult {
     const clipped = areaInCircle(ctx.input.center, ctx.input.radiusM, hit.geometry);
     if (clipped === null) {
       failedGeometry += 1;
-      const point = fallbackPoint(hit, decadeLayer(year), year);
+      const point = fallbackPoint(hit, decadeLayer(year), year, isCounted(ctx, row));
       if (point) points.push(point);
       continue;
     }
@@ -71,7 +71,7 @@ export function d04(ctx: EngineContext): TileResult {
     }
     if (!hasPolygon) {
       failedGeometry += 1;
-      const point = fallbackPoint(hit, decadeLayer(year), year);
+      const point = fallbackPoint(hit, decadeLayer(year), year, isCounted(ctx, row));
       if (point) points.push(point);
     }
   }

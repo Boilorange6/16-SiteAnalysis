@@ -179,6 +179,7 @@ function mapOf(r: TileResult, analysisSiteParcel?: readonly MapPolygon[] | null)
     notes,
     ...(r.presentation.legend.length > 0 ? { legend: r.presentation.legend } : {}),
     ...(r.presentation.valueAxis ? { valueAxis: r.presentation.valueAxis } : {}),
+    ...(r.presentation.countedCapped ? { countedCapped: true } : {}),
     ...(rasterOptions.length > 0 ? { rasterOptions } : {}),
     ...(defaultRaster ? { defaultRaster, rasters } : {}),
   };

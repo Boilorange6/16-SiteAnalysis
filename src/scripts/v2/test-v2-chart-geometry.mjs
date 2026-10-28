@@ -144,9 +144,9 @@ for (const scale of SCALES) {
   const far = distanceShapes({ ...floors, mean: 30 }, 1000, BOX, scale);
   assert.ok(byName(far, "chart-distance-mean-label").y < byName(far, "chart-distance-median-label").y, "멀면 각자 선 위");
 }
-// 평균 소수는 한 자리, 중앙값은 정수면 정수·아니면 한 자리
+// 통계 서식은 중앙값·평균·요약 통계 줄이 하나: 100 미만은 소수 한 자리까지(정수면 정수), 100 이상은 정수
 assert.equal(byName(distanceShapes({ ...floors, median: 3.5, mean: 6 }, 1000, BOX, 1), "chart-distance-median-label").text, "중앙값 3.5층");
-assert.equal(byName(distanceShapes({ ...floors, median: 3.5, mean: 6 }, 1000, BOX, 1), "chart-distance-mean-label").text, "평균 6.0층");
+assert.equal(byName(distanceShapes({ ...floors, median: 3.5, mean: 6 }, 1000, BOX, 1), "chart-distance-mean-label").text, "평균 6층");
 
 // 가격: 0에서 시작, 보기 좋은 단위, 천 단위 쉼표
 const priceFixture = { kind: "scatter", axis: { label: "㎡당 가격", unit: "만원" }, points: [{ d: 100, v: 500, color: COLORS[0] }, { d: 600, v: 8000, color: COLORS[1] }, { d: 300, v: 2400, color: COLORS[0] }], median: 2400, mean: 3633.3, max: 8000, site: 1500, sampled: false };
@@ -158,7 +158,7 @@ for (const scale of SCALES) {
   const ticks = tickValues(shapes);
   assert.equal(ticks[0], "0");
   assert.ok(ticks.length <= 6 && ticks.includes("8,000"), `가격 눈금 ${ticks}`);
-  assert.equal(byName(shapes, "chart-distance-mean-label").text, "평균 3,633.3만원");
+  assert.equal(byName(shapes, "chart-distance-mean-label").text, "평균 3,633만원");
   assert.deepEqual(texts(shapes).filter((s) => s.name.startsWith("chart-distance-xtick-")).map((s) => s.text), ["0", "125", "250", "375", "500 m"]);
 }
 

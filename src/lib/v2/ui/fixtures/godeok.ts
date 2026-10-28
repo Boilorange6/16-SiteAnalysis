@@ -135,14 +135,14 @@ const A05_OTHER_XY: Array<[number, number]> = [
   [127.15318, 37.548514], [127.15421, 37.548439], [127.153662, 37.559812], [127.155954, 37.56087], [127.153872, 37.561908],
   [127.152049, 37.5603], [127.15327, 37.560104], [127.155062, 37.548558], [127.152425, 37.561495], [127.151645, 37.559939],
 ];
-const A05_OTHERS = A05_OTHER_XY.map(([lng, lat]): MapFeature => ({ layer: "other_housing", lng, lat }));
+const A05_OTHERS = A05_OTHER_XY.map(([lng, lat]): MapFeature => ({ layer: "other_housing", lng, lat, counted: true }));
 const A05_APTS = A05_ROWS.filter((r) => (r[9] ?? "apt") === "apt");
 const A05_HH = A05_APTS.reduce((s, r) => s + (r[3] ?? 0), 0);
 const A05_YEARS = A05_ROWS.map((r) => r[4]).filter((y): y is number => y !== null).sort((a, b) => a - b);
 const A05_MEDIAN_YEAR = A05_YEARS[Math.floor((A05_YEARS.length - 1) / 2)];
 const TYPE_TEXT = { apt: "아파트", officetel: "오피스텔" } as const;
 const complexPin = ([name, lng, lat, households, year, floors, bldgs, parking, distM, layer = "apt"]: Row): MapFeature => {
-  return { layer, lng, lat, weight: households, name, type: TYPE_TEXT[layer], households, approvalYear: year, floorsMax: floors, buildingCount: bldgs, distanceM: distM, parking };
+  return { layer, lng, lat, weight: households, name, type: TYPE_TEXT[layer], households, approvalYear: year, floorsMax: floors, buildingCount: bldgs, distanceM: distM, parking, counted: true };
 };
 
 // ── A06 예시 사업: 고덕역 반경 3km 실제 분양·입주예정 결과(엔진 a06, 2026-09-30 기준)에서 뽑은 25곳 ──

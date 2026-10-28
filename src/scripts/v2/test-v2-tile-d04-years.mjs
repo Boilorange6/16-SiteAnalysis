@@ -95,6 +95,7 @@ try {
   assert.equal(fallback.presentation.features[0].sublabel, "2005년");
   assert.equal(fallback.presentation.features[0].value, 2005, "대표점 fallback도 같은 연도 값을 싣는다");
   assert.equal(fallback.presentation.features[0].labelPriority, 1);
+  assert.equal(fallback.presentation.features[0].counted, true, "대표점 fallback도 엔진이 센 건물이면 counted");
 } finally {
   fallbackCtx.close();
 }

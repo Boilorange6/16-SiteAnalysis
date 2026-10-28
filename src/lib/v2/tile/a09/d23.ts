@@ -4,6 +4,7 @@ import type { EngineContext } from "../../engine/context";
 import { areaInCircle, polygonArea } from "../../engine/tiles/geo";
 import {
   candidate,
+  fallbackCandidate,
   fmt,
   makeTile,
   missing,
@@ -140,6 +141,9 @@ export function d23(ctx: EngineContext): TileResult {
     const clipped = areaInCircle(ctx.input.center, ctx.input.radiusM, zone.geometry);
     if (!clipped) {
       invalidArea = true;
+      // 면적은 못 구해도 「정비구역 N곳」에는 든 구역이다 — 대표점 하나를 counted로 싣는다.
+      const point = fallbackCandidate(zone, layer, { label: null, name, sublabel: stage, labelPriority, counted: true });
+      if (point) points.push(point);
       continue;
     }
     zoneArea += clipped.areaM2;

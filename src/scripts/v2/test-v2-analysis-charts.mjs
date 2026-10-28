@@ -13,8 +13,10 @@ const square = (eastM, northM, halfM = 5) => {
   const pts = [[-1, -1], [1, -1], [1, 1], [-1, 1], [-1, -1]].map(([x, y]) => at(eastM + x * halfM, northM + y * halfM));
   return [pts];
 };
-const pt = (layer, eastM, northM, value) => ({ layer, lng: at(eastM, northM)[0], lat: at(eastM, northM)[1], ...(value === undefined ? {} : { value }) });
-const poly = (layer, eastM, northM, value) => ({ layer, rings: square(eastM, northM), ...(value === undefined ? {} : { value }) });
+// 엔진이 센 지물이라고 보고 `counted: true`를 기본으로 단다. 표시 없는 지물(옛 분석·행정구역 면)은 counted에 null을 넘긴다.
+const flag = (counted) => (counted === null ? {} : { counted });
+const pt = (layer, eastM, northM, value, counted = true) => ({ layer, lng: at(eastM, northM)[0], lat: at(eastM, northM)[1], ...(value === undefined ? {} : { value }), ...flag(counted) });
+const poly = (layer, eastM, northM, value, counted = true) => ({ layer, rings: square(eastM, northM), ...(value === undefined ? {} : { value }), ...flag(counted) });
 const AXIS = { label: "지상 층수", unit: "층", countUnit: "동" };
 // 그래프는 세는 대상을 밝힌 타일에만 나온다 — 기본은 D05(건물·동). 레이어 이름은 이 함수가 보는 것이 아니라 범례 항목일 뿐이다.
 const model = (parts) => ({ center: CENTER, radiusM: 1000, features: [], total: 0, notes: [], tileCode: "D05", ...parts });
@@ -29,7 +31,7 @@ const base = model({
     poly("floors_5_8", 500, 0, 6),
     poly("floors_5_8", 0, 700, 8),
     poly("floors_unknown", 0, -400, null), // 값 없음
-    poly("floors_1_4", 1200, 0, 50), // 반경 밖
+    poly("floors_1_4", 1200, 0, 50, false), // 반경 밖: 엔진이 세지 않았다
   ],
   features: [
     pt("floors_26p", 5, 5, 30), // 대지 안
@@ -66,7 +68,8 @@ const p300 = c.distance.points.find((point) => point.v === 4);
 assert.ok(Math.abs(p300.d - 300) < 6, `거리(m) ${p300.d}`);
 assert.equal(p300.color, legendItemsForModel(base).find((item) => item.label === "1~4층").color);
 assert.ok(c.distance.points.every((point) => point.d <= 1000));
-assert.equal(analysisStatLine(c), "반경 1 km 안 건물 8동 · 중앙값 7층 · 최고 40층 · 1층 가정 1동");
+assert.equal(analysisStatLine(c), "반경 1 km 안 건물 8동 · 중앙값 7층 · 최고 40층 · 1층 가정·미상 1동", "D05가 밝힌 꼬리표");
+assert.equal(c.missingLabel, "1층 가정·미상");
 
 // 대지가 없으면 site null
 assert.equal(analysisCharts({ ...base, siteParcel: null }).distance.site, null);
@@ -84,7 +87,7 @@ assert.equal(many.total, 28);
 
 // ── 값이 하나도 없으면 bands (100 m 간격)
 const noValue = analysisCharts(model({
-  features: [pt("bus_stop", 50), pt("bus_stop", 250), pt("bus_stop", 260), pt("rail_station", 990), pt("bus_stop", 2000)],
+  features: [pt("bus_stop", 50), pt("bus_stop", 250), pt("bus_stop", 260), pt("rail_station", 990), pt("bus_stop", 2000, 0, undefined, false)],
 }));
 assert.equal(noValue.distance.kind, "bands");
 assert.equal(noValue.distance.bands.length, 10);
@@ -174,13 +177,31 @@ assert.equal(analysisStatLine(analysisCharts(model({ radiusM: 3000, features: [p
 
 // ── null 경우
 assert.equal(analysisCharts(model({ features: [pt("floors_1_4", 10), pt("floors_1_4", 20)] })), null, "범례 1개");
-assert.equal(analysisCharts(model({ features: [pt("floors_1_4", 10), pt("floors_1_4", 20), pt("floors_5_8", 1500)] })), null, "범례는 2개여도 반경 안은 한 항목뿐");
-assert.equal(analysisCharts(model({ features: [pt("floors_1_4", 1500), pt("floors_5_8", 1600)] })), null, "반경 안 지물 0");
+assert.equal(analysisCharts(model({ features: [pt("floors_1_4", 10), pt("floors_1_4", 20), pt("floors_5_8", 1500, 0, undefined, false)] })), null, "범례는 2개여도 센 지물은 한 항목뿐");
+assert.equal(analysisCharts(model({ features: [pt("floors_1_4", 1500, 0, undefined, false), pt("floors_5_8", 1600, 0, undefined, false)] })), null, "센 지물 0");
 assert.equal(analysisCharts(model({})), null, "빈 모델");
+
+// ── I1: 선언한 타일은 `counted === true`만 센다. 표시가 없으면(옛 분석·행정구역·학구 면) 반경 안이어도 세지 않는다.
+const unflagged = (layer, eastM) => poly(layer, eastM, 0, undefined, null);
+assert.equal(analysisCharts(model({ features: [pt("floors_1_4", 10, 0, undefined, null), pt("floors_5_8", 20, 0, undefined, null)], polygons: [unflagged("floors_1_4", 100), unflagged("floors_5_8", 200)] })), null, "표시가 하나도 없는 모델은 null(옛 분석은 「지도 + 요약」)");
+const oneFlagged = analysisCharts(model({ features: [pt("floors_1_4", 10), pt("floors_5_8", 20)], polygons: [unflagged("floors_1_4", 100), unflagged("floors_5_8", 200), unflagged("floors_26p", 300)] }));
+assert.equal(oneFlagged.total, 2, "표시 없는 면 3개는 반경 안이어도 세지 않는다");
+assert.deepEqual(oneFlagged.composition.map((item) => item.label), ["1~4층", "5~8층"], "표시 없는 층은 구성비 항목도 만들지 않는다");
+for (const [code, layerA, layerB] of [["A07", "trade_q1", "trade_q2"], ["A02", "school_elem", "school_middle"]]) {
+  const zoneOnly = analysisCharts(model({ tileCode: code, features: [], polygons: [unflagged(layerA, 100), unflagged(layerB, 200)] }));
+  assert.equal(zoneOnly, null, `${code}: 행정구역·학구 같은 표시 없는 면만 있으면 null`);
+}
+const withDistricts = analysisCharts(model({ tileCode: "A07", features: [pt("trade_q1", 100), pt("trade_q2", 200)], polygons: [unflagged("trade_district_q1", 0), unflagged("trade_district_q3", 300)] }));
+assert.equal(withDistricts.total, 2, "A07: 거래 점만 센다 — 「행정구역」 면은 센 지물이 아니다");
 
 // ── 한 줄 요약 형식
 const sample = { radiusM: 1000, total: 1735, countUnit: "동", subject: "건물", missing: 548, composition: [], distance: { kind: "scatter", axis: { label: "지상 층수", unit: "층" }, points: [], median: 4, mean: 6, max: 69, site: null, sampled: false } };
-assert.equal(analysisStatLine(sample), "반경 1 km 안 건물 1,735동 · 중앙값 4층 · 최고 69층 · 1층 가정 548동");
+assert.equal(analysisStatLine(sample), "반경 1 km 안 건물 1,735동 · 중앙값 4층 · 최고 69층 · 값 없음 548동", "꼬리표를 밝히지 않으면 단위와 상관없이 「값 없음」");
+assert.equal(analysisStatLine({ ...sample, missingLabel: "1층 가정·미상" }), "반경 1 km 안 건물 1,735동 · 중앙값 4층 · 최고 69층 · 1층 가정·미상 548동");
+// I2: 통계 줄·산점도 라벨이 한 서식. 절댓값 100 미만만 소수 1자리(4.5층은 4.5층), 정수는 그대로, 100 이상은 정수.
+assert.equal(analysisStatLine({ ...sample, distance: { ...sample.distance, median: 4.5, max: 69.04 }, missing: 0 }), "반경 1 km 안 건물 1,735동 · 중앙값 4.5층 · 최고 69층");
+assert.equal(analysisStatLine({ ...sample, distance: { ...sample.distance, median: 3115.8, max: 99.96 }, missing: 0 }), "반경 1 km 안 건물 1,735동 · 중앙값 3,116층 · 최고 100층");
+assert.equal(analysisStatLine({ ...sample, distance: { ...sample.distance, qualifier: "단지", axis: { label: "㎡당 가격", unit: "만원/㎡" }, median: 3088, max: 5000 }, missing: 0 }), "반경 1 km 안 건물 1,735동 · 단지 중앙값 3,088만원/㎡ · 최고 5,000만원/㎡");
 const general = { ...sample, radiusM: 500, missing: 0, countUnit: "단지", subject: "아파트 단지", total: 42, distance: { ...sample.distance, axis: { label: "㎡당 가격", unit: "만원" }, median: 1234, max: 4321 } };
 assert.equal(analysisStatLine(general), "반경 500 m 안 아파트 단지 42단지 · 중앙값 1,234만원 · 최고 4,321만원");
 assert.equal(analysisStatLine({ ...general, missing: 3 }), "반경 500 m 안 아파트 단지 42단지 · 중앙값 1,234만원 · 최고 4,321만원 · 값 없음 3단지");
@@ -195,7 +216,7 @@ const bandsOnly = analysisCharts(model({ features: [pt("bus_stop", 10), pt("rail
 assert.deepEqual(bandsOnly.titles, { composition: `${bandsOnly.subject} 구성비`, distance: `대지에서 거리별 ${bandsOnly.subject} 수` }, "값 축이 없으면 구성비는 대상 이름, 거리는 거리별 개수");
 
 // ── 같은 fid의 면(여러 조각으로 나뉜 건물)은 한 번만 센다. 넓이가 가장 큰 조각이 점과 값을 정한다.
-const piece = (layer, eastM, halfM, value, fid) => ({ layer, rings: square(eastM, 0, halfM), value, ...(fid === undefined ? {} : { fid }) });
+const piece = (layer, eastM, halfM, value, fid) => ({ layer, rings: square(eastM, 0, halfM), value, counted: true, ...(fid === undefined ? {} : { fid }) });
 const multipart = analysisCharts(model({
   valueAxis: AXIS,
   polygons: [
@@ -225,23 +246,25 @@ const withSiteTwin = analysisCharts(model({
 assert.equal(withSiteTwin.total, 2, "비범례 조각이 같은 fid의 범례 조각을 지우지 않는다");
 assert.deepEqual(withSiteTwin.distance.points.map((p) => p.v).sort((x, y) => x - y), [3, 6]);
 
-// ── 엔진이 실은 `counted`가 반경 판정을 대신한다(없으면 반경 판정)
+// ── 엔진이 실은 `counted`가 개수를 정한다(반경 판정 없음, 표시 없으면 세지 않음)
+const noFlag = (layer, eastM, halfM, value) => ({ layer, rings: square(eastM, 0, halfM), value });
 const flagged = analysisCharts(model({
   valueAxis: AXIS,
   polygons: [
     { ...piece("floors_5_8", 300, 5, 9), counted: false }, // 중심이 반경 안이어도 counted=false면 뺀다
     { ...piece("floors_1_4", 1200, 5, 4), counted: true }, // 중심이 반경 밖이어도 counted=true면 센다
-    piece("floors_5_8", 100, 5, 6), // counted 없음 + 반경 안 → 센다
-    piece("floors_1_4", 1300, 5, 8), // counted 없음 + 반경 밖 → 뺀다
+    { ...piece("floors_5_8", 150, 5, 7), counted: true },
+    noFlag("floors_5_8", 100, 5, 6), // counted 없음 + 반경 안 → 세지 않는다
+    noFlag("floors_1_4", 1300, 5, 8), // counted 없음 + 반경 밖 → 세지 않는다
     { ...piece("floors_1_4", 400, 20, 1, "z"), counted: false }, // 같은 fid: 넓이가 가장 큰 조각이 대표라 그 표시를 따른다
     { ...piece("floors_1_4", 500, 5, 2, "z"), counted: true },
   ],
 }));
-assert.equal(flagged.total, 2, "counted=true 하나 + 표시 없는 반경 안 하나");
-assert.deepEqual(flagged.distance.points.map((p) => p.v).sort((x, y) => x - y), [4, 6]);
+assert.equal(flagged.total, 2, "counted=true 둘만 센다");
+assert.deepEqual(flagged.distance.points.map((p) => p.v).sort((x, y) => x - y), [4, 7]);
 
 // ── 구성비 이름은 범례 이름의 ` · ` 앞부분(A07 가격대 범례는 지도 범례에 이미 있다)
-const f = (layer, i) => ({ layer, lng: CENTER[0] + (i * 40) / M_LNG, lat: CENTER[1], weight: 100 });
+const f = (layer, i) => ({ layer, lng: CENTER[0] + (i * 40) / M_LNG, lat: CENTER[1], weight: 100, counted: true });
 const trade = analysisCharts(model({
   features: ["trade_q1", "trade_q2", "trade_q3"].map(f),
   legend: [{ label: "㎡당 하위 20%", min: null, max: 300 }, { label: "㎡당 20~40%", min: 300, max: 500 }, { label: "㎡당 40~60%", min: 500, max: 700 }, { label: "㎡당 60~80%", min: 700, max: 900 }, { label: "㎡당 상위 20%", min: 900, max: null }],
@@ -284,8 +307,9 @@ const flaggedPoints = analysisCharts(model({
   features: [
     { ...pt("bus_stop", 1004), counted: true }, // 반경 밖으로 보이지만 엔진은 셌다
     { ...pt("bus_stop", 500), counted: false }, // 안이지만 엔진이 세지 않았다
-    pt("rail_station", 100), // 표시 없음 → 반경 판정
-    pt("rail_station", 1004), // 표시 없음 + 밖 → 뺀다
+    pt("rail_station", 100), // 엔진이 셌다
+    pt("rail_station", 100, 0, undefined, null), // 표시 없음 → 반경 안이어도 세지 않는다
+    pt("rail_station", 1004, 0, undefined, null), // 표시 없음 + 밖 → 세지 않는다
   ],
 }));
 assert.equal(flaggedPoints.total, 2);
@@ -296,10 +320,10 @@ const flaggedLines = analysisCharts(model({
     { layer: "rail_line", fid: "1", points: [at(400, 0), at(500, 0)], counted: true }, // 같은 fid는 한 번
     { layer: "rail_line", fid: "2", points: [at(1500, 0), at(1600, 0)], counted: true }, // 밖이어도 counted면 센다
     { layer: "rail_line", fid: "3", points: [at(600, 0), at(700, 0)], counted: false },
-    { layer: "rail_line", points: [at(800, 0), at(900, 0)] }, // fid·표시 없음 → 반경 판정(안)
+    { layer: "rail_line", points: [at(800, 0), at(900, 0)] }, // fid·표시 없음 → 세지 않는다
   ],
 }));
-assert.equal(flaggedLines.total, 4, "점 1 + 선 fid 1·2 + fid 없는 선");
+assert.equal(flaggedLines.total, 3, "점 1 + 선 fid 1·2");
 
 // 범례에서 빠지는 「최근접 …」 강조 층도 같은 종류의 지물이라 센다(A02 최근접 초등학교): 본 층이 있으면 그 항목에 합치고, 없으면 항목을 만든다.
 const withBase = analysisCharts(model({ tileCode: "A02", features: [pt("school_nearest", 100), pt("school_elem", 200), pt("school_middle", 300)] }));
@@ -309,5 +333,90 @@ const nearestOnly = analysisCharts(model({ tileCode: "A02", features: [pt("schoo
 assert.equal(nearestOnly.total, 2, "본 층이 없어도 최근접 학교를 센다");
 assert.deepEqual(nearestOnly.composition.map((item) => item.label), ["초등학교", "중학교"]);
 assert.equal(analysisStatLine(nearestOnly), "반경 1 km 안 학교 2곳 · 가장 많은 거리 100–200 m");
+
+// ── C1: 지도 상한이 센 지물을 떨어뜨리면 makeTile이 `countedCapped`를 달고, 그래프는 나오지 않는다(문장의 수와 다른 합계를 그리느니 「지도 + 요약」).
+const { makeTile } = await import("../../lib/v2/engine/tiles/common.ts");
+const { mergeTileResults } = await import("../../lib/v2/engine/tiles/merge.ts");
+const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
+const { MAX_MAP_FEATURES, MAX_MAP_POLYGONS, MAX_MAP_LINES } = await import("../../lib/v2/tile-result.ts");
+const tileCtx = {
+  analysisId: "chart-cap",
+  manifestHash: "a".repeat(64),
+  conditions: { address: "테스트", center: CENTER, radiusM: 1000, analysisDate: "2026-10-01", timezone: "Asia/Seoul", filters: {}, simulation: null, parcelSnapshotHash: null },
+};
+const tileSources = [{ sourceId: "test", releaseId: "test@1", sourceAsOf: "2026-10-01", fetchedAt: "2026-10-01T00:00:00Z" }];
+const capDraft = (extra) => ({ code: "D05", status: "complete", metrics: [], sources: tileSources, limitations: [], valueAxis: AXIS, ...extra });
+const pointCandidates = (n, counted = true) => Array.from({ length: n }, (_, i) => ({ id: i + 1, f: { layer: i % 2 ? "floors_1_4" : "floors_5_8", lng: at(100 + (i % 800))[0], lat: at(0, 100 + Math.floor(i / 800))[1], value: (i % 9) + 1, counted } }));
+const chartsOf = (result) => analysisCharts(toTileView(result).map);
+// 점: 정확히 상한이면 그래프가 나오고, 하나 넘치면 표시가 서서 null
+const exactFeatures = makeTile(tileCtx, capDraft({ map: pointCandidates(MAX_MAP_FEATURES) }));
+assert.equal(exactFeatures.presentation.countedCapped, undefined, "상한과 같으면 표시 없음");
+assert.equal(chartsOf(exactFeatures).total, MAX_MAP_FEATURES, "상한 개수 그대로 그래프에 센다");
+const overFeatures = makeTile(tileCtx, capDraft({ map: pointCandidates(MAX_MAP_FEATURES + 1) }));
+assert.equal(overFeatures.presentation.features.length, MAX_MAP_FEATURES);
+assert.equal(overFeatures.presentation.countedCapped, true, "센 지물이 상한에 잘렸다");
+assert.equal(toTileView(overFeatures).map.countedCapped, true, "지도 모델이 표시를 가져간다");
+assert.equal(chartsOf(overFeatures), null, "잘린 지도는 그래프를 그리지 않는다");
+// 상한에 잘린 것이 센 지물이 아니면(counted=false) 표시가 서지 않는다
+const overUncounted = makeTile(tileCtx, capDraft({ map: [...pointCandidates(MAX_MAP_FEATURES), ...pointCandidates(1, false).map((c) => ({ ...c, id: 99999 }))] }));
+assert.equal(overUncounted.presentation.countedCapped, undefined, "센 지물이 아닌 것만 잘렸다");
+// 면: 같은 지물의 조각(fid)은 하나라도 남으면 남은 것이다
+const squareRing = (i) => { const [x, y] = at(100 + (i % 800), Math.floor(i / 800) * 20); const d = 0.00002; return [[[x - d, y - d], [x + d, y - d], [x + d, y + d], [x - d, y + d], [x - d, y - d]]]; };
+const polygonCandidates = (n) => Array.from({ length: n }, (_, i) => ({ id: i + 1, areaM2: 1000 - (i % 500), p: { layer: i % 2 ? "floors_1_4" : "floors_5_8", rings: squareRing(i), value: 3, counted: true } }));
+const exactPolygons = makeTile(tileCtx, capDraft({ polygons: polygonCandidates(MAX_MAP_POLYGONS) }));
+assert.equal(exactPolygons.presentation.countedCapped, undefined);
+assert.equal(chartsOf(exactPolygons).total, MAX_MAP_POLYGONS);
+const overPolygons = makeTile(tileCtx, capDraft({ polygons: polygonCandidates(MAX_MAP_POLYGONS + 1) }));
+assert.equal(overPolygons.presentation.countedCapped, true);
+assert.equal(chartsOf(overPolygons), null);
+const pieces = polygonCandidates(MAX_MAP_POLYGONS + 1).map((c, i) => ({ ...c, p: { ...c.p, fid: i === 2999 || i === 0 ? "0001" : String(i) } })); // 면적이 가장 작아 잘리는 것은 i=2999 — i=0과 같은 건물의 조각
+assert.equal(makeTile(tileCtx, capDraft({ polygons: pieces })).presentation.countedCapped, undefined, "잘린 조각의 건물이 다른 조각으로 남아 있으면 표시 없음");
+// 선
+const lineCandidates = (n) => Array.from({ length: n }, (_, i) => ({ id: i + 1, lengthM: 100 + i, l: { layer: i % 2 ? "rail_line" : "bus_line", points: [at(10 + (i % 900), Math.floor(i / 900) * 10), at(20 + (i % 900), Math.floor(i / 900) * 10)], counted: true } }));
+assert.equal(makeTile(tileCtx, capDraft({ lines: lineCandidates(MAX_MAP_LINES) })).presentation.countedCapped, undefined);
+assert.equal(makeTile(tileCtx, capDraft({ lines: lineCandidates(MAX_MAP_LINES + 1) })).presentation.countedCapped, true);
+// 타일이 사전에 잘랐다고 알리면(D05 사전 선택) 그대로 서고, 병합은 어느 쪽이든 표시를 이어받는다
+assert.equal(makeTile(tileCtx, capDraft({ map: pointCandidates(10), countedCapped: true })).presentation.countedCapped, true);
+const small = makeTile(tileCtx, capDraft({ map: pointCandidates(10) }));
+assert.equal(mergeTileResults(small, overFeatures).presentation.countedCapped, true, "흡수한 쪽이 잘렸으면 합쳐도 잘린 것");
+assert.equal(mergeTileResults(overFeatures, small).presentation.countedCapped, true, "기본 쪽이 잘렸으면 합쳐도 잘린 것");
+assert.equal(mergeTileResults(small, small).presentation.countedCapped, undefined);
+// D05 사전 선택(가까운 3,000동): 건물 단위로 비교한다 — 조각이 하나라도 남은 건물은 남은 것이다
+const { capD05BuildingCandidates, d05CountedCapped } = await import("../../lib/v2/engine/tiles/common.ts");
+const d05Buildings = (n) => polygonCandidates(n).map((c, i) => ({ ...c, id: (i + 1) * 1000, p: { ...c.p, fid: undefined } }));
+for (const [n, capped] of [[MAX_MAP_POLYGONS, false], [MAX_MAP_POLYGONS + 1, true]]) {
+  const all = d05Buildings(n);
+  assert.equal(d05CountedCapped(all, capD05BuildingCandidates(all, CENTER)), capped, `D05 사전 선택 ${n}동`);
+}
+const d05Pieces = [...d05Buildings(MAX_MAP_POLYGONS), { ...d05Buildings(1)[0], id: 1001 }]; // 0번 건물의 둘째 조각(같은 건물 키)
+assert.equal(d05CountedCapped(d05Pieces, capD05BuildingCandidates(d05Pieces, CENTER)), false, "둘째 조각은 사전 선택이 버려도 건물은 남았다");
+// 병합 상한이 센 지물을 떨어뜨리는 경우: 각각은 상한 이내(표시 없음)인데 합치면 넘친다
+const halfA = makeTile(tileCtx, capDraft({ map: pointCandidates(2000) }));
+const halfB = makeTile(tileCtx, capDraft({ map: pointCandidates(2000).map((c) => ({ ...c, id: c.id + 5000, f: { ...c.f, lng: c.f.lng + 0.00001 } })) }));
+assert.equal(halfA.presentation.countedCapped, undefined);
+assert.equal(halfB.presentation.countedCapped, undefined);
+assert.equal(mergeTileResults(halfA, halfB).presentation.countedCapped, true, "병합 상한이 센 지물을 떨어뜨렸다");
+
+// ── I2: A07은 통계 줄·산점도에 「단지 중앙값 …만원/㎡」, 값 없는 지물 꼬리표는 타일이 밝힌 것
+const a07 = analysisCharts(model({
+  tileCode: "A07",
+  valueAxis: { label: "㎡당 가격", unit: "만원", countUnit: "단지" },
+  features: [pt("trade_q1", 100, 0, 3000), pt("trade_q3", 200, 0, 3175.6), pt("trade_q5", 300, 0, 3088)],
+}));
+assert.equal(a07.distance.axis.unit, "만원/㎡", "표시 단위");
+assert.equal(a07.distance.qualifier, "단지");
+assert.ok(analysisStatLine(a07).includes("단지 중앙값 3,088만원/㎡ · 최고 3,176만원/㎡"), analysisStatLine(a07));
+const { distanceShapes } = await import("../../lib/v2/report/chart-geometry.ts");
+const a07Labels = distanceShapes(a07.distance, 1000, { x: 0, y: 0, w: 4, h: 2 }, 1, "").filter((s) => s.kind === "text").map((s) => s.text);
+assert.ok(a07Labels.includes("단지 중앙값 3,088만원/㎡"), a07Labels.join("|"));
+assert.ok(a07Labels.includes("단지 평균 3,088만원/㎡") || a07Labels.some((t) => /^단지 평균 3,\d{3}만원\/㎡$/.test(t)), a07Labels.join("|"));
+// 층: 4.5층은 통계 줄과 산점도 라벨이 똑같이 4.5층
+const fl = analysisCharts(model({ valueAxis: AXIS, features: [pt("floors_1_4", 100, 0, 4), pt("floors_5_8", 200, 0, 5), pt("floors_1_4", 300, 0, 3), pt("floors_5_8", 400, 0, 6)] }));
+assert.ok(analysisStatLine(fl).includes("중앙값 4.5층"), analysisStatLine(fl));
+const flLabels = distanceShapes(fl.distance, 1000, { x: 0, y: 0, w: 4, h: 2 }, 1, "").filter((s) => s.kind === "text").map((s) => s.text);
+assert.ok(flLabels.includes("중앙값 4.5층") && flLabels.includes("평균 4.5층"), flLabels.join("|"));
+// D04: 연도 미상
+const d04 = analysisCharts(model({ tileCode: "D04", valueAxis: { label: "사용승인 연도", unit: "년", countUnit: "동" }, features: [pt("bldg_1990s", 10, 0, 1995), pt("bldg_2000s", 20, 0, 2005), pt("bldg_unknown", 30, 0, null)] }));
+assert.ok(analysisStatLine(d04).endsWith("연도 미상 1동"), analysisStatLine(d04));
 
 console.log("✓ v2 analysis charts");

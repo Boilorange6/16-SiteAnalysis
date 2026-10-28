@@ -24,9 +24,42 @@ export type AnalysisFitInput = {
 /** 큰 숫자 칸 안의 배지 한 개. x는 칸 왼쪽에서(inch), row는 0부터, w는 칩 폭(inch). */
 export type AnalysisChip = { text: string; tone: Badge["tone"]; x: number; row: number; w: number };
 
+/**
+ * 폭 width(inch)에 pt로 쓸 때 maxLines줄을 넘으면 뒤를 잘라 마지막 줄을 「…」로 닫는다. 줄 나눔은 fitBlock과 같은 글자 폭 어림(10 % 여유)에 공백 우선으로 한다.
+ * 화면(CSS line-clamp)과 PPT(pptxgenjs는 fit:"shrink"를 편집 때만 적용)가 같은 글자를 그리도록 보이는 문자열 자체를 줄인다.
+ */
+export function clampToLines(text: string, pt: number, width: number, maxLines: number): string {
+  const chars = [...text];
+  const w = Math.max(0.01, width) / 1.1;
+  const fits = (from: number, to: number) => textIn(chars.slice(from, to).join(""), pt) <= w;
+  const starts: number[] = [0];
+  const ends: number[] = [];
+  let lastSpace = -1;
+  for (let i = 0; i < chars.length; i++) {
+    const start = starts[starts.length - 1]!;
+    if (chars[i] === " ") lastSpace = i;
+    if (fits(start, i + 1)) continue;
+    let at = lastSpace > start && chars[i] !== " " ? lastSpace : i; // 공백이 있으면 그 자리에서 줄을 바꾸고, 없으면 글자 단위로
+    if (at === start) at = i + 1; // 글자 하나가 폭보다 넓은 극단: 한 줄에 한 글자씩
+    ends.push(at);
+    starts.push(chars[at] === " " ? at + 1 : at);
+    lastSpace = -1;
+    i = starts[starts.length - 1]! - 1; // 새 줄 처음부터 다시 잰다
+  }
+  if (starts.length <= maxLines) return text;
+  const head = chars.slice(0, starts[maxLines - 1]!).join("");
+  let last = chars.slice(starts[maxLines - 1]!, ends[maxLines - 1]!);
+  while (last.length > 0 && textIn(`${last.join("")}…`, pt) > w) last = last.slice(0, -1);
+  return `${head}${last.join("").trimEnd()}…`;
+}
+
 export type AnalysisFit = {
   /** 큰 숫자 칸 배율(칸 높이를 넘으면 줄인다) */
   e: number;
+  /** 화면과 PPT가 똑같이 그릴 글: 줄 수를 넘으면 「…」로 자른 통계·필터 줄·해석 문장 */
+  statText: string;
+  filterLine: string | null;
+  sentence: string | null;
   chips: AnalysisChip[];
   chipRows: number;
   labelPt: number | null;
@@ -69,6 +102,9 @@ export function analysisColumnFit({ col, scale, summaryPt, badges, headline, sta
 
   return {
     e,
+    statText: clampToLines(statText, statPt, col.stat.w, statClamp),
+    filterLine: filterLine ? clampToLines(filterLine, statPt, col.stat.w, 1) : null,
+    sentence: sentence ? clampToLines(sentence, sentPt, col.sentence.w, sentLines) : sentence,
     chips,
     chipRows: rows,
     labelPt: headline ? fitBlock([headline.label], { w: hr.w, h: 0.24 * e }, 11 * e, 7) : null,

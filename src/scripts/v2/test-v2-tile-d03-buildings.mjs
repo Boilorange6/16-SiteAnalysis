@@ -10,6 +10,7 @@ const { EngineContext } = await import("../../lib/v2/engine/context.ts");
 const { d03, USE_CLASSES, useClassOf } = await import("../../lib/v2/tile/d03/engine.ts");
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
 const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
+const { analysisCharts } = await import("../../lib/v2/report/analysis-charts.ts");
 
 const metric = (tile, id) => {
   const found = tile.metrics.find((item) => item.id === id);
@@ -136,6 +137,25 @@ assert.equal(invalidGeometry.status, "partial", "invalid geometry는 타일 상�
 assert.ok(invalidGeometry.limitations.some((limitation) => /도형 오류/.test(limitation.note)), "invalid geometry 근거를 limitation에 보존");
 assert.equal(invalidGeometry.presentation.polygons.length, 5, "invalid geometry만 도형에서 제외");
 invalidGeometryCtx.close();
+
+// 4-1) 좌표가 있는 도형 오류(고리 점 3개)는 동수에 든 건물이라 대표점 하나를 counted로 싣는다 — 그래프가 동수를 그대로 센다.
+const { toUtmk } = await import("../../lib/v2/crs.ts");
+const [ucx, ucy] = toUtmk(CENTER);
+const pointFallbackCtx = context(dataDir, "d03-invalid-footprint");
+const hitsBefore = pointFallbackCtx.hits.bind(pointFallbackCtx);
+pointFallbackCtx.hits = (key, kinds, radiusM) => hitsBefore(key, kinds, radiusM).map((hit) => hit.stableId === "building:b_unknown"
+  ? { ...hit, geometry: { type: "Polygon", coordinates: [[[ucx - 10, ucy - 10], [ucx + 10, ucy - 10], [ucx, ucy + 10]]] } }
+  : hit);
+pointFallbackCtx.coverage = () => [];
+const pointFallback = d03(pointFallbackCtx);
+const pointFallbackPolygonFids = new Set(pointFallback.presentation.polygons.map((polygon) => polygon.fid));
+assert.equal(pointFallback.presentation.features?.length, 1, "그릴 면이 없는 건물은 대표점 하나");
+assert.equal(pointFallback.presentation.features[0].counted, true);
+assert.equal(pointFallback.presentation.features[0].layer, "use:미상");
+assert.ok(!pointFallbackPolygonFids.has(pointFallback.presentation.features[0].fid), "면이 있는 건물과 겹치지 않는다(점+면 중복 없음)");
+assert.equal(pointFallback.presentation.polygons.length, 5);
+assert.equal(analysisCharts(toTileView(pointFallback).map).total, metric(pointFallback, "share_use_10").denominator, "그래프 합계 = 엔진 동수(대표점까지)");
+pointFallbackCtx.close();
 
 // 5) 건물 파일이 게시되지 않으면 D03만 안전하게 미제공.
 const absentDir = mkdtempSync(join(tmpdir(), "v2-d03-absent-"));

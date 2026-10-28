@@ -262,13 +262,11 @@ const SYNTHETIC_EXPECTED = {
   assert.equal(chart.total, blocks, `그래프 블록 수 = 엔진 폐합 블록 수(${blocks})`);
   assert.equal(chart.subject + chart.countUnit, "폐합 블록개");
   assert.ok(chart.composition.every((item) => item.label !== "미폐합"), "미폐합 면은 구성비에 들지 않는다");
-  // 음성 대조: counted를 떼면 반경 판정으로 돌아가 반경 가장자리에 걸린 블록 조각이 빠진다.
+  // 음성 대조: counted를 떼면(옛 분석) 반경 판정으로 돌아가지 않고 센 지물이 없어 그래프를 그리지 않는다.
   const stripped = JSON.parse(JSON.stringify(tile));
   for (const polygon of stripped.presentation.polygons) delete polygon.counted;
   const strippedView = toTileView(stripped);
-  const strippedChart = analysisCharts(viewWithLayer(strippedView, strippedView.defaultLayer).map);
-  assert.notEqual(strippedChart.total, blocks, `counted를 떼면 그래프(${strippedChart.total})가 엔진 블록 수(${blocks})와 달라진다`);
-  assert.ok(strippedChart.total < blocks, "가장자리 조각이 빠져 엔진 수보다 작다");
+  assert.equal(analysisCharts(viewWithLayer(strippedView, strippedView.defaultLayer).map), null, "counted가 없는 옛 분석은 「지도 + 요약」");
   ctx.close();
 }
 

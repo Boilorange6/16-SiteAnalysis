@@ -4,7 +4,7 @@ import { MAX_MAP_POLYGONS, type TileResult } from "../../tile-result";
 import type { EngineContext } from "../../engine/context";
 import { areaInCircle, polygonArea } from "../../engine/tiles/geo";
 import { BUILDING_SOURCES, assumedOneFloorLimitation, buildingRetirementLimitations, buildingRows, isConfirmedHeightMethod, isCounted, type BuildingRow } from "../../engine/tiles/buildings-shared";
-import { capD05BuildingCandidates, est, makeTile, missing, obs, polygonCandidate, type TileDraft } from "../../engine/tiles/common";
+import { capD05BuildingCandidates, d05CountedCapped, est, makeTile, missing, obs, polygonCandidate, type TileDraft } from "../../engine/tiles/common";
 import { notProvided } from "../../engine/tiles/not-provided";
 import { buildingMapExtra, heightLayer, sortBuildingRows } from "./presentation";
 
@@ -71,6 +71,7 @@ export function d07(ctx: EngineContext): TileResult {
     ? "반경 안 건물이 확인되지 않아 높이 12m 기준 분류를 산출하지 못함 → 건물 자료와 현장 확인 필요"
     : `반경 안 건물 ${total.toLocaleString("en-US")}동 중 높이 12m 이하 ${lowSource + lowEstimated}동(확인 ${lowSource}동·추정 ${lowEstimated}동), 1층 가정 ${assumed}동 → 확인 높이·층수 추정·1층 가정을 분리해 표시 → 건축물대장 높이 확인 필요`;
 
+  const mapPolygons = capD05BuildingCandidates(polygons, ctx.input.center);
   return makeTile(ctx, {
     code: "D07",
     type: "diagram",
@@ -79,7 +80,8 @@ export function d07(ctx: EngineContext): TileResult {
     judgment: { ruleId: "D07-height@1", basisMetricIds: ["share_low_pct", "fill_height_m_pct"], sentence, level: null, criteria: null },
     sources: ctx.sources("buildings", BUILDING_SOURCES),
     layers: [...LAYERS],
-    polygons: capD05BuildingCandidates(polygons, ctx.input.center),
+    polygons: mapPolygons,
+    countedCapped: d05CountedCapped(polygons, mapPolygons),
     polygonTotal: polygons.length,
     polygonCap: MAX_MAP_POLYGONS,
     limitations,

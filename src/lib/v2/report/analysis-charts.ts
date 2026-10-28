@@ -2,12 +2,13 @@
 import { tileClientModuleFor } from "../tile/client";
 import { legendItems, legendItemsForModel, modelLayerStyle, type MapModel } from "../ui/map-layers";
 import { metersPerPixel, worldPx } from "../ui/map-projection";
+import { formatStat } from "./chart-geometry";
 
 export type CompositionItem = { label: string; color: string; count: number; share: number };
 export type DistanceData =
-  | { kind: "scatter"; axis: { label: string; unit: string }; points: { d: number; v: number; color: string }[]; median: number; mean: number; max: number; site: number | null; sampled: boolean }
+  | { kind: "scatter"; axis: { label: string; unit: string }; points: { d: number; v: number; color: string }[]; median: number; mean: number; max: number; site: number | null; sampled: boolean; /** 중앙값·평균 앞에 붙는 말(타일의 `chart.statQualifier`) */ qualifier?: string }
   | { kind: "bands"; bands: { from: number; to: number; count: number }[] };
-export type AnalysisCharts = { radiusM: number; total: number; countUnit: string; subject: string; missing: number; titles: { composition: string; distance: string }; composition: CompositionItem[]; distance: DistanceData };
+export type AnalysisCharts = { radiusM: number; total: number; countUnit: string; subject: string; missing: number; /** 값 없는 지물 꼬리표(타일의 `chart.missingLabel`, 없으면 「값 없음」) */ missingLabel?: string; titles: { composition: string; distance: string }; composition: CompositionItem[]; distance: DistanceData };
 
 const MAX_POINTS = 2000;
 const OTHER = { label: "그 밖", color: "#B9BDC6" };
@@ -69,6 +70,8 @@ export function analysisCharts(model: MapModel): AnalysisCharts | null {
   // 타일이 세는 대상을 밝힌 경우에만 그래프를 낸다. 밝히지 않았거나 타일 코드가 없으면 「지도 + 요약」에 머문다.
   const declared = model.tileCode ? tileClientModuleFor(model.tileCode)?.chart : undefined;
   if (!declared) return null;
+  // 지도 페이로드 상한이 센 지물을 떨어뜨렸다: 그래프 개수가 문장의 수와 어긋나므로 그리지 않는다.
+  if (model.countedCapped) return null;
   const { subject, countUnit } = declared;
   const items = [...legendItemsForModel(model)];
 
@@ -93,12 +96,12 @@ export function analysisCharts(model: MapModel): AnalysisCharts | null {
   const mpp = metersPerPixel(model.center[1], Z);
   const [cx, cy] = worldPx(model.center[0], model.center[1], Z);
   const counted: Array<{ d: number; value: number | null | undefined; at: Px; item: NonNullable<ReturnType<typeof itemFor>> }> = [];
-  // 엔진이 지물에 `counted`를 실었으면 그 표시가 반경 판정을 대신한다(지도는 반경에 걸친 건물도 그리지만 동수는 건물 중심이 반경 안인 것만 센다. 엔진은 UTM-K, 여기는 웹 메르카토르라 경계의 1 m 안팎은 판정이 갈린다).
+  // 엔진이 `counted: true`로 표시한 지물만 센다(지도는 반경에 걸친 건물이나 행정구역 면도 그리지만 문장의 수는 엔진이 센 것뿐이다. 표시 없는 옛 분석은 0개 → 「지도 + 요약」).
   const consider = (layer: string, at: Px, value: number | null | undefined, flag?: boolean) => {
+    if (flag !== true) return;
     const item = itemFor(layer);
     if (!item) return;
-    const d = Math.hypot(at[0] - cx, at[1] - cy) * mpp;
-    if (flag === undefined ? d <= model.radiusM : flag) counted.push({ d, value, at, item });
+    counted.push({ d: Math.hypot(at[0] - cx, at[1] - cy) * mpp, value, at, item });
   };
   for (const f of model.features) consider(f.layer, worldPx(f.lng, f.lat, Z), f.value, f.counted);
   // 선 지물(D12 선 시설): 같은 fid의 조각은 한 번만, 대표점은 첫 조각의 가운데 꼭짓점이다.
@@ -174,7 +177,8 @@ export function analysisCharts(model: MapModel): AnalysisCharts | null {
     }
     distance = {
       kind: "scatter",
-      axis: { label: model.valueAxis?.label ?? "값", unit: model.valueAxis?.unit ?? "" },
+      axis: { label: model.valueAxis?.label ?? "값", unit: declared.displayUnit ?? model.valueAxis?.unit ?? "" },
+      ...(declared.statQualifier ? { qualifier: declared.statQualifier } : {}),
       points: picked.map((c) => ({ d: Math.round(c.d * 10) / 10, v: c.value, color: c.item.color })),
       median: median(values),
       mean: values.reduce((s, v) => s + v, 0) / values.length,
@@ -195,13 +199,8 @@ export function analysisCharts(model: MapModel): AnalysisCharts | null {
     composition: `${model.valueAxis?.label ?? subject} 구성비`,
     distance: distance.kind === "scatter" ? `대지에서 거리와 ${distance.axis.label}` : `대지에서 거리별 ${subject} 수`,
   };
-  return { radiusM: model.radiusM, total, countUnit, subject, missing, titles, composition, distance };
+  return { radiusM: model.radiusM, total, countUnit, subject, missing, ...(declared.missingLabel ? { missingLabel: declared.missingLabel } : {}), titles, composition, distance };
 }
-
-const num = (v: number, unit: string) => {
-  const r = Math.round(v);
-  return `${unit === "년" ? String(r) : r.toLocaleString("ko-KR")}${unit}`;
-};
 
 export function analysisStatLine(c: AnalysisCharts): string {
   const radius = c.radiusM >= 1000 ? `${c.radiusM / 1000} km` : `${c.radiusM} m`;
@@ -211,7 +210,8 @@ export function analysisStatLine(c: AnalysisCharts): string {
     const best = d.bands.reduce((a, b) => (b.count > a.count ? b : a));
     return `${head} · 가장 많은 거리 ${best.from}–${best.to} m`;
   }
-  const parts = [head, `중앙값 ${num(d.median, d.axis.unit)}`, `최고 ${num(d.max, d.axis.unit)}`];
-  if (c.missing > 0) parts.push(`${d.axis.unit === "층" ? "1층 가정" : "값 없음"} ${c.missing.toLocaleString("ko-KR")}${c.countUnit}`);
+  const unit = d.axis.unit;
+  const parts = [head, `${d.qualifier ? `${d.qualifier} ` : ""}중앙값 ${formatStat(d.median, unit)}${unit}`, `최고 ${formatStat(d.max, unit)}${unit}`];
+  if (c.missing > 0) parts.push(`${c.missingLabel ?? "값 없음"} ${c.missing.toLocaleString("ko-KR")}${c.countUnit}`);
   return parts.join(" · ");
 }

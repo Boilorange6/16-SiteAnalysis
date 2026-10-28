@@ -27,7 +27,7 @@ const BUILDINGS = [
 const polygons = BUILDINGS.flatMap(([floors, tall, low, value], i) => {
   const east = -400 + i * 70;
   const north = (i % 3) * 120 - 100;
-  return [{ layer: floors, rings: square(east, north), value }, { layer: tall, rings: square(east, north), value }, { layer: low, rings: square(east, north), value }];
+  return [{ layer: floors, rings: square(east, north), value, counted: true }, { layer: tall, rings: square(east, north), value, counted: true }, { layer: low, rings: square(east, north), value, counted: true }];
 });
 const d05Result = {
   tileId: "x-D05", analysisId: "x", tileType: "diagram", tileCode: "D05", status: "complete", engineVersion: "test",

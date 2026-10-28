@@ -24,11 +24,13 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), M
 const group = (n: number) => n.toLocaleString("ko-KR");
 /** 눈금·개수 숫자. 연도는 쉼표를 붙이지 않는다. */
 const tickText = (v: number, unit: string) => (unit === "년" ? String(Math.round(v)) : group(Math.round(v)));
-/** 중앙값은 정수면 정수·아니면 소수 1자리, 평균은 늘 소수 1자리. 연도는 소수 없이. */
-const statText = (v: number, unit: string, oneDecimal: boolean) => {
+/** 통계 글자(요약 통계 줄·산점도 중앙값/평균)가 함께 쓰는 숫자 서식. 연도는 소수·쉼표 없이, 절댓값 100 미만만 소수 1자리(4.5층은 4.5, 정수는 그대로), 그 이상은 정수(3,115.8 → 3,116). */
+export const formatStat = (v: number, unit: string): string => {
   if (unit === "년") return String(Math.round(v));
-  return oneDecimal || !Number.isInteger(v) ? v.toLocaleString("ko-KR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : group(v);
+  return Math.abs(v) < 100 ? (Math.round(v * 10) / 10).toLocaleString("ko-KR", { maximumFractionDigits: 1 }) : group(Math.round(v));
 };
+/** 화면 SVG와 PPT가 같은 사각형 테두리 굵기(pt) */
+export const RECT_STROKE_PT = 0.75;
 const fit = (s: string, pt: number, maxW: number) => {
   if (textW(s, pt) <= maxW) return s;
   let t = s;
@@ -127,8 +129,9 @@ function scatterShapes(d: Scatter, radiusM: number, box: ChartBox, scale: number
   const b = th + 0.07 * scale;
   const px = box.x + l;
   const pw = box.w - l - r;
-  const medText = `중앙값 ${statText(d.median, unit, false)}${unit}`;
-  const meanText = `평균 ${statText(d.mean, unit, true)}${unit}`;
+  const lead = d.qualifier ? `${d.qualifier} ` : "";
+  const medText = `${lead}중앙값 ${formatStat(d.median, unit)}${unit}`;
+  const meanText = `${lead}평균 ${formatStat(d.mean, unit)}${unit}`;
   const medW = textW(medText, pt, true);
   const sideFits = medW + textW(meanText, pt) + 0.08 * scale <= pw; // 가까운 두 선의 글자를 한 줄에 나란히 놓을 수 있나
   const t = sideFits ? th + 0.03 * scale : 2 * th + 0.04 * scale; // 위에 중앙값·평균 글자 자리(나란히 못 놓으면 두 줄)

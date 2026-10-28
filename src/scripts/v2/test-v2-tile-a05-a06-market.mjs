@@ -112,7 +112,7 @@ assert.equal(a06ClientModule.mapNote, "색 = 원천(청약홈·입주예정) · 
       const stripped = JSON.parse(JSON.stringify(counted));
       for (const item of stripped.presentation.features) delete item.counted;
       const strippedView = toTileView(stripped);
-      assert.equal(analysisCharts(viewWithLayer(strippedView, strippedView.defaultLayer).map).total, engineCount - 1, "음성 대조: counted를 떼면 가장자리 단지가 빠진다");
+      assert.equal(analysisCharts(viewWithLayer(strippedView, strippedView.defaultLayer).map), null, "음성 대조: counted가 없는 옛 분석은 그래프를 그리지 않는다(반경 판정으로 돌아가지 않는다)");
     }
     countCtx.close();
   }

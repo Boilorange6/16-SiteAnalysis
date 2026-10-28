@@ -26,6 +26,12 @@ function dedupe<T>(items: T[], key: (item: T) => string): T[] {
   });
 }
 
+/** 상한 전(before)에 있던 센 지물(`counted: true`)이 상한 뒤(after)에 하나도 안 남았으면 true. 같은 key의 조각이 하나라도 남으면 남은 것이다. */
+function lostCounted<T extends { counted?: boolean }>(before: readonly T[], after: readonly T[], key: (item: T) => string): boolean {
+  const kept = new Set(after.map(key));
+  return before.some((item) => item.counted === true && !kept.has(key(item)));
+}
+
 function metricKey(metric: Metric): string {
   return metric.id;
 }
@@ -218,11 +224,19 @@ export function mergeTileResults(base: TileResult, extra: TileResult, options: M
     ...basePolygons.map((item) => item.layer),
     ...baseLines.map((item) => item.layer),
   ])];
-  const features = capMergedFeatures(dedupe([...baseFeatures, ...extraFeatures], featureKey), preferredLayers);
+  const allFeatures = dedupe([...baseFeatures, ...extraFeatures], featureKey);
+  const allPolygons = dedupe([...basePolygons, ...extraPolygons], polygonKey);
+  const allLines = dedupe([...baseLines, ...extraLines], lineKey);
+  const features = capMergedFeatures(allFeatures, preferredLayers);
   const polygons = options.d05BuildingPolygons
-    ? capD05BuildingPolygons(dedupe([...basePolygons, ...extraPolygons], polygonKey), base.conditions.center)
-    : capByLayer(dedupe([...basePolygons, ...extraPolygons], polygonKey), MAX_MAP_POLYGONS, preferredLayers);
-  const lines = capByLayer(dedupe([...baseLines, ...extraLines], lineKey), MAX_MAP_LINES, preferredLayers);
+    ? capD05BuildingPolygons(allPolygons, base.conditions.center)
+    : capByLayer(allPolygons, MAX_MAP_POLYGONS, preferredLayers);
+  const lines = capByLayer(allLines, MAX_MAP_LINES, preferredLayers);
+  // 흡수한 쪽이 이미 센 지물을 잘랐거나, 이 병합 상한이 센 지물을 떨어뜨렸으면 표시를 단다.
+  const countedCapped = !!(base.presentation.countedCapped || extra.presentation.countedCapped)
+    || lostCounted(allFeatures, features, (item) => item.fid ?? featureKey(item))
+    || lostCounted(allPolygons, polygons, options.d05BuildingPolygons ? d05BuildingKey : (item) => item.fid ?? polygonKey(item))
+    || lostCounted(allLines, lines, (item) => item.fid ?? lineKey(item));
   const rasterRefs = dedupe([...(base.presentation.rasters ?? []), ...(extra.presentation.rasters ?? [])], (ref) => ref.name);
   const sourceRefs = dedupe([...base.provenance.sources, ...extra.provenance.sources], sourceKey);
   const limitations = dedupe([...base.limitations, ...extra.limitations], limitationKey);
@@ -235,6 +249,7 @@ export function mergeTileResults(base: TileResult, extra: TileResult, options: M
     ...(polygons.length > 0 ? { polygons, polygonsTotal: mergedTotal(base.presentation.polygonsTotal, basePolygons.length, extra.presentation.polygonsTotal, extraPolygons.length, polygons.length) } : {}),
     ...(lines.length > 0 ? { lines, linesTotal: mergedTotal(base.presentation.linesTotal, baseLines.length, extra.presentation.linesTotal, extraLines.length, lines.length) } : {}),
     ...(rasterRefs.length > 0 ? { rasters: rasterRefs } : {}),
+    ...(countedCapped ? { countedCapped: true } : {}),
   };
   return parseTileResult({
     ...base,

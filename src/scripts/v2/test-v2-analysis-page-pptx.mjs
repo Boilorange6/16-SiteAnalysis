@@ -32,7 +32,7 @@ function fixture(count) {
   const polygons = buildings.flatMap(({ band, value, east, north }, i) => {
     const e = count === 12 ? -400 + i * 70 : east;
     const n = count === 12 ? (i % 3) * 120 - 100 : north;
-    return LAYERS[band].map((layer) => ({ layer, rings: square(e, n), value }));
+    return LAYERS[band].map((layer) => ({ layer, rings: square(e, n), value, counted: true }));
   });
   const result = {
     tileId: "x-D05", analysisId: "x", tileType: "diagram", tileCode: "D05", status: "complete", engineVersion: "test",
@@ -190,6 +190,33 @@ for (const shape of geometry.filter((s) => s.kind === "rect")) {
   assert.ok(edited.blocks.some((b) => textsOf(b).includes("사용자가 고친 요약 문장")), "고친 요약을 해석 자리에");
   assert.ok(!edited.blocks.some((b) => textsOf(b).includes(base.view.sentence)), "고친 요약이 있으면 view.sentence는 없다");
   assert.ok(charts.blocks.some((b) => textsOf(b).includes(base.view.sentence)), "기본은 view.sentence 그대로");
+}
+
+// I3: 아주 긴 고친 요약(600자, 24 pt) — 화면과 PPT가 줄 수에 맞게 자른 똑같은 글을 그리고, PPT 글상자는 요약 판 밖으로 나가지 않는다.
+{
+  const long = "낮은 층 건물이 대부분이고 높은 건물은 일부이며 반경 안 분포는 대지 가까이에 몰려 있다 ".repeat(12).slice(0, 600);
+  assert.equal(long.length, 600);
+  const slide = base.planOf({ ...base.tilePage, layout: "map-charts", summaryOverride: long, fontSizes: { summary: 24 } });
+  const plate = slidePanelRects(slide.style, true, undefined, "wide").summary;
+  const scale = 24 / 13;
+  const colLong = chartsColumnLayout(plate, scale);
+  const longCharts = analysisCharts(slide.map);
+  const fitLong = analysisColumnFit({ col: colLong, scale, summaryPt: 24, badges: slide.view.badges, headline: slide.view.headline, statText: analysisStatLine(longCharts), filterLine: slide.view.filterLine, sentence: long });
+  assert.ok(fitLong.sentence.length < long.length && fitLong.sentence.endsWith("…") && long.startsWith(fitLong.sentence.slice(0, -1).trimEnd()), "줄 수에 맞게 자르고 …로 닫는다");
+  const deck = await deckOf(slide, images);
+  const block = deck.blocks.find((b) => textsOf(b).includes(fitLong.sentence));
+  assert.ok(block, "PPT는 자른 글 그대로를 그린다");
+  assert.ok(!deck.blocks.some((b) => textsOf(b).includes(long)), "PPT에 600자 원문이 없다");
+  assert.doesNotMatch(block, /normAutofit|spAutoFit/, "PPT 해석 문장은 자동 맞춤에 기대지 않는다");
+  assert.ok(render(slide).includes(`>${fitLong.sentence}</div>`), "화면도 같은 글");
+  const off = block.match(/<a:off x="(-?\d+)" y="(-?\d+)"\/>/);
+  const ext = block.match(/<a:ext cx="(\d+)" cy="(\d+)"\/>/);
+  assert.ok(Number(off[2]) + Number(ext[2]) <= (plate.y + plate.h) * EMU + 1, "해석 문장 글상자 아래 ≤ 요약 판 아래");
+  // 통계 줄도 마찬가지: 아주 긴 통계는 줄 수에 맞게 잘리고 PPT와 화면이 같다
+  const longStat = `${analysisStatLine(longCharts)} · ${"꼬리표 ".repeat(120)}`;
+  const fitStat = analysisColumnFit({ col: colLong, scale, summaryPt: 24, badges: [], headline: null, statText: longStat, filterLine: "적용 필터: 가나다 ".repeat(20), sentence: null });
+  assert.ok(fitStat.statText.endsWith("…") && fitStat.statText.length < longStat.length, "통계 줄 자름");
+  assert.ok(fitStat.filterLine.endsWith("…"), "필터 줄은 한 줄로 자름");
 }
 
 // 배지·큰 숫자는 화면과 같은 칸에

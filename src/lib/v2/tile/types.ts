@@ -125,7 +125,16 @@ export interface TileClientModule {
    * 「지도 + 그래프」가 세는 대상. 이 선언이 있는 타일만 그래프를 낸다(없으면 「지도 + 요약」).
    * subject는 구성 항목 전부를 아우르는 이름, countUnit은 그 세는 단위다. 그래프 합계는 엔진이 세어 판단 문장·행에 적은 수와 같아야 한다.
    */
-  chart?: { subject: string; countUnit: string };
+  chart?: {
+    subject: string;
+    countUnit: string;
+    /** 중앙값·평균 앞에 붙는 말(예: A07 「단지」 — 값이 거래 전체가 아니라 단지 중앙값의 통계라서). */
+    statQualifier?: string;
+    /** 통계·산점도 글자에 붙는 단위. 없으면 `valueAxis.unit`(예: A07 「만원/㎡」). */
+    displayUnit?: string;
+    /** 값이 없는 지물 수 꼬리표(예: D05 「1층 가정·미상」). 없으면 「값 없음」. */
+    missingLabel?: string;
+  };
   /** 카드에 표시할 모델·법적 사용 한계 문구다. */
   caveat?: string;
   /** 카드 배지에 표시할 계산 모델 요약이다. */

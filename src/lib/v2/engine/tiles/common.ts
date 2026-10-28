@@ -20,26 +20,26 @@ const TILE_CACHE_REVISION: Readonly<Record<string, string>> = {
   // site-r1 is carried by conditions.parcelSnapshotHash/cacheKeyFor. Keep the
   // public per-tile engine version contract unchanged for existing consumers.
   A01: "w3-merge-r1+w2b-r1+w3-r1+entrance-color-r1+transit-presentation-r1+rail-data-r3",
-  A02: "w3-merge-r1+w2b-r1+clip-r1+chart-count-r1",
+  A02: "w3-merge-r1+w2b-r1+clip-r1+chart-count-r1+chart-cap-r1",
   A03: "w2b-r1+composition-r1",
   A04: "w3-merge-r1+w2b-r1+clip-r1",
-  A05: "w2b-r1+composition-r1+chart-count-r1",
+  A05: "w2b-r1+composition-r1+chart-count-r1+chart-cap-r1",
   A06: "w2b-r1+composition-r1",
-  A07: "w3-merge-r1+w2b-r1+w2-trade-modes-r1+price-size-r1+chart-value-r1+chart-count-r1",
+  A07: "w3-merge-r1+w2b-r1+w2-trade-modes-r1+price-size-r1+chart-value-r1+chart-count-r1+chart-cap-r1",
   A08: "w2b-r1+w2-trade-modes-r1+w6-building-modes-r1",
-  A09: "w3-merge-r1+w2b-r1+clip-r1+chart-count-r1",
+  A09: "w3-merge-r1+w2b-r1+clip-r1+chart-count-r1+chart-cap-r1",
   A10: "w3-merge-r1+w2b-r1",
   A11: "w3-merge-r1+w2b-r1+clip-r1",
   A12: "w3-merge-r1+w2b-r1+clip-r1+provenance-r1",
   D02: "w2b-r1+w4-names-r1+clip-r1",
-  D03: "w2b-r1+w4-names-r1+clip-r1+chart-count-r1",
-  D04: "w2b-r1+w4-names-r1+clip-r1+chart-value-r1",
-  D05: "height3-r1+w3-merge-r1+w2b-r1+w4-names-r1+d05-nearest-cap-r1+clip-r1+chart-value-r1",
+  D03: "w2b-r1+w4-names-r1+clip-r1+chart-count-r1+chart-cap-r1",
+  D04: "w2b-r1+w4-names-r1+clip-r1+chart-value-r1+chart-cap-r1",
+  D05: "height3-r1+w3-merge-r1+w2b-r1+w4-names-r1+d05-nearest-cap-r1+clip-r1+chart-value-r1+chart-cap-r1",
   D10: "w2b-r1+clip-r1+composition-r1",
   D11: "w2b-r1+clip-r1",
-  D12: "w2b-r1+clip-r1+chart-count-r2",
+  D12: "w2b-r1+clip-r1+chart-count-r2+chart-cap-r1",
   D13: "w2b-r1",
-  D15: "w2b-r1+clip-r1+chart-count-r1",
+  D15: "w2b-r1+clip-r1+chart-count-r1+chart-cap-r1",
   D16: "height3-r1+w2b-r1+clip-r1",
   D17: "w2b-r1+clip-r1+terrain-section-r1",
   D18: "w2b-r1+clip-r1",
@@ -291,6 +291,8 @@ export interface TileDraft {
   terrainSections?: NonNullable<TileResult["presentation"]["terrainSections"]>;
   /** 지물 `value`의 뜻(그래프 축). 값을 싣는 타일만 둔다. */
   valueAxis?: TileResult["presentation"]["valueAxis"];
+  /** 타일이 makeTile 앞에서 이미 센 지물을 떨어뜨렸다면(D05 사전 선택) true. makeTile의 상한 판정과 OR로 합친다. */
+  countedCapped?: boolean;
 }
 
 function warnOverlappingFeatureGeometry(code: string, features: MapFeature[], polygons: MapPolygon[]): void {
@@ -299,10 +301,36 @@ function warnOverlappingFeatureGeometry(code: string, features: MapFeature[], po
   if (overlaps.length > 0) console.warn(`[v2 map] ${code}: 같은 fid의 점+면이 함께 들어왔습니다: ${overlaps.join(", ")}`);
 }
 
+/** 상한이 센 지물(`counted: true`)을 하나라도 떨어뜨렸나. 같은 fid의 조각이 하나라도 남았으면 그 지물은 남은 것이다. */
+function droppedCounted(all: ReadonlyArray<{ id: number; extra: { fid?: string; counted?: boolean } }>, kept: ReadonlyArray<{ fid?: string }>): boolean {
+  const keptFids = new Set(kept.map((item) => item.fid));
+  return all.some(({ id, extra }) => extra.counted === true && !keptFids.has(extra.fid ?? String(id)));
+}
+
+/** 센 지물인데 그릴 도형이 없을 때 쓰는 대표점 후보. 좌표를 못 구하면 null(그 지물은 못 그림). */
+export function fallbackCandidate(h: FeatureHit, layer: string, extra: Partial<Omit<MapFeature, "layer" | "lng" | "lat">> = {}): MapCandidate | null {
+  try {
+    const found = candidate(h, layer, extra);
+    return Number.isFinite(found.f.lng) && Number.isFinite(found.f.lat) ? found : null;
+  } catch {
+    return null;
+  }
+}
+
+/** D05 사전 선택(`capD05BuildingCandidates`)이 센 건물을 떨어뜨렸나. 건물 단위로 비교한다 — 조각이 하나라도 남은 건물은 남은 것이다. */
+export function d05CountedCapped(all: readonly PolygonCandidate[], kept: readonly PolygonCandidate[]): boolean {
+  const keptKeys = new Set(kept.map(d05CandidateBuildingKey));
+  return all.some((candidate) => candidate.p.counted === true && !keptKeys.has(d05CandidateBuildingKey(candidate)));
+}
+
 export function makeTile(ctx: EngineContext, d: TileDraft): TileResult {
   const capped = d.map ? capFeatures(d.map) : null;
   const cappedPoly = d.polygons ? capPolygons(d.polygons, d.polygonCap) : null;
   const cappedLine = d.lines ? capLines(d.lines) : null;
+  const countedCapped = d.countedCapped === true
+    || (!!d.map && droppedCounted(d.map.map(({ id, f }) => ({ id, extra: f })), capped!.features))
+    || (!!d.polygons && droppedCounted(d.polygons.map(({ id, p }) => ({ id, extra: p })), cappedPoly!.polygons))
+    || (!!d.lines && droppedCounted(d.lines.map(({ id, l }) => ({ id, extra: l })), cappedLine!.lines));
   warnOverlappingFeatureGeometry(d.code, capped?.features ?? [], cappedPoly?.polygons ?? []);
   const legendLabels = [
     ...(capped?.features.map((feature) => layerStyle(feature.layer).label) ?? []),
@@ -330,6 +358,7 @@ export function makeTile(ctx: EngineContext, d: TileDraft): TileResult {
       ...(cappedLine && cappedLine.total > 0 ? { lines: cappedLine.lines, linesTotal: cappedLine.total } : {}),
       ...(d.terrainSections ? { terrainSections: d.terrainSections } : {}),
       ...(d.valueAxis ? { valueAxis: d.valueAxis } : {}),
+      ...(countedCapped ? { countedCapped: true } : {}),
     },
     provenance: { manifestHash: ctx.manifestHash, sources: d.sources },
     limitations: d.limitations,

@@ -45,6 +45,8 @@ export type MapModel = {
   baseHide?: BaseToggleLayer[];
   /** 지물 `value`의 뜻(그래프 축). 값을 싣는 타일만 있다. */
   valueAxis?: { label: string; unit: string; countUnit: string };
+  /** 상한이 엔진이 센 지물을 떨어뜨렸다(없으면 false). 그러면 그래프 개수가 문장과 어긋나니 그래프를 내지 않는다. */
+  countedCapped?: boolean;
 };
 
 /** 지도 레이어 id → 라벨·색·표현 (엔진의 legend 라벨과 MapFigure가 함께 쓴다). 색은 화면 쪽에서 정한다. */

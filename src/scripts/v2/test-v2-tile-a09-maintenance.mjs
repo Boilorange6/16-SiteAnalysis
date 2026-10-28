@@ -119,16 +119,41 @@ const forbidden = /도보|\d\s*분|종합/;
     assert.equal(chart.total, zones, `${radiusM} m: 그래프 정비구역 수 = 엔진 정비구역 수`);
     assert.equal(chart.subject + chart.countUnit, "정비구역곳");
     if (edgeZone) {
-      // 음성 대조: counted를 떼면 가장자리 구역이 빠진다 — 이 픽스처가 정말 가장자리에 걸쳐 있다는 증거.
+      // 음성 대조: counted를 떼면(옛 분석) 반경 판정으로 돌아가지 않고 센 지물이 없어 그래프를 그리지 않는다.
       const stripped = JSON.parse(JSON.stringify(tile));
       for (const polygon of stripped.presentation.polygons ?? []) delete polygon.counted;
       for (const feature of stripped.presentation.features ?? []) delete feature.counted;
       const strippedView = toTileView(stripped);
-      const strippedChart = analysisCharts(viewWithLayer(strippedView, strippedView.defaultLayer).map);
-      assert.equal(strippedChart.total, zones - 1, `counted를 떼면 ${zones}곳이 ${zones - 1}곳으로 줄어든다`);
+      assert.equal(analysisCharts(viewWithLayer(strippedView, strippedView.defaultLayer).map), null, "counted가 없는 옛 분석은 「지도 + 요약」");
     }
     ctx.close();
   }
+}
+
+// 반경 교차 면적을 못 구한(도형 오류) 구역도 「정비구역 N곳」에는 든다: 대표점 하나를 counted로 싣고 그래프 수는 엔진 수와 같다
+{
+  const { toTileView, viewWithLayer } = await import("../../lib/v2/ui/tile-view.ts");
+  const { analysisCharts } = await import("../../lib/v2/report/analysis-charts.ts");
+  const { toUtmk } = await import("../../lib/v2/crs.ts");
+  const [ux, uy] = toUtmk(CENTER);
+  const ctx = await make({ maint: "zones", radiusM: 800 });
+  const originalHits = ctx.hits.bind(ctx);
+  let brokenId;
+  ctx.hits = (key, kinds, radiusM) => originalHits(key, kinds, radiusM).map((hit) => {
+    if (!hit.stableId.startsWith("maintenance_zone:")) return hit;
+    brokenId ??= hit.featureId;
+    return hit.featureId === brokenId ? { ...hit, geometry: { type: "Polygon", coordinates: [[[ux - 10, uy - 10], [ux + 10, uy - 10], [ux, uy + 10]]] } } : hit;
+  });
+  const tile = a09ServerModule.compute(ctx);
+  const zones = value(tile, "zones_in_radius");
+  const points = (tile.presentation.features ?? []).filter((feature) => feature.fid === String(brokenId));
+  assert.equal(points.length, 1, "면을 못 구한 구역은 대표점 하나");
+  assert.equal(points[0].counted, true);
+  assert.ok(!(tile.presentation.polygons ?? []).some((polygon) => polygon.fid === String(brokenId)), "면이 있는 구역에는 점을 더하지 않는다");
+  const view = toTileView(tile);
+  const chart = analysisCharts(viewWithLayer(view, view.defaultLayer).map);
+  assert.equal(chart?.total, zones, "그래프 정비구역 수 = 엔진 정비구역 수(대표점 포함)");
+  ctx.close();
 }
 
 {

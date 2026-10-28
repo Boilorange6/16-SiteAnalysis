@@ -172,9 +172,7 @@ assert.equal(outside.metrics.some((item) => item.id === "back_length_교통"), f
   };
   const stripped = stripCounted(counted);
   const strippedView = toTileView(stripped);
-  const strippedChart = analysisCharts(viewWithLayer(strippedView, strippedView.defaultLayer).map);
-  assert.ok(strippedChart.total < engineCount, `counted를 떼면 그래프(${strippedChart.total})가 엔진 수(${engineCount})보다 작다`);
-  assert.equal(strippedChart.total, 4, "음성 대조 값: 가장자리 조각 1 + 닿기만 한 시설 2 = 3건이 빠진다");
+  assert.equal(analysisCharts(viewWithLayer(strippedView, strippedView.defaultLayer).map), null, "음성 대조: counted가 없는 옛 분석은 그래프를 그리지 않는다(반경 판정으로 돌아가지 않는다)");
   countCtx.close();
 }
 
