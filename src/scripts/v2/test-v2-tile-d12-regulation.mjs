@@ -133,7 +133,7 @@ assert.equal(outside.presentation.lines, undefined, "a line wholly outside the r
 assert.equal(outside.metrics.some((item) => item.id === "back_length_교통"), false, "out-of-radius zero fill stays missing rather than observed 0");
 
 // ── counted: 그래프 시설 수 = 엔진이 센 시설 수(문장의 「N건」). 북쪽 반경 가장자리(799.7~800 m)에 0.3 m만 걸친 면은 엔진(UTM-K)에선 안이지만
-//    그래프(구 모양 웹 메르카토르)는 남북 거리를 0.3 % 길게 재 802.6 m로 밖에 둔다 — counted를 떼면 5건이 4건으로 줄어든다(음성 대조).
+//    그래프(구 모양 웹 메르카토르)는 남북 거리를 0.3 % 길게 재 802.6 m로 밖에 둔다 — counted를 떼면 그래프 합이 줄어든다(아래 음성 대조 단언).
 {
   const { toTileView, viewWithLayer } = await import("../../lib/v2/ui/tile-view.ts");
   const { analysisCharts } = await import("../../lib/v2/report/analysis-charts.ts");
