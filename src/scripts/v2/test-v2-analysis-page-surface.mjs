@@ -8,7 +8,7 @@ const { initBoard } = await import("../../lib/v2/ui/board-state.ts");
 const { toSummaryView, toTileView, viewWithLayer } = await import("../../lib/v2/ui/tile-view.ts");
 const { EMPTY_REPORT_DOC, defaultFrame } = await import("../../lib/v2/report/report-doc.ts");
 const { planReportDoc, recommendedPages } = await import("../../lib/v2/report/report-doc-plan.ts");
-const { analysisCharts, analysisSentence, analysisStatLine } = await import("../../lib/v2/report/analysis-charts.ts");
+const { analysisCharts, analysisStatLine } = await import("../../lib/v2/report/analysis-charts.ts");
 const { SlideSurface } = await import("../../components/v2/report/slide-surface.tsx");
 
 // ── 픽스처: 건물 12동(층수 3구간). D05 결과는 같은 건물을 floors_*·tall_*·low_* 세 벌로 싣는다.
@@ -47,6 +47,7 @@ const view = {
   notes: ["보조 메모 라마바", "표본 한계 문구 가나다"],
   badges: [{ text: "일부 자료만 집계", tone: "limit" }],
   headline: { value: "4층", label: "층수 중앙값" },
+  sentence: "낮은 층 건물이 대부분이고 높은 건물은 일부다",
 };
 
 const board = initBoard([d05Result]);
@@ -96,7 +97,8 @@ assert.equal(charts.total, BUILDINGS.length, "그래프 건물 수 = 장이 그�
 assert.ok(markup.includes(analysisStatLine(charts)), "한 줄 통계");
 assert.ok(markup.includes("건물 12동"), "화면 통계는 12동");
 assert.ok(!markup.includes("36동"), "3배(36동)가 아니다");
-assert.ok(markup.includes(analysisSentence(charts)), "해석 문장");
+assert.ok(markup.includes(`>${view.sentence}</div>`), "해석 문장은 지금의 view.sentence 그대로");
+assert.doesNotMatch(markup, /중앙값은|대지 평균은/, "그래프 숫자로 만든 새 문장은 없다");
 
 // 끈 레이어(frame.hiddenLayers)도 반영한다: 9~14층을 끄면 10동
 const hiddenSlide = planOf({ ...tilePage, layout: "map-charts", frame: { ...defaultFrame(), hiddenLayers: ["floors_9_14"] } });
@@ -106,8 +108,8 @@ assert.ok(!hiddenMarkup.includes("건물 12동"));
 
 // 사용자가 고친 요약은 해석 문장 자리에 그대로
 const edited = render(planOf({ ...tilePage, layout: "map-charts", summaryOverride: "사용자가 고친 요약 문장" }));
-assert.ok(edited.includes("사용자가 고친 요약 문장"), "고친 요약을 해석 문장 자리에 쓴다");
-assert.ok(!edited.includes(`${analysisSentence(charts)}</div>`), "고친 요약이 있으면 생성 문장을 장에 쓰지 않는다(접근성 이름에만 남는다)");
+assert.ok(edited.includes(">사용자가 고친 요약 문장</div>"), "고친 요약을 해석 문장 자리에 쓴다");
+assert.ok(!edited.includes(view.sentence), "고친 요약이 있으면 view.sentence는 장에 없다");
 
 // 글자 크기 24 pt에서도 해석 문장은 줄 수를 묶는다(넘치지 않는다)
 const bigSlide = planOf({ ...tilePage, layout: "map-charts", fontSizes: { summary: 24 }, summaryOverride: "아주 긴 요약 문장입니다. ".repeat(30) });

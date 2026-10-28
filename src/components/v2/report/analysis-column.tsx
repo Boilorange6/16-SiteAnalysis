@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useEffect, useId, useMemo, useState, type CSSProperties } from "react";
-import { analysisSentence, analysisStatLine, type AnalysisCharts } from "@/lib/v2/report/analysis-charts";
+import { analysisStatLine, type AnalysisCharts } from "@/lib/v2/report/analysis-charts";
 import { compositionShapes, distanceShapes, type ChartBox, type ChartShape } from "@/lib/v2/report/chart-geometry";
 import { DEFAULT_REPORT_FONT_SIZES } from "@/lib/v2/report/report-doc";
 import { fitBlock, textIn } from "@/lib/v2/report/pptx-kit";
@@ -92,7 +92,7 @@ function NotesChip({ notes, rect, panel, unit, styles }: { notes: string[]; rect
   );
 }
 
-export function AnalysisColumn({ styles, charts, view, sentence, rect, unit, summaryPt, showNotes }: { styles: Styles; charts: AnalysisCharts; view: TileView; sentence: string; rect: Rect; unit: number; summaryPt: number; showNotes: boolean }) {
+export function AnalysisColumn({ styles, charts, view, sentence, rect, unit, summaryPt, showNotes }: { styles: Styles; charts: AnalysisCharts; view: TileView; sentence: string | null; rect: Rect; unit: number; summaryPt: number; showNotes: boolean }) {
   const scale = summaryPt / DEFAULT_REPORT_FONT_SIZES.summary;
   const col = useMemo(() => chartsColumnLayout({ x: rect.x, y: rect.y, w: rect.w, h: rect.h }, scale), [rect.x, rect.y, rect.w, rect.h, scale]);
   const compShapes = useMemo(() => compositionShapes(charts.composition, col.composition, scale), [charts, col.composition, scale]);
@@ -118,14 +118,14 @@ export function AnalysisColumn({ styles, charts, view, sentence, rect, unit, sum
   while (e > 0.4 && needed(e) > hr.h) e -= 0.05;
   const statText = analysisStatLine(charts);
   const statPt = fitBlock([statText], { w: col.stat.w, h: col.stat.h }, 10 * scale, 7);
-  const sentPt = fitBlock([sentence], { w: col.sentence.w, h: col.sentence.h }, summaryPt, 10);
+  const sentPt = fitBlock([sentence ?? ""], { w: col.sentence.w, h: col.sentence.h }, summaryPt, 10);
   const sentLines = Math.max(1, Math.floor(col.sentence.h / ((sentPt / 72) * LINE) + 1e-9));
   const notes = [...new Set([...view.caveats, ...view.notes])];
   const pct = (item: AnalysisCharts["composition"][number]) => (item.share > 0 && Math.round(item.share * 100) === 0 ? "1% 미만" : `${Math.round(item.share * 100)}%`);
   const compLabel = `${charts.subject} 구성비 막대 그래프. ${charts.composition.map((item) => `${item.label} ${pct(item)}`).join(", ")}`;
   const distLabel = charts.distance.kind === "scatter"
-    ? `대지에서 거리와 ${charts.distance.axis.label} 산점도. ${analysisSentence(charts)}`
-    : `대지에서 거리대별 ${charts.subject} 수 막대 그래프. ${analysisSentence(charts)}`;
+    ? `대지에서 거리와 ${charts.distance.axis.label} 산점도. ${statText}`
+    : `대지에서 거리대별 ${charts.subject} 수 막대 그래프. ${statText}`;
 
   return (
     <div data-analysis-column="true">
@@ -149,7 +149,7 @@ export function AnalysisColumn({ styles, charts, view, sentence, rect, unit, sum
       <div className={styles.slideText} style={{ ...at(col.stat), ...fontPx(statPt, unit), lineHeight: LINE }}>{statText}</div>
       <ChartSvg shapes={compShapes} box={col.composition} panel={rect} unit={unit} kind="composition" label={compLabel} styles={styles} />
       <ChartSvg shapes={distShapes} box={col.distance} panel={rect} unit={unit} kind="distance" label={distLabel} styles={styles} />
-      <div className={styles.slideText + " " + styles.slideTextStrong} style={{ ...at(col.sentence), ...fontPx(sentPt, unit), lineHeight: LINE, display: "-webkit-box", WebkitLineClamp: sentLines, WebkitBoxOrient: "vertical" }}>{sentence}</div>
+      {sentence && <div className={styles.slideText + " " + styles.slideTextStrong} style={{ ...at(col.sentence), ...fontPx(sentPt, unit), lineHeight: LINE, display: "-webkit-box", WebkitLineClamp: sentLines, WebkitBoxOrient: "vertical" }}>{sentence}</div>}
       {showNotes && notes.length > 0 && <NotesChip notes={notes} rect={col.notesChip} panel={rect} unit={unit} styles={styles} />}
     </div>
   );

@@ -23,7 +23,7 @@ import type { TileView } from "@/lib/v2/ui/tile-view";
 import { sheetCells, type SheetGrid } from "@/lib/v2/ui/sheet";
 import { labelBoxFramePatch, labelFramePatch, mapLabelSwitchState, reportPageMapSelectable, mixedValue, resetLabelBoxFramePatch, toggleLabelVisibility, toggleLegendFocus } from "@/lib/v2/ui/report-mode-logic";
 import { mapLayoutUnitForFrame, placeActionBar, type ActionBarPixelBox } from "@/lib/v2/report/report-geometry";
-import { analysisCharts, analysisSentence, type AnalysisCharts } from "@/lib/v2/report/analysis-charts";
+import { analysisCharts, type AnalysisCharts } from "@/lib/v2/report/analysis-charts";
 import { AnalysisColumn } from "./analysis-column";
 
 type SurfaceStyles = Record<string, string>;
@@ -1232,7 +1232,7 @@ function SummaryPanel({ slide, rect, unit, terrainSectionShown = false, interact
   // 「지도 + 그래프」: 그래프 자료가 있을 때만. 표 줄·각주는 그리지 않고(각주는 주석 칩), 칩이 바깥으로 열리도록 판이 넘침을 숨기지 않는다.
   if (slide.page?.layout === "map-charts" && charts) {
     return <div className={styles.slidePanel + " " + styles.summaryPanel} data-report-layout="map-charts" style={{ ...rectStyle(rect, unit), overflow: "visible" }} {...interaction}>
-      <AnalysisColumn styles={styles} charts={charts} view={view} sentence={slide.page?.summaryOverride ?? analysisSentence(charts)} rect={rect} unit={unit} summaryPt={summaryPt} showNotes={showNotes} />
+      <AnalysisColumn styles={styles} charts={charts} view={view} sentence={slide.page?.summaryOverride ?? view.sentence} rect={rect} unit={unit} summaryPt={summaryPt} showNotes={showNotes} />
     </div>;
   }
   const innerW = Math.max(0.2, rect.w - 0.44);

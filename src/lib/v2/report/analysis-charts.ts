@@ -157,33 +157,9 @@ const num = (v: number, unit: string) => {
   return `${unit === "년" ? String(r) : r.toLocaleString("ko-KR")}${unit}`;
 };
 
-const headOf = (c: AnalysisCharts) => `반경 ${c.radiusM >= 1000 ? `${c.radiusM / 1000} km` : `${c.radiusM} m`} 안 ${c.subject} ${c.total.toLocaleString("ko-KR")}${c.countUnit}`;
-
-/** 받침이 있으면 `은`, 없으면 `는` (마지막 글자가 한글이 아니면 `은`). */
-const eunNeun = (word: string) => {
-  const code = word.charCodeAt(word.length - 1) - 0xac00;
-  return code >= 0 && code <= 11171 && code % 28 === 0 ? "는" : "은";
-};
-
-/** 해석 문장: 그래프 자료에 있는 숫자만으로 만든 한국어 한 문장 묶음. 값이 없는 절은 뺀다. */
-export function analysisSentence(c: AnalysisCharts): string {
-  const head = headOf(c);
-  const d = c.distance;
-  if (d.kind === "bands") {
-    const best = d.bands.reduce((a, b) => (b.count > a.count ? b : a));
-    return `${head} 가운데 대지에서 ${best.from.toLocaleString("ko-KR")}–${best.to.toLocaleString("ko-KR")} m 구간이 가장 많다(${best.count.toLocaleString("ko-KR")}${c.countUnit}).`;
-  }
-  const parts = [`${head}의 ${d.axis.label} 중앙값은 ${num(d.median, d.axis.unit)}, 최고는 ${num(d.max, d.axis.unit)}이다.`];
-  if (d.site !== null) parts.push(`대지 평균은 ${num(d.site, d.axis.unit)}이다.`);
-  if (c.missing > 0) {
-    const excluded = `${d.axis.unit === "층" ? "1층 가정" : "값 없음"} ${c.missing.toLocaleString("ko-KR")}${c.countUnit}`;
-    parts.push(`${excluded}${eunNeun(excluded)} 통계에서 뺐다.`);
-  }
-  return parts.join(" ");
-}
-
 export function analysisStatLine(c: AnalysisCharts): string {
-  const head = headOf(c);
+  const radius = c.radiusM >= 1000 ? `${c.radiusM / 1000} km` : `${c.radiusM} m`;
+  const head = `반경 ${radius} 안 ${c.subject} ${c.total.toLocaleString("ko-KR")}${c.countUnit}`;
   const d = c.distance;
   if (d.kind === "bands") {
     const best = d.bands.reduce((a, b) => (b.count > a.count ? b : a));
