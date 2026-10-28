@@ -181,7 +181,7 @@ export function AnalysisColumn({ styles, charts, view, sentence, rect, unit, sum
         </div>
       )}
       <div style={{ ...at(col.stat), ...fontStyle(statPt, unit), lineHeight: LINE }}>
-        <div className={styles.slideText} style={clamp(statClamp)}>{statText}</div>
+        <div className={styles.slideText} style={{ ...clamp(statClamp), whiteSpace: "pre-line" }}>{statText}</div>
         {filterLine && <div className={styles.slideText} style={clamp(1)}>{filterLine}</div>}
       </div>
       <ChartSvg shapes={compShapes} box={col.composition} panel={rect} unit={unit} kind="composition" label={compLabel} styles={styles} />

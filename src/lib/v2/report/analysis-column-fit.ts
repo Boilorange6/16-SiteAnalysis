@@ -54,6 +54,22 @@ export function clampToLines(text: string, pt: number, width: number, maxLines: 
   return `${head}${last.join("").trimEnd()}…`;
 }
 
+/**
+ * 「 · 」로 이은 한 줄 통계가 한 줄에 안 들어가면 구분점 자리에서만 줄을 바꾼다(숫자와 단위 사이에서 끊기지 않게). maxLines 안에 못 넣으면 그대로 둔다.
+ * 화면은 pre-line, PPT는 줄바꿈으로 같은 자리에서 끊는다.
+ */
+export function breakAtSeparators(text: string, pt: number, width: number, maxLines: number): string {
+  if (linesOf(text, pt, width) <= 1) return text;
+  const w = Math.max(0.01, width) / 1.1;
+  const lines: string[] = [];
+  for (const part of text.split(" · ")) {
+    const last = lines[lines.length - 1];
+    if (last !== undefined && textIn(`${last} · ${part}`, pt) <= w) lines[lines.length - 1] = `${last} · ${part}`;
+    else lines.push(part);
+  }
+  return lines.length <= maxLines && lines.every((line) => textIn(line, pt) <= w) ? lines.join(" ·\n") : text;
+}
+
 export type AnalysisFit = {
   /** 큰 숫자 칸 배율(칸 높이를 넘으면 줄인다) */
   e: number;
@@ -103,7 +119,7 @@ export function analysisColumnFit({ col, scale, summaryPt, badges, headline, sta
 
   return {
     e,
-    statText: clampToLines(statText, statPt, col.stat.w, statClamp),
+    statText: breakAtSeparators(clampToLines(statText, statPt, col.stat.w, statClamp), statPt, col.stat.w, statClamp),
     filterLine: filterLine ? clampToLines(filterLine, statPt, col.stat.w, 1) : null,
     sentence: sentence ? clampToLines(sentence, sentPt, col.sentence.w, sentLines) : sentence,
     chips,

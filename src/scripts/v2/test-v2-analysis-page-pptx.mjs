@@ -222,7 +222,12 @@ for (const shape of geometry.filter((s) => s.kind === "rect")) {
   const colBase = chartsColumnLayout(summaryRect, 1);
   const fitRoutine = analysisColumnFit({ col: colBase, scale: 1, summaryPt: 13, badges: slide.view.badges, headline: slide.view.headline, statText: analysisStatLine(longCharts), filterLine: null, sentence: routine });
   assert.equal(fitRoutine.sentence, routine, "평소 문장은 잘리지 않는다");
-}
+  // 두 줄이 되는 한 줄 통계는 「 · 」 자리에서만 끊는다(「548\n동」·「만원/\n㎡」처럼 숫자와 단위가 갈라지지 않게)
+  const twoLineStat = "반경 1 km 안 건물 1,734동 · 중앙값 4층 · 최고 69층 · 1층 가정·미상 548동";
+  const fitTwo = analysisColumnFit({ col: colBase, scale: 1, summaryPt: 13, badges: [], headline: null, statText: twoLineStat, filterLine: null, sentence: null });
+  assert.ok(fitTwo.statText.includes(" ·\n"), `구분점에서 줄바꿈: ${JSON.stringify(fitTwo.statText)}`);
+  assert.equal(fitTwo.statText.replace(" ·\n", " · "), twoLineStat, "글자는 그대로");
+  assert.ok(fitTwo.statText.split("\n").every((line) => /(동|층|m)$/.test(line.replace(/ ·$/, ""))), "각 줄은 값+단위로 끝난다");}
 
 // 배지·큰 숫자는 화면과 같은 칸에
 assert.ok(charts.blocks.some((b) => textsOf(b).includes("일부 자료만 집계")), "배지");
