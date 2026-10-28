@@ -49,7 +49,7 @@ function polygonsFor(ctx: EngineContext, row: BuildingRow, layer: string) {
   // 그래프 값: 확인된 지상 층수만. 층수 미상·1층 가정(추정)은 null.
   const value = layer === "floors_unknown" || layer === "floors_assumed_1f_est" ? null : row.floorsAbove;
   return clipped.parts.flatMap((rings, index) => {
-    const polygon = polygonCandidate(row.hit.featureId * 1000 + index, layer, rings, polygonArea(rings), null, { ...buildingMapExtra(row, layer), value });
+    const polygon = polygonCandidate(row.hit.featureId * 1000 + index, layer, rings, polygonArea(rings), null, { ...buildingMapExtra(row, layer), value, counted: isCounted(ctx, row) });
     return polygon ? [polygon] : [];
   });
 }

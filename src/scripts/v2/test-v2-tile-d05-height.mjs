@@ -133,6 +133,34 @@ try {
   ctx.close();
 }
 
+// ── counted: 모든 건물 면(D05·D06·D07 층)이 엔진이 동수로 센 건물인지 싣고, 그래프 건물 수가 엔진 동수와 같다
+{
+  const { viewWithLayer } = await import("../../lib/v2/ui/tile-view.ts");
+  const { analysisCharts } = await import("../../lib/v2/report/analysis-charts.ts");
+  const buildingOf = (polygon) => Math.floor(Number(polygon.fid) / 1000); // D05 면 fid = 지물 번호 × 1000 + 조각 번호
+  for (const radiusM of [800, 64]) { // 64 m는 반경에 걸친 건물이 있다(중심은 밖)
+    const countCtx = new EngineContext(dataDir, M.readManifest(dataDir), `d05-counted-${radiusM}`, { address: "경기도 남양주시 다산동 100", center: CENTER, radiusM, analysisDate: "2026-09-30", pnu: "4136011800101000000" });
+    try {
+      const tile = d05(countCtx);
+      const polygons = tile.presentation.polygons;
+      assert.ok(polygons.length > 0 && polygons.every((polygon) => typeof polygon.counted === "boolean"), `${radiusM} m: 모든 건물 면에 boolean counted`);
+      const floors = polygons.filter((polygon) => polygon.layer.startsWith("floors_"));
+      const denominator = metric(tile, "share_floors_1").denominator;
+      const countedBuildings = new Set(floors.filter((polygon) => polygon.counted).map(buildingOf));
+      assert.equal(countedBuildings.size, denominator, `${radiusM} m: counted 건물 수 = 엔진 동수(분모 ${denominator})`);
+      for (const [key, flags] of Map.groupBy(polygons, buildingOf)) assert.equal(new Set(flags.map((polygon) => polygon.counted)).size, 1, `${radiusM} m: 건물 ${key}의 floors·tall·low 면은 같은 counted`);
+      if (radiusM === 64) assert.ok(floors.some((polygon) => !polygon.counted), "반경에 걸린 건물은 counted=false");
+      else assert.ok(floors.every((polygon) => polygon.counted));
+      if (radiusM === 800) {
+        const view = toTileView(tile);
+        assert.equal(analysisCharts(viewWithLayer(view, view.defaultLayer).map).total, denominator, "그래프 건물 수 = 엔진 동수");
+      }
+    } finally {
+      countCtx.close();
+    }
+  }
+}
+
 const absentDir = mkdtempSync(join(tmpdir(), "v2-d05-d07-absent-"));
 await buildEngineFixture(absentDir, "v1", { buildings: false });
 const absentCtx = makeContext(absentDir, "d05-d07-absent");

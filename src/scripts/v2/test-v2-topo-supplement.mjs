@@ -27,10 +27,10 @@ const { TOPO_AFFECTED_TILES } = await import("../../lib/v2/topo/context.ts");
 const BASELINE_HASHES = {
   D02: "11f4bb0f56fa4da13f8e0b6a09162fca9f273f6c0f753fc882c6104dc1cec2c3",
   D03: "53e3271b3aa34b387fc08bd19859a74ebfb77b4d4e9d0c5f01b7574a80ceeab6",
-  D04: "ad117a41d859739cebd9a84fafbcacab386a34a3283d0583aee73ec7f483f300", // 2026-10-28 분석 장 Task 1: 지물 value·valueAxis 추가로 갱신
-  D05: "e4a16ae631e354ea847b5026aeed9649ca57327b657d85ef3db7bf3993a2be9c", // 2026-10-28 분석 장 Task 1: 지물 value·valueAxis 추가로 갱신
-  D06: "ba6dea03bc92765463d56fa84ff35ec809cee81bbbf285d741b4f689f8ca32c9",
-  D07: "3449042e8d029aa49a2368ae872151646740ffdc33166d0f4af54c3bc39e41c9",
+  D04: "e0f644a1a96d175c7cd568955cf67d4dc9d98fe9678b3ab5dfd5713dfa41a2e7", // 2026-10-28 분석 장: 지물 value·valueAxis(Task 1), 건물 면 counted(Task 4)로 갱신
+  D05: "2b5965a4dcabda48dacc1055e803aaee2be20e6ac14c9959f555dbc527797414", // 2026-10-28 분석 장: 지물 value·valueAxis(Task 1), 건물 면 counted(Task 4)로 갱신
+  D06: "4ff7a0359142e9280230ee697f72415683fffef3e7ff80d2b545a83f2c338276", // 2026-10-28 분석 장 Task 4: 건물 면 counted 추가로 갱신
+  D07: "c81a0694f5ad126d6aa4a0433ad5ec04846865aac35da89a18205c444f085985", // 2026-10-28 분석 장 Task 4: 건물 면 counted 추가로 갱신
   D10: "d6713c1843d3eb6bf270ba51a18573d8afa2cb786dd3650b34be15c1d204585c",
   D16: "61edc5ebc98a921c31de55b381f14f2a954f00e9e6bcab48188b543ebfae8317",
   S01: "aff5b8d52517cf3355f406d7b96dbe42b27f6eda07de8f9ba8049d78d4966a2e",

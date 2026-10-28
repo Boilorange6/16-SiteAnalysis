@@ -79,23 +79,24 @@ export function analysisCharts(model: MapModel): AnalysisCharts | null {
   const mpp = metersPerPixel(model.center[1], Z);
   const [cx, cy] = worldPx(model.center[0], model.center[1], Z);
   const counted: Array<{ d: number; value: number | null | undefined; at: Px; item: NonNullable<ReturnType<typeof itemFor>> }> = [];
-  const consider = (layer: string, at: Px, value: number | null | undefined) => {
+  // 엔진이 건물 면에 `counted`를 실었으면 그 표시가 반경 판정을 대신한다(지도는 반경에 걸친 건물도 그리지만 동수는 건물 중심이 반경 안인 것만 센다).
+  const consider = (layer: string, at: Px, value: number | null | undefined, flag?: boolean) => {
     const item = itemFor(layer);
     if (!item) return;
     const d = Math.hypot(at[0] - cx, at[1] - cy) * mpp;
-    if (d <= model.radiusM) counted.push({ d, value, at, item });
+    if (flag === undefined ? d <= model.radiusM : flag) counted.push({ d, value, at, item });
   };
   for (const f of model.features) consider(f.layer, worldPx(f.lng, f.lat, Z), f.value);
   // 같은 fid의 면(여러 조각으로 나뉜 건물)은 한 번만 센다. 첫 고리 넓이가 가장 큰(같으면 앞선) 조각이 대표라 점도 값도 그 조각의 것이다. fid 없는 면은 하나씩 센다.
   const rings = (model.polygons ?? []).map((p) => (p.rings[0]?.length ? toPx([p.rings[0]])[0]! : null));
   const biggest = new Map<string, number>();
   (model.polygons ?? []).forEach((p, i) => {
-    if (p.fid === undefined || !rings[i]) return;
+    if (p.fid === undefined || !rings[i] || !itemFor(p.layer)) return; // 범례에 없는 층(대지 등)의 조각은 대표를 다투지 않는다
     const at = biggest.get(p.fid);
     if (at === undefined || ringArea(rings[i]!) > ringArea(rings[at]!)) biggest.set(p.fid, i);
   });
   (model.polygons ?? []).forEach((p, i) => {
-    if (rings[i] && (p.fid === undefined || biggest.get(p.fid) === i)) consider(p.layer, ringCentroid(rings[i]!), p.value);
+    if (rings[i] && (p.fid === undefined || biggest.get(p.fid) === i)) consider(p.layer, ringCentroid(rings[i]!), p.value, p.counted);
   });
   if (counted.length === 0) return null;
 

@@ -63,7 +63,7 @@ export function d04(ctx: EngineContext): TileResult {
     }
     let hasPolygon = false;
     for (const rings of clipped.parts) {
-      const polygon = polygonCandidate(hit.featureId, decadeLayer(year), rings, polygonArea(rings), null, buildingMapExtra(hit.name ?? null, year));
+      const polygon = polygonCandidate(hit.featureId, decadeLayer(year), rings, polygonArea(rings), null, { ...buildingMapExtra(hit.name ?? null, year), counted: isCounted(ctx, row) });
       if (polygon) {
         polygons.push(polygon);
         hasPolygon = true;

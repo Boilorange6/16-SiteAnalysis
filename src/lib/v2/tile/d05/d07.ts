@@ -37,7 +37,7 @@ export function d07(ctx: EngineContext): TileResult {
   for (const { row, layer, area } of all) { // 그림은 교차 전부
     const rowPolygons = area
       ? area.parts.flatMap((rings, index) => {
-        const polygon = polygonCandidate(row.hit.featureId * 1000 + index, layer, rings, polygonArea(rings), null, buildingMapExtra(row, layer));
+        const polygon = polygonCandidate(row.hit.featureId * 1000 + index, layer, rings, polygonArea(rings), null, { ...buildingMapExtra(row, layer), counted: isCounted(ctx, row) });
         return polygon ? [polygon] : [];
       })
       : [];

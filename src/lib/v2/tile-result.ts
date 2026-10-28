@@ -127,6 +127,8 @@ const MapPolygonSchema = z.object({
   labelPriority: z.number().int().min(0).max(2).optional(),
   /** 그래프 y값(타일의 `valueAxis` 단위). 값이 없거나 추정이면 null. */
   value: z.number().finite().nullable().optional(),
+  /** 건물 면 전용: 엔진이 동수로 센 건물인가(건물 중심이 반경 안). 지도는 반경에 걸친 건물도 그리므로 그래프 건물 수가 이 표시를 따른다. */
+  counted: z.boolean().optional(),
 });
 
 const TerrainSectionSchema = z.object({

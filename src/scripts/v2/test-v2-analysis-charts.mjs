@@ -212,6 +212,33 @@ assert.equal(multipart.composition.find((item) => item.label === "1~4층").count
 const tied = analysisCharts(model({ valueAxis: AXIS, polygons: [piece("floors_1_4", 50, 5, 1, "t"), piece("floors_1_4", 400, 5, 2, "t"), piece("floors_5_8", 200, 5, 6)] }));
 assert.deepEqual(tied.distance.points.map((p) => p.v).sort((x, y) => x - y), [1, 6], "넓이가 같으면 앞선 조각");
 
+// 범례에 없는 층(대지 필지 등)의 더 큰 조각이 같은 fid여도 범례 건물을 가리지 않는다
+const withSiteTwin = analysisCharts(model({
+  valueAxis: AXIS,
+  polygons: [
+    piece("parcel_site", 100, 30, null, "x"), // 더 크고 같은 fid인 비범례 조각
+    piece("floors_1_4", 100, 5, 3, "x"),
+    piece("floors_5_8", 200, 5, 6),
+  ],
+}));
+assert.equal(withSiteTwin.total, 2, "비범례 조각이 같은 fid의 범례 조각을 지우지 않는다");
+assert.deepEqual(withSiteTwin.distance.points.map((p) => p.v).sort((x, y) => x - y), [3, 6]);
+
+// ── 엔진이 실은 `counted`가 반경 판정을 대신한다(없으면 반경 판정)
+const flagged = analysisCharts(model({
+  valueAxis: AXIS,
+  polygons: [
+    { ...piece("floors_5_8", 300, 5, 9), counted: false }, // 중심이 반경 안이어도 counted=false면 뺀다
+    { ...piece("floors_1_4", 1200, 5, 4), counted: true }, // 중심이 반경 밖이어도 counted=true면 센다
+    piece("floors_5_8", 100, 5, 6), // counted 없음 + 반경 안 → 센다
+    piece("floors_1_4", 1300, 5, 8), // counted 없음 + 반경 밖 → 뺀다
+    { ...piece("floors_1_4", 400, 20, 1, "z"), counted: false }, // 같은 fid: 넓이가 가장 큰 조각이 대표라 그 표시를 따른다
+    { ...piece("floors_1_4", 500, 5, 2, "z"), counted: true },
+  ],
+}));
+assert.equal(flagged.total, 2, "counted=true 하나 + 표시 없는 반경 안 하나");
+assert.deepEqual(flagged.distance.points.map((p) => p.v).sort((x, y) => x - y), [4, 6]);
+
 // ── 구성비 이름은 범례 이름의 ` · ` 앞부분(A07 가격대 범례는 지도 범례에 이미 있다)
 const f = (layer, i) => ({ layer, lng: CENTER[0] + (i * 40) / M_LNG, lat: CENTER[1], weight: 100 });
 const trade = analysisCharts(model({
