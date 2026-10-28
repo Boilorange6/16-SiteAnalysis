@@ -83,7 +83,7 @@ function scatter(layer: string, n: number, seed: number, maxM: number, minM = 40
   const rnd = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
   return Array.from({ length: n }, (_, i) => {
     const [lng, lat] = at(rnd() * 360, minM + Math.sqrt(rnd()) * (maxM - minM));
-    return { layer, lng, lat, ...(weight ? { weight: weight(i) } : {}), ...(label ? { label: label(i) } : {}) };
+    return { layer, lng, lat, ...(weight ? { weight: weight(i) } : {}), ...(label ? { label: label(i) } : {}), counted: true };
   });
 }
 const dot = (layer: string, bearing: number, dist: number, weight: number | null, label: string | null = null): MapFeature => {

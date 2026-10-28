@@ -4,7 +4,7 @@
  */
 import type { ChartsColumn } from "../ui/overlay-layout";
 import type { Badge, TileView } from "../ui/tile-view";
-import { fitBlock, textIn } from "./pptx-kit";
+import { fitBlock, linesOf, textIn } from "./pptx-kit";
 
 /** fitBlock이 줄 높이로 가정하는 값 */
 export const ANALYSIS_LINE = 1.25;
@@ -29,6 +29,7 @@ export type AnalysisChip = { text: string; tone: Badge["tone"]; x: number; row: 
  * 화면(CSS line-clamp)과 PPT(pptxgenjs는 fit:"shrink"를 편집 때만 적용)가 같은 글자를 그리도록 보이는 문자열 자체를 줄인다.
  */
 export function clampToLines(text: string, pt: number, width: number, maxLines: number): string {
+  if (linesOf(text, pt, width) <= maxLines) return text; // fitBlock이 맞는다고 본 글은 자르지 않는다(아래 줄 나눔이 한 줄 더 엄격하다)
   const chars = [...text];
   const w = Math.max(0.01, width) / 1.1;
   const fits = (from: number, to: number) => textIn(chars.slice(from, to).join(""), pt) <= w;

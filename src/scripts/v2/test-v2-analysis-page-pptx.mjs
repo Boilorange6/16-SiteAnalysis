@@ -217,6 +217,11 @@ for (const shape of geometry.filter((s) => s.kind === "rect")) {
   const fitStat = analysisColumnFit({ col: colLong, scale, summaryPt: 24, badges: [], headline: null, statText: longStat, filterLine: "적용 필터: 가나다 ".repeat(20), sentence: null });
   assert.ok(fitStat.statText.endsWith("…") && fitStat.statText.length < longStat.length, "통계 줄 자름");
   assert.ok(fitStat.filterLine.endsWith("…"), "필터 줄은 한 줄로 자름");
+  // 기본 크기(13 pt)의 평소 판단 문장(~80자)은 fitBlock이 맞는다고 본 대로 자르지 않는다
+  const routine = "반경 안 건물 1,734동 중 지상층수 확인 68.4%, 1층 가정(추정) 548동 → 확인·추정·미상을 분리해 표시 → 건축물대장 층수 확인 필요";
+  const colBase = chartsColumnLayout(summaryRect, 1);
+  const fitRoutine = analysisColumnFit({ col: colBase, scale: 1, summaryPt: 13, badges: slide.view.badges, headline: slide.view.headline, statText: analysisStatLine(longCharts), filterLine: null, sentence: routine });
+  assert.equal(fitRoutine.sentence, routine, "평소 문장은 잘리지 않는다");
 }
 
 // 배지·큰 숫자는 화면과 같은 칸에

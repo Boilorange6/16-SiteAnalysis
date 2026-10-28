@@ -80,7 +80,7 @@ const MapFeatureSchema = z.object({
   overlap: z.boolean().optional(),
   /** 그래프 y값(타일의 `valueAxis` 단위). 값이 없거나 추정이면 null. */
   value: z.number().finite().nullable().optional(),
-  /** 엔진이 센 지물인가. 있으면 그래프 개수가 반경 판정 대신 이 표시를 따른다(엔진은 UTM-K, 그래프는 웹 메르카토르라 경계에서 1 m쯤 어긋난다). */
+  /** 엔진이 센 지물인가. 그래프는 true인 것만 센다(엔진은 UTM-K, 그래프는 웹 메르카토르라 반경 판정을 그래프에서 다시 하지 않는다). */
   counted: z.boolean().optional(),
 });
 
