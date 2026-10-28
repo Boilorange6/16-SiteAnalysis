@@ -9,6 +9,8 @@ import { areaInCircle, polygonArea, lineLengthInCircle } from "../tiles/geo";
 import { buildingRows, isCounted } from "../tiles/buildings-shared";
 import { hitPoint } from "../tiles/common";
 import { SCHOOL_ZONE_KINDS, schoolZoneSources, zoneBaseDate, zoneName, zoneOffice } from "../tiles/school-zone-shared";
+import { collectMaintenance, collectMaintenanceRoster, maintenanceSources, STAGES, type Project } from "../../tile/a09/engine";
+import { layerStyle } from "../../ui/map-layers";
 
 const ZONING_SOURCES = ["zoning_urban", "zoning_management", "zoning_agri_forest", "zoning_nature", "zoning_other"] as const;
 const ZONE_COLORS: Record<string, string> = {
@@ -314,7 +316,7 @@ function zoneCard(ctx: DetailContext, hit: FeatureHit, columns: DetailColumn[] =
 }
 
 function featureSpec(
-  code: "A09" | "A12" | "D11",
+  code: "A12" | "D11",
   hitsFor: (ctx: DetailContext) => FeatureHit[],
   sourcesFor: (ctx: DetailContext) => ReturnType<DetailContext["sources"]>,
 ): DetailSpec {
@@ -356,13 +358,84 @@ function districtHits(ctx: DetailContext): FeatureHit[] {
   return ctx.hits("reference", ["district_area"]);
 }
 
-function maintenanceHits(ctx: DetailContext): FeatureHit[] {
-  const out: FeatureHit[] = [];
-  for (const key of ["reference", "market"] as const) {
-    const seen = new Set(out.map((hit) => hit.stableId));
-    for (const hit of ctx.hits(key, ["maintenance_zone"])) if (!seen.has(hit.stableId)) out.push(hit);
-  }
-  return out.sort((a, b) => a.featureId - b.featureId);
+const MAINTENANCE_COLUMNS: DetailColumn[] = [
+  { key: "name", label: "사업명", kind: "text" },
+  { key: "type", label: "종류", kind: "category" },
+  { key: "stage", label: "단계", kind: "category" },
+  { key: "households", label: "예정 세대", kind: "number" },
+  { key: "area_m2", label: "반경 안 면적(㎡)", kind: "number" },
+  { key: "announced_date", label: "결정고시일", kind: "date", csvOnly: true },
+  { key: "designated_at", label: "구역지정일", kind: "date", csvOnly: true },
+  { key: "operator", label: "시행자", kind: "text", csvOnly: true },
+  { key: "zone_area_m2", label: "구역 전체 면적(㎡)", kind: "number", csvOnly: true },
+  { key: "raw_stage", label: "원천 단계", kind: "text", csvOnly: true },
+  { key: "zone_type", label: "구역 레이어 유형 원문", kind: "text", csvOnly: true },
+  { key: "linked", label: "명부 연결", kind: "category", csvOnly: true },
+  { key: "source", label: "자료", kind: "text", csvOnly: true },
+];
+
+const MAINTENANCE_LAYERS: Record<string, string> = { zone: "정비구역", redevelopment: "재개발구역", promotion: "재정비촉진지구", planned: "정비계획을수립중인지역", improvement: "주거환경개선지구" };
+const maintenanceName = (project: Project) => project.name ?? `이름 없는 정비구역${project.announcedDate ? ` · 고시 ${project.announcedDate}` : ""}`;
+
+function maintenanceRows(ctx: DetailContext): DetailRow[] {
+  const collection = collectMaintenance(ctx);
+  if (!collection) return [];
+  const source = sourceLineOf(maintenanceSources(ctx));
+  return [...collection.projects.values()].map((project) => {
+    const hits = collection.zones.filter((hit) => collection.zoneProject.get(hit.featureId) === project.key);
+    const fids = hits.map((hit) => String(hit.featureId));
+    const clipped = hits.map((hit) => areaInCircle(ctx.input.center, ctx.input.radiusM, hit.geometry));
+    const parts = hits.map((hit) => shapeParts(hit.geometry));
+    const [lng, lat] = hitPoint(hits[0]);
+    return { fid: fids[0], fids, lng, lat, cells: {
+      name: maintenanceName(project), type: project.type, stage: project.stage, households: project.households,
+      area_m2: clipped.every((value) => value !== null) ? clipped.reduce((sum, value) => sum + (value?.areaM2 ?? 0), 0) : null,
+      announced_date: project.announcedDate, designated_at: project.designatedAt, operator: project.operator,
+      zone_area_m2: parts.every((value) => value.length > 0) ? parts.flat().reduce((sum, rings) => sum + polygonArea(rings), 0) : null,
+      raw_stage: project.rawStage,
+      zone_type: [...new Set(hits.map((hit) => MAINTENANCE_LAYERS[String(hit.properties.layer)]).filter(Boolean))].join(" / ") || null,
+      linked: project.linked ? "연결" : "미연결", source,
+    } };
+  });
+}
+
+function maintenanceSpec(): DetailSpec {
+  return {
+    columns: MAINTENANCE_COLUMNS,
+    summary(ctx) {
+      const collection = collectMaintenance(ctx);
+      const projects = [...(collection?.projects.values() ?? [])];
+      const stages = STAGES.map((stage) => [stage, projects.filter((p) => p.stage === stage).length] as const).filter(([, count]) => count > 0);
+      const types = [...new Set(projects.map((p) => p.type))].sort().map((type) => [type, projects.filter((p) => p.type === type).length] as const);
+      const known = projects.filter((p) => p.households !== null);
+      const linkedIds = new Set(collection ? (ctx.db(collection.key)?.prepare("SELECT DISTINCT to_stable_id FROM feature_link WHERE relation_type = 'zone_of_project'").all() as Array<{ to_stable_id: string }> ?? []).map((row) => row.to_stable_id) : []);
+      const unlocated = collectMaintenanceRoster(ctx).filter((p) => !linkedIds.has(p.key)).length;
+      return { title: "정비사업", subtitle: `사업 ${projects.length}건 · 구역 ${collection?.zones.length ?? 0}곳`, fields: [
+        { label: "단계별", value: stages.map(([stage, count]) => `${stage} ${count}`).join(" · ") || null },
+        { label: "종류별", value: types.map(([type, count]) => `${type} ${count}`).join(" · ") || null },
+        { label: "예정 세대 합", value: known.length ? `${known.reduce((sum, p) => sum + (p.households ?? 0), 0).toLocaleString("ko-KR")}세대 (알려진 ${known.length}건)` : null },
+        { label: "위치 미확인 명부 사업", value: `${unlocated}건` },
+      ], source: sourceLineOf(maintenanceSources(ctx)) };
+    },
+    rows: maintenanceRows,
+    at(ctx, lng, lat) {
+      const collection = collectMaintenance(ctx);
+      const hit = collection?.zones.find((item) => pointInGeometry(lng, lat, item.geometry));
+      if (!collection || !hit) return null;
+      const row = maintenanceRows(ctx).find((item) => item.fids?.includes(String(hit.featureId)));
+      if (!row) return null;
+      const cells = row.cells;
+      const fields = [
+        { label: "종류", value: text(cells.type) }, { label: "단계", value: text(cells.stage) },
+        { label: "결정고시일", value: text(cells.announced_date) }, { label: "구역지정일", value: text(cells.designated_at) },
+        { label: "예정 세대", value: cells.households === null ? null : `${cells.households}세대` },
+        { label: "시행자", value: text(cells.operator) },
+        { label: "구역 전체 면적", value: cells.zone_area_m2 === null ? null : `${cells.zone_area_m2}㎡` },
+        { label: "반경 안 면적", value: cells.area_m2 === null ? null : `${cells.area_m2}㎡` },
+      ];
+      return { fid: String(hit.featureId), fids: row.fids, card: { title: String(cells.name), subtitle: `${cells.type} · ${cells.stage}`, chip: { label: String(cells.stage), color: layerStyle(`maint_stage:${cells.stage}`).color }, fields, missing: fields.filter((field) => field.value === null).map((field) => field.label), source: sourceLineOf(maintenanceSources(ctx)) } };
+    },
+  };
 }
 
 function facilityHits(ctx: DetailContext): FeatureHit[] {
@@ -455,14 +528,7 @@ function populationSpec(): DetailSpec {
 export const ZONE_SPECS: Partial<Record<string, DetailSpec>> = {
   A12: featureSpec("A12", zoningHits, (ctx) => ctx.sources("reference", ZONING_SOURCES)),
   D11: featureSpec("D11", districtHits, (ctx) => ctx.sources("reference", sourceIdsWithPrefix(ctx, "reference", "district_"))),
-  A09: featureSpec("A09", maintenanceHits, (ctx) => [
-    ...ctx.sources("reference", ["maintenance_zone"]),
-    ...ctx.sources("reference", ["maintenance_integrated", "maintenance_std"]),
-    ...ctx.sources("reference", sourceIdsWithPrefix(ctx, "reference", "mzone_")),
-    ...ctx.sources("market", ["maintenance_zone"]),
-    ...ctx.sources("market", ["maintenance_integrated", "maintenance_std"]),
-    ...ctx.sources("market", sourceIdsWithPrefix(ctx, "market", "mzone_")),
-  ]),
+  A09: maintenanceSpec(),
   D12: facilitySpec(),
   A02: schoolSpec(),
   A11: populationSpec(),

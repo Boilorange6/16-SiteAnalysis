@@ -27,7 +27,7 @@ const TILE_CACHE_REVISION: Readonly<Record<string, string>> = {
   A06: "w2b-r1+composition-r1",
   A07: "w3-merge-r1+w2b-r1+w2-trade-modes-r1+price-size-r1",
   A08: "w2b-r1+w2-trade-modes-r1+w6-building-modes-r1",
-  A09: "w3-merge-r1+w2b-r1+clip-r1",
+  A09: "w3-merge-r1+w2b-r1+clip-r1+maint-profile-r1",
   A10: "w3-merge-r1+w2b-r1",
   A11: "w3-merge-r1+w2b-r1+clip-r1",
   A12: "w3-merge-r1+w2b-r1+clip-r1+provenance-r1",

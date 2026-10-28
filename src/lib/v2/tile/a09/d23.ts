@@ -134,6 +134,7 @@ export function d23(ctx: EngineContext): TileResult {
       .map((value) => typeof value === "string" ? value.trim() : "")
       .find((value) => value !== "") ?? null;
     const name = project?.name ?? zoneName;
+    const sublabel = `${project?.type ?? "종류 미확인"} · ${stage === "미확인" ? "단계 미확인" : stage}`;
     const labelPriority = name === null ? 0 : 1;
     if (!layers.includes(layer)) layers.push(layer);
 
@@ -147,7 +148,7 @@ export function d23(ctx: EngineContext): TileResult {
     for (const rings of clipped.parts) {
       const polygon = polygonCandidate(zone.featureId, layer, rings, polygonArea(rings), null, {
         name,
-        sublabel: stage,
+        sublabel,
         labelPriority,
       });
       if (polygon) {
@@ -156,7 +157,7 @@ export function d23(ctx: EngineContext): TileResult {
       }
     }
     // 면을 그릴 수 있는 지물은 같은 fid의 대표점을 만들지 않는다. 도형 변환에 실패한 경우만 점을 fallback으로 둔다.
-    if (polygonCount === 0) points.push(candidate(zone, layer, { label: null, name, sublabel: stage, labelPriority }));
+    if (polygonCount === 0) points.push(candidate(zone, layer, { label: null, name, sublabel, labelPriority }));
   }
 
   // makeTile도 상한 처리에서 면적순을 보장하지만, 타일 엔진의 후보 배열 자체도 교차 면적순으로 고정한다.
@@ -166,7 +167,7 @@ export function d23(ctx: EngineContext): TileResult {
     { kind: "partial", note: "경계가 확보된 사업만 반경 안 여부와 면적을 판단합니다. 경계가 없는 명부 사업은 면적에 포함하지 않았습니다." },
     { kind: "unknown", note: "정비구역 간 면적은 합치지 않아 중첩될 수 있습니다." },
     { kind: "unknown", note: "예정 세대는 사업 전체 값이며 반경 안 배분값이 아닙니다." },
-    ...(zones.length > 0 && linked < zones.length ? [{ kind: "unknown" as const, note: `사업 연결(zone_of_project)이 없는 구역 ${zones.length - linked}곳은 구역 속성으로 단계·유형을 표시합니다.` }] : []),
+    ...(zones.length > 0 && linked < zones.length ? [{ kind: "unknown" as const, note: `사업 연결이 없는 구역 ${zones.length - linked}곳은 구역 속성으로 단계·유형을 표시합니다.` }] : []),
     ...(invalidArea ? [{ kind: "unknown" as const, note: "일부 정비구역 도형의 반경 교차 면적을 계산하지 못했습니다." }] : []),
     ...coverageLimitations(ctx),
   ];

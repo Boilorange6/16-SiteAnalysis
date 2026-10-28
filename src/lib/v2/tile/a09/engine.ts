@@ -35,6 +35,11 @@ export interface Project {
   stage: Stage;
   type: string;
   households: number | null;
+  operator: string | null;
+  designatedAt: string | null;
+  announcedDate: string | null;
+  rawStage: string | null;
+  linked: boolean;
 }
 
 export interface MaintenanceCollection {
@@ -55,6 +60,10 @@ const sourceName = (...values: unknown[]): string | null => {
     if (text !== "") return text;
   }
   return null;
+};
+const dateOf = (value: unknown): string | null => {
+  const date = sourceName(value);
+  return date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
 };
 
 /** 명부의 시군구명("수원시", "강동구")이 법정구역명("경기도 수원시 팔달구")에 걸리는지. 같은 시도 안에서만 비교한다. */
@@ -110,6 +119,7 @@ export function collectMaintenance(ctx: EngineContext): MaintenanceCollection | 
   const market = ctx.db("market");
   const link = zdb.prepare("SELECT to_stable_id FROM feature_link WHERE from_stable_id = ? AND relation_type = 'zone_of_project'").pluck();
   const events = market?.prepare("SELECT stage, units FROM development_event WHERE project_id = ? AND event_type = 'maintenance_stage'");
+  const roster = new Map(rosterRows(ctx).map((row) => [row.id, row]));
   let linked = 0;
 
   const projects = new Map<string, Project>();
@@ -129,11 +139,14 @@ export function collectMaintenance(ctx: EngineContext): MaintenanceCollection | 
     const k = to ?? z.stableId;
     zoneProject.set(z.featureId, k);
     const prev = projects.get(k);
-    const name = sourceName(z.name, p.zoneName);
+    const row = to ? roster.get(to) : undefined;
+    const name = sourceName(row?.name, z.name, p.name, p.altName, p.zoneName);
+    const announcedDate = dateOf(p.announcedDate);
     // 한 사업의 구역이 여럿이면 단계·세대수는 처음 것을 유지하고, 이름은 원천값이 있는 쪽을 우선한다.
     projects.set(k, prev
-      ? prev.name === null && name !== null ? { ...prev, name } : prev
-      : { key: k, name, stage, type: typeOf(p), households });
+      ? { ...prev, name: prev.name ?? name, announcedDate: [prev.announcedDate, announcedDate].filter((v): v is string => v !== null).sort()[0] ?? null }
+      : { key: k, name, stage, type: sourceName(row?.type) && row?.type !== "미상" ? row!.type : typeOf(z), households,
+        operator: sourceName(row?.operator), designatedAt: dateOf(row?.designatedAt), announcedDate, rawStage: sourceName(row?.rawStage), linked: Boolean(to) });
   }
   return { zones, projects, zoneProject, sources, linked, key };
 }
@@ -150,12 +163,12 @@ function withZones(ctx: EngineContext, collection: MaintenanceCollection): TileR
   const sentence =
     list.length === 0
       ? "반경과 교차하는 확인된 정비구역 없음 → 경계가 확보된 사업 기준이며 없다는 단정은 아님 → 최신 고시는 지자체 확인 필요"
-      : `반경과 교차하는 정비구역 ${zones.length}곳(사업 ${list.length}건: ${stageText(list)}), ${hhText(list)} → 사업 수만으로 좋고 나쁨을 판단하지 않으며 단계는 원천 기준일 시점 → 단계·구역 경계는 고시 원문 확인 필요`;
+      : `반경과 교차하는 정비구역 ${zones.length}곳(사업 ${list.length}건: ${summarize(list).types.map(([t, n]) => `${t} ${n}건`).join("·")} / ${stageText(list)}), ${hhText(list)} → 사업 수만으로 좋고 나쁨을 판단하지 않으며 단계는 원천 기준일 시점 → 단계·구역 경계는 고시 원문 확인 필요`;
 
   const limitations: Limitation[] = [
     { kind: "partial", note: "경계가 확보된 사업만 반경 안 여부를 판단합니다. 경계가 없는 사업은 세지 않았습니다." },
     { kind: "unknown", note: "예정 세대는 사업 전체 값이며 반경 안 배분값이 아닙니다." },
-    ...(zones.length > 0 && linked < zones.length ? [{ kind: "unknown" as const, note: `사업 연결(zone_of_project)이 없는 구역 ${zones.length - linked}곳은 구역 속성만으로 단계·유형을 표시합니다.` }] : []),
+    ...(zones.length > 0 && linked < zones.length ? [{ kind: "unknown" as const, note: `사업 연결이 없는 구역 ${zones.length - linked}곳은 구역 속성만으로 단계·유형을 표시합니다.` }] : []),
     ...KEYS.filter((k) => ctx.sources(k, maintenanceSourceIds(ctx, k)).length > 0).flatMap((k) => ctx.coverage(k, maintenanceSourceIds(ctx, k))).filter((l, i, a) => a.findIndex((x) => x.note === l.note) === i),
   ];
   return makeTile(ctx, {
@@ -170,28 +183,36 @@ function withZones(ctx: EngineContext, collection: MaintenanceCollection): TileR
   });
 }
 
-function typeOf(p: FeatureHit["properties"]): string {
-  // maintenance-zone 적재는 typeLabel(원천 A6)과 layer(정비구역·재개발구역 등)를 남긴다.
-  const t = p.projectType ?? p.type ?? p.zoneType ?? p.typeLabel ?? p.layer;
-  return typeof t === "string" && t.trim() !== "" ? t.trim() : "미상";
+function typeOf(hit: FeatureHit): string {
+  // maintenance-zone.ts의 typeFromText와 같은 이름 판정 순서다.
+  const name = [hit.name, hit.properties.name, hit.properties.altName].filter((v): v is string => typeof v === "string").join(" ");
+  if (name.includes("재개발") || name.includes("도시환경정비")) return "재개발";
+  if (name.includes("재건축")) return "재건축";
+  if (name.includes("주거환경")) return "주거환경개선";
+  const layers: Record<string, string> = { redevelopment: "재개발", improvement: "주거환경개선", promotion: "재정비촉진지구", planned: "정비예정구역" };
+  return layers[String(hit.properties.layer)] ?? "종류 미확인";
 }
 
 // ── 2) 명부만 있는 경우 ──
-interface RosterRow { id: string; sido: string; sigungu: string; name: string | null; type: string; stage: string; households: number | null }
+interface RosterRow { id: string; sido: string; sigungu: string; name: string | null; type: string; stage: string; households: number | null; operator?: string | null; designatedAt?: string | null; rawStage?: string | null }
 
-export function collectMaintenanceRoster(ctx: EngineContext): Project[] {
+function rosterRows(ctx: EngineContext): RosterRow[] {
   const market = ctx.db("market");
-  const rows = (market
+  return (market
     ? (market.prepare("SELECT coverage_json FROM source_release WHERE source_id IN ('maintenance_integrated','maintenance_std') ORDER BY release_id").pluck().all() as Array<string | null>)
     : []
   ).flatMap((j) => (j ? ((JSON.parse(j) as { projects?: RosterRow[] }).projects ?? []) : []));
+}
+
+export function collectMaintenanceRoster(ctx: EngineContext): Project[] {
+  const rows = rosterRows(ctx);
   const areas = ctx.sigungu();
   const seen = new Set<string>();
   const list: Project[] = [];
   for (const r of rows) {
     if (seen.has(r.id) || !areas.some((a) => a.code.startsWith(r.sido) && sigunguMatches(a.name, r.sigungu))) continue;
     seen.add(r.id);
-    list.push({ key: r.id, name: sourceName(r.name), stage: stageOf(r.stage), type: r.type || "미상", households: posInt(r.households) });
+    list.push({ key: r.id, name: sourceName(r.name), stage: stageOf(r.stage), type: r.type && r.type !== "미상" ? r.type : "종류 미확인", households: posInt(r.households), operator: sourceName(r.operator), designatedAt: dateOf(r.designatedAt), announcedDate: null, rawStage: sourceName(r.rawStage), linked: false });
   }
   return list;
 }

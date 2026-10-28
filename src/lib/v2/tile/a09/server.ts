@@ -4,7 +4,7 @@ import { d23 } from "./d23";
 import { a09 } from "./engine";
 import type { TileCompute, TileServerModule } from "../types";
 
-const MERGE_OPTIONS: MergeOptions = {};
+const MERGE_OPTIONS: MergeOptions = { dropMetricIds: Array.from({ length: 8 }, (_, i) => `back_stage_${i}`) };
 
 function computeA09(ctx: Parameters<TileCompute>[0]): TileResult {
   let result = retargetTile(a09(ctx), ctx, "A09");
