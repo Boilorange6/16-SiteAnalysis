@@ -101,15 +101,11 @@ export async function loadSeoulPlanZones(db: Db, input: { releaseId: string; rec
   const used = new Set<number>();
   const seen = new Map<string, number>();
   let matchedByArea = 0, matchedByName = 0;
-  await batched(db, records, (r) => {
-    const p = r.properties, cls = str(p.SCLAS_CL)!, id = str(p.PRESENT_SN)!, sg = str(p.SIGNGU_SE)!, grp = str(p.GRP);
-    const members = grp ? groups.get(grp) ?? [] : [];
-    const other = members.find((x) => str(x.properties.SCLAS_CL) !== "BZ101");
-    const representative = members.some((x) => str(x.properties.SCLAS_CL) === "BZ101") && other ? other.properties : p;
-    const projectClass = str(representative.SCLAS_CL)!;
-    const stageCode = str(representative.PROPEL_CD);
-    const area = num(p.DGM_AR);
-    const candidates = apiBySg.get(sg) ?? [];
+  // API 행도 사업 소분류(CLASSIFY_L)를 가진다. 같은 부지의 신통·재건축 두 행(은마)처럼 면적이 같아도 분류로 갈린다.
+  const matches = new Map<ShpRecord, { row: SeoulPlanApiRow; index: number }>();
+  for (const r of records) {
+    const p = r.properties, area = num(p.DGM_AR);
+    const candidates = (apiBySg.get(str(p.SIGNGU_SE)!) ?? []).filter(({ row }) => str(row.CLASSIFY_L) === str(p.SCLAS_CL));
     const areaMatches = area === null ? [] : candidates.filter(({ row }) => { const a = num(row.BSNS_AREA); return a !== null && Math.abs(a - area) <= 0.5; });
     let match = areaMatches.length === 1 ? areaMatches[0] : undefined;
     if (match) matchedByArea++;
@@ -118,20 +114,35 @@ export async function loadSeoulPlanZones(db: Db, input: { releaseId: string; rec
       const names = key ? candidates.filter(({ row }) => nameKey(row.BSNS_NAME) === key) : [];
       if (names.length === 1) { match = names[0]; matchedByName++; }
     }
-    if (match) used.add(match.index);
-    const a = match?.row;
+    if (match) { used.add(match.index); matches.set(r, match); }
+  }
+  // API 개요의 0은 「값 없음」이다(신통 대상지 행은 용적률·세대가 모두 0으로 온다).
+  const pos = (v: unknown) => { const n = num(v); return n !== null && n > 0 ? n : null; };
+  await batched(db, records, (r) => {
+    const p = r.properties, cls = str(p.SCLAS_CL)!, id = str(p.PRESENT_SN)!, sg = str(p.SIGNGU_SE)!, grp = str(p.GRP);
+    const members = grp ? groups.get(grp) ?? [] : [];
+    const other = members.find((x) => str(x.properties.SCLAS_CL) !== "BZ101");
+    const repRecord = members.some((x) => str(x.properties.SCLAS_CL) === "BZ101") && other ? other : r;
+    const representative = repRecord.properties;
+    const projectClass = str(representative.SCLAS_CL)!;
+    const area = num(p.DGM_AR);
+    // 단계·단계일·개요는 사업 대표 구성원의 API 행에서 — API(분기)가 SHP(반기)보다 새롭고, 단계일은 그 행의 단계 날짜다.
+    const a = matches.get(repRecord)?.row;
+    const stageCode = str(a?.PROPEL_CD) ?? str(representative.PROPEL_CD);
     const n = seen.get(id) ?? 0;
     seen.set(id, n + 1);
     const stableId = `seoulplan:${id}${n ? `#${n}` : ""}`;
-    const households = num(a?.SUPLY_HSHLD);
+    const households = pos(a?.SUPLY_HSHLD);
     const props = {
       layer: "seoul_plan", classCode: cls, className: SEOUL_PLAN_CLASSES[cls][0], projectType: SEOUL_PLAN_CLASSES[projectClass][1],
       program: cls === "BZ101" || members.some((x) => str(x.properties.SCLAS_CL) === "BZ101") ? "신속통합기획" : null,
       areaKind: cls === "BZ201" ? "모아타운" : cls === "BZ401" ? "재정비촉진지구" : null,
-      projectKey: grp ? `seoulplan:${grp}` : stableId, stageCode, stageName: stageCode ? SEOUL_PLAN_STAGE_NAMES[stageCode] ?? null : null,
+      projectKey: grp ? `seoulplan:${grp}` : stableId, stageCode, stageName: stageCode ? SEOUL_PLAN_STAGE_NAMES[stageCode] ?? str(a?.PROPEL_CD_NM) : null,
       stage: stageCode ? STAGES[stageCode] ?? "미확인" : "미확인", stageDate: date(a?.PROPEL_DT), areaM2: area,
-      households: households !== null && Number.isInteger(households) && households > 0 ? households : null,
-      overview: a ? { bizAreaM2: num(a.BSNS_AREA), floorAreaRatio: num(a.FLAR_RT), buildingCoverage: num(a.BLDGLND_RT), floors: str(a.FLOOR), heightM: num(a.HEIGHT), saleUnits: num(a.PARCEL), rentUnits: num(a.RENTAL), zoningBefore: str(a.SPFC_PREV), zoningAfter: str(a.SPFC_AFTER) } : null,
+      households: households !== null && Number.isInteger(households) ? households : null,
+      overview: a ? { bizAreaM2: pos(a.BSNS_AREA), floorAreaRatio: pos(a.FLAR_RT), buildingCoverage: pos(a.BLDGLND_RT), floors: str(a.FLOOR), heightM: pos(a.HEIGHT), saleUnits: pos(a.PARCEL), rentUnits: pos(a.RENTAL), zoningBefore: str(a.SPFC_PREV), zoningAfter: str(a.SPFC_AFTER) } : null,
+      // 정보몽땅 사업장(단계별 추진경과)은 수집하지 않고 링크만 둔다.
+      cleanupUrl: str(a?.CLEANUP_BSNS_URL),
       apiMatched: !!a, grp, sigungu: sg, sourceUpdatedAt: date(p.CREATE_DAT),
     };
     const name = str(p.DGM_NM);
