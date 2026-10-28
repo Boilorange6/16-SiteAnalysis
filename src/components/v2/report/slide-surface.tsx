@@ -23,6 +23,8 @@ import type { TileView } from "@/lib/v2/ui/tile-view";
 import { sheetCells, type SheetGrid } from "@/lib/v2/ui/sheet";
 import { labelBoxFramePatch, labelFramePatch, mapLabelSwitchState, reportPageMapSelectable, mixedValue, resetLabelBoxFramePatch, toggleLabelVisibility, toggleLegendFocus } from "@/lib/v2/ui/report-mode-logic";
 import { mapLayoutUnitForFrame, placeActionBar, type ActionBarPixelBox } from "@/lib/v2/report/report-geometry";
+import { analysisCharts, analysisSentence, type AnalysisCharts } from "@/lib/v2/report/analysis-charts";
+import { AnalysisColumn } from "./analysis-column";
 
 type SurfaceStyles = Record<string, string>;
 const FALLBACK_STYLES: SurfaceStyles = new Proxy<SurfaceStyles>({} as SurfaceStyles, { get: (_target, key) => String(key) });
@@ -463,7 +465,7 @@ function hiddenLayer(layer: string, hidden: readonly string[]): boolean {
   return hidden.includes(layer) || hidden.includes(layerStyle(layer).label);
 }
 
-function modelWithHiddenLayers(model: NonNullable<ReturnType<typeof mapForSlide>>, hidden: readonly string[]): NonNullable<ReturnType<typeof mapForSlide>> {
+export function modelWithHiddenLayers(model: NonNullable<ReturnType<typeof mapForSlide>>, hidden: readonly string[]): NonNullable<ReturnType<typeof mapForSlide>> {
   if (hidden.length === 0) return model;
   return {
     ...model,
@@ -1222,11 +1224,17 @@ function TitlePanel({ slide, rect, unit, interaction, onText }: { slide: Extract
   return <ReportTitlePanel color={slide.view.color} title={slide.page?.titleOverride ?? slide.view.title} kind={kind} rect={rect} unit={unit} style={slide.style} interaction={interaction} />;
 }
 
-function SummaryPanel({ slide, rect, unit, terrainSectionShown = false, interaction, onText }: { slide: Extract<PlannedSlide, { kind: "tile" }>; rect: Rect; unit: number; terrainSectionShown?: boolean; interaction?: PanelInteraction; onText?: () => void }) {
+function SummaryPanel({ slide, rect, unit, terrainSectionShown = false, interaction, onText, charts = null, showNotes = false }: { slide: Extract<PlannedSlide, { kind: "tile" }>; rect: Rect; unit: number; terrainSectionShown?: boolean; interaction?: PanelInteraction; onText?: () => void; charts?: AnalysisCharts | null; showNotes?: boolean }) {
   const styles = useSurfaceStyles();
   const view = slide.view;
   const summaryPt = fontSizeForStyle(slide.style, "summary");
   const summaryScale = summaryPt / DEFAULT_REPORT_FONT_SIZES.summary;
+  // 「지도 + 그래프」: 그래프 자료가 있을 때만. 표 줄·각주는 그리지 않고(각주는 주석 칩), 칩이 바깥으로 열리도록 판이 넘침을 숨기지 않는다.
+  if (slide.page?.layout === "map-charts" && charts) {
+    return <div className={styles.slidePanel + " " + styles.summaryPanel} data-report-layout="map-charts" style={{ ...rectStyle(rect, unit), overflow: "visible" }} {...interaction}>
+      <AnalysisColumn styles={styles} charts={charts} view={view} sentence={slide.page?.summaryOverride ?? analysisSentence(charts)} rect={rect} unit={unit} summaryPt={summaryPt} showNotes={showNotes} />
+    </div>;
+  }
   const innerW = Math.max(0.2, rect.w - 0.44);
   const children: React.ReactNode[] = [];
   if (view.headline) {
@@ -2304,7 +2312,10 @@ function TileSurface({ slide, unit, basemap, panels, interactive, pickable = fal
   const model = slide.map;
   const reportFrame = slide.page?.kind === "tile" ? slide.page.frame : undefined;
   const layoutName = slide.page?.layout;
-  const displayModel = model && reportFrame ? modelWithHiddenLayers(model, reportFrame.hiddenLayers) : model;
+  const hiddenLayers = reportFrame?.hiddenLayers;
+  const displayModel = useMemo(() => (model && hiddenLayers ? modelWithHiddenLayers(model, hiddenLayers) : model), [model, hiddenLayers]);
+  // 「지도 + 그래프」 그래프 자료는 이 장이 실제로 그리는 지도(레이어 고르기 + 끈 레이어 반영)로 센다.
+  const analysis = useMemo(() => (layoutName === "map-charts" && displayModel ? analysisCharts(displayModel) : null), [layoutName, displayModel]);
   const chart = !model && !slide.mass && !slide.rose && slide.body.face !== "single";
   const terrainShown = slide.view.code === "D17" && !!slide.view.terrainSections && !!slide.terrainSection;
   const terrainLayout = terrainShown ? terrainSectionLayout(panels, slideLayout(format), format) : null;
@@ -2354,7 +2365,7 @@ function TileSurface({ slide, unit, basemap, panels, interactive, pickable = fal
        {terrainShown && <TerrainSectionPreview slide={slide} unit={unit} layout={terrainLayout} />}
       {slide.body.kind === "state" && <div className={styles.slidePanel} style={{ left: unit * 4, top: unit * 2.7, width: unit * 5.1, height: unit * 1.15 }}><div className={styles.slideText + " " + styles.slideTextStrong} style={fontStyle(16, unit)}>{slide.body.message}</div></div>}
        {!slide.page?.deletedElementKeys?.includes("title") && <div onDoubleClick={() => onText?.("title")}><TitlePanel slide={slide} rect={panels.title} unit={unit} interaction={panelInteraction?.("title")} /></div>}
-       {panels.summary && hasSummaryPanel(slide) && !slide.page?.deletedElementKeys?.includes("summary") && <div onDoubleClick={() => onText?.("summary")}><SummaryPanel slide={slide} rect={terrainLayout?.summary ?? panels.summary} unit={unit} terrainSectionShown={terrainShown} interaction={panelInteraction?.("summary")} /></div>}
+       {panels.summary && hasSummaryPanel(slide) && !slide.page?.deletedElementKeys?.includes("summary") && <div onDoubleClick={() => onText?.("summary")}><SummaryPanel slide={slide} rect={terrainLayout?.summary ?? panels.summary} unit={unit} terrainSectionShown={terrainShown} interaction={panelInteraction?.("summary")} charts={analysis} showNotes={!staticSurface && !thumbnail} /></div>}
        {panels.legend && !callout && <LegendPanel slide={{ ...slide, map: model } as Extract<PlannedSlide, { kind: "tile" }>} rect={panels.legend} unit={unit} format={format} hoverLabel={hoverLegend} onLegendHover={setHoverLegend} onLegendPin={staticSurface || thumbnail ? undefined : onLegendPin} onLegendMenu={staticSurface || thumbnail || !onFontContextMenu ? undefined : (x, y, opener) => onFontContextMenu({ kind: "panel", key: "legend" }, x, y, opener)} interaction={panelInteraction?.("legend")} legendOptions={reportFrame?.legend} />}
         <SlideFooter slide={slide} basemap={basemap} rect={panels.source} unit={unit} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} interactive={interactive && !thumbnail && !!onFontContextMenu} hidden={slide.page?.deletedElementKeys?.includes("source")} selected={selection?.kind === "element" && selection.key === "source"} onSelect={selectSurface} onDelete={() => onPanelDelete?.("source")} interaction={panelInteraction?.("source")} />
     </>

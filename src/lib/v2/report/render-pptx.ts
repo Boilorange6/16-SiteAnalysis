@@ -104,7 +104,7 @@ function pageStyleFor(p: PlannedSlide, format: SlideFormat): PageStyle {
   if (!pageLayout || !page) return p.style ?? {};
   const rects = layoutRects(pageLayout, format);
   const panels = {
-    ...(pageLayout === "map-summary" || pageLayout === "map-full" ? {} : {
+    ...(pageLayout === "map-summary" || pageLayout === "map-charts" || pageLayout === "map-full" ? {} : {
       title: rects.title,
       ...(rects.summary ? { summary: rects.summary } : {}),
       ...(rects.legend ? { legend: rects.legend } : {}),
@@ -131,7 +131,7 @@ function frameLegendOptions(frame: MapFrameState | undefined): SlideLegendOption
 function frameForLayout(p: PlannedSlide, format: SlideFormat): { x: number; y: number; w: number; h: number } | undefined {
   if (p.kind !== "tile") return undefined;
   const pageLayout = layoutOf(p);
-  if (pageLayout === "map-full" || pageLayout === "map-summary") return undefined;
+  if (pageLayout === "map-full" || pageLayout === "map-summary" || pageLayout === "map-charts") return undefined;
   const rect = layoutRects(pageLayout, format).map;
   if (!rect) return undefined;
   const size = slideSize(format);

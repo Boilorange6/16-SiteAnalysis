@@ -446,6 +446,70 @@
   line-height: 1.05;
 }
 
+/* 「지도 + 그래프」 오른쪽 열 */
+.analysisChart {
+  display: block;
+  font-variant-numeric: tabular-nums;
+}
+
+.analysisNotes {
+  display: flex;
+  align-items: flex-end;
+}
+
+.analysisNotesChip {
+  box-sizing: border-box;
+  min-height: 24px;
+  padding: 0 10px;
+  color: #3b3a35;
+  background: #fff;
+  border: 1px solid #d9dce2;
+  border-radius: 12px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.analysisNotesChip:hover,
+.analysisNotesChip[aria-expanded="true"] {
+  color: #164e9b;
+  border-color: #164e9b;
+}
+
+.analysisNotesChip:focus-visible {
+  outline: 2px solid #164e9b;
+  outline-offset: 2px;
+}
+
+.analysisNotesPopover {
+  position: absolute;
+  z-index: 5;
+  right: 0;
+  bottom: calc(100% + 6px);
+  box-sizing: border-box;
+  width: 288px;
+  padding: 12px;
+  color: #15171c;
+  background: #fff;
+  border: 1px solid #e1e4e9;
+  border-radius: 12px;
+  box-shadow: 0 2px 4px rgba(21, 23, 28, .08), 0 16px 40px rgba(21, 23, 28, .18);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+  pointer-events: none;
+}
+
+.analysisNotesPopover ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0 0 0 16px;
+}
+
 @media (min-width: 1024px) {
   .surfaceRoot[data-surface-mode="edit"],
   .surfaceRoot[data-surface-mode="edit"] [data-preview-slot="true"],

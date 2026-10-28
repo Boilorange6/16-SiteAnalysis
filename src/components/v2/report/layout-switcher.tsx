@@ -18,6 +18,7 @@ type LayoutSwitcherProps = {
   pageKind?: ReportLayoutPageKind;
   hasMap?: boolean;
   hasSummary?: boolean;
+  hasCharts?: boolean;
   grid?: ReportGrid;
   onGridChange?: (grid: ReportGrid) => void;
   renderSignatures?: Partial<Record<ReportLayout, string>>;
@@ -38,14 +39,16 @@ function LayoutPreview({ layout, grid }: { layout: ReportLayout; grid?: ReportGr
       <rect x="3" y="3" width="114" height="84" rx="2" fill="#f7f8fa" stroke="currentColor" />
       {layout === "map-full" && <><rect x="8" y="22" width="104" height="57" rx="1" fill="#d9e0ea" /><path d="M8 14h42" stroke="currentColor" strokeWidth="3" strokeLinecap="round" /></>}
       {layout === "map-summary" && <><rect x="8" y="22" width="70" height="57" rx="1" fill="#d9e0ea" /><path d="M88 28h20M88 38h16M88 48h19M8 14h35" stroke="currentColor" strokeWidth="3" strokeLinecap="round" /></>}
+      {layout === "map-charts" && <><rect x="8" y="22" width="70" height="57" rx="1" fill="#d9e0ea" /><rect x="88" y="30" width="8" height="30" rx="1" fill="#9db3d4" /><rect x="100" y="42" width="8" height="18" rx="1" fill="#9db3d4" /><path d="M86 66h24M8 14h35" stroke="currentColor" strokeWidth="3" strokeLinecap="round" /></>}
       {layout === "numbers-first" && <><rect x="8" y="10" width="29" height="15" rx="1" fill="#d9e0ea" /><rect x="45" y="10" width="29" height="15" rx="1" fill="#d9e0ea" /><rect x="82" y="10" width="30" height="15" rx="1" fill="#d9e0ea" /><rect x="8" y="34" width="104" height="45" rx="1" fill="#d9e0ea" /></>}
     </svg>
   );
 }
 
-export default function LayoutSwitcher({ value, onChange, compact = false, pageNumber, opacity, onOpacityChange, onClose, pageKind = "tile", hasMap = true, hasSummary = true, grid = "2x2", onGridChange, renderSignatures, deletedItems = [] }: LayoutSwitcherProps) {
-  const decision = reportLayoutDecision({ pageKind, hasMap, hasSummary, renderSignatures });
-  const activeLayout = value === "side-by-side" ? "map-summary" : value;
+export default function LayoutSwitcher({ value, onChange, compact = false, pageNumber, opacity, onOpacityChange, onClose, pageKind = "tile", hasMap = true, hasSummary = true, hasCharts = false, grid = "2x2", onGridChange, renderSignatures, deletedItems = [] }: LayoutSwitcherProps) {
+  const decision = reportLayoutDecision({ pageKind, hasMap, hasSummary, hasCharts, renderSignatures });
+  // 그래프 자료를 잃은 map-charts 쪽은 「지도 + 요약」 내용으로 그려지므로 그 버튼이 눌린 것으로 보인다.
+  const activeLayout = value === "side-by-side" || (value === "map-charts" && !hasCharts) ? "map-summary" : value;
   const gridChoices = decision.gridChoices.length > 0 ? decision.gridChoices : reportGridChoices();
   return (
     <section className={`${styles.layoutSwitcher} ${compact ? styles.layoutSwitcherCompact : ""}`} aria-label="페이지 레이아웃">

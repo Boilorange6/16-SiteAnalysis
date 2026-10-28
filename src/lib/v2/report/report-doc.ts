@@ -7,7 +7,7 @@ import type { BaseThemeRef, BaseToggleLayer } from "../ui/map-theme";
 export type { PagePanelKey, PagePanelRect, PagePanels } from "./report-geometry";
 
 export type ReportFormat = "wide" | "a3" | "a4";
-export type ReportLayout = "map-full" | "map-summary" | "numbers-first" | "side-by-side";
+export type ReportLayout = "map-full" | "map-summary" | "map-charts" | "numbers-first" | "side-by-side";
 export type ReportFontScale = 0.85 | 1 | 1.15;
 export type FontSizeKey = "title" | "summary" | "legend" | "labels" | "source" | "scale";
 export type ReportFontSizes = Record<FontSizeKey, number>;

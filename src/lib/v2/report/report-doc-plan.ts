@@ -25,6 +25,7 @@ import type { MapPolygon, TileResult } from "../tile-result";
 import type { A05Filter } from "../engine/a05-filter";
 import { sheetCapacity, sheetView } from "../ui/sheet";
 import { pageItems } from "../ui/callout-layout";
+import { analysisCharts } from "./analysis-charts";
 
 export type ReportDocPlanContext = {
   summary: SummaryView;
@@ -133,7 +134,9 @@ function pageLayoutForSlide(slide: ReportSlide): ReportPage["layout"] {
       : slide.kind === "cover" || slide.kind === "sources"
         ? !!slide.map
         : false;
-  return hasMap ? "map-summary" : "numbers-first";
+  if (!hasMap) return "numbers-first";
+  // 새로 만드는 쪽만: 이 쪽이 실제로 그리는 지도(slide.map — 레이어 고르기는 view에 이미 반영됨)에 그래프 자료가 있으면 「지도 + 그래프」.
+  return slide.kind === "tile" && slide.map && analysisCharts(slide.map) ? "map-charts" : "map-summary";
 }
 
 function partForSlide(view: TileView, settings: TileReportSettings, slide: ReportSlide, sheetIndex: number): TilePart {
@@ -390,7 +393,9 @@ export function importLegacyReport(
       pages.push(page);
       continue;
     }
-    const page = pageForTileSlide(id, view, settings, slide, 0);
+    // 옛 보고서 가져오기는 쪽 모양을 바꾸지 않는다(「지도 + 그래프」는 새로 만드는 쪽에서만).
+    const imported = pageForTileSlide(id, view, settings, slide, 0);
+    const page = imported.layout === "map-charts" ? { ...imported, layout: "map-summary" as const } : imported;
     const style = board.report.styles[slide.key];
     page.panels = style?.panels ? { ...style.panels } : {};
     page.frame = frameFromLegacyStyle(style, page.frame);

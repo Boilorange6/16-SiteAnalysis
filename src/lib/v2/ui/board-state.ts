@@ -940,7 +940,7 @@ const isSheetGrid = (value: unknown): value is SheetGrid => value === "2x2" || v
 const isTileKind = (value: unknown): value is TileResult["tileType"] => value === "analysis" || value === "diagram" || value === "simulation" || value === "stack";
 
 const isReportFormat = (value: unknown): value is ReportDoc["format"] => value === "wide" || value === "a3" || value === "a4";
-const isReportLayout = (value: unknown): value is ReportPage["layout"] => value === "map-full" || value === "map-summary" || value === "numbers-first" || value === "side-by-side";
+const isReportLayout = (value: unknown): value is ReportPage["layout"] => value === "map-full" || value === "map-summary" || value === "map-charts" || value === "numbers-first" || value === "side-by-side";
 const isFiniteNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 const reportTileIdPattern = /^(?:[A-Za-z0-9._]+-)+[A-Za-z0-9_]+$/;
 const reportPageIdPattern = /^\S+$/;

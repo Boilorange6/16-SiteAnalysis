@@ -16,6 +16,8 @@ export type ReportLayoutInput = {
   pageKind: ReportLayoutPageKind;
   hasMap?: boolean;
   hasSummary?: boolean;
+  /** 그래프 자료가 있어 「지도 + 그래프」를 고를 수 있나 */
+  hasCharts?: boolean;
   renderSignatures?: Partial<Record<ReportLayout, string>>;
 };
 
@@ -63,6 +65,7 @@ export function reportLayoutDecision(input: ReportLayoutInput): ReportLayoutDeci
   const defaults: Record<ReportLayout, string> = {
     "map-full": `${mapWord}:full:${input.hasSummary ? "summary" : "none"}`,
     "map-summary": `${mapWord}:summary:${input.hasSummary ? "summary" : "none"}`,
+    "map-charts": `${mapWord}:charts`,
     "numbers-first": "numbers-first",
     "side-by-side": "legacy-hidden",
   };
@@ -72,6 +75,7 @@ export function reportLayoutDecision(input: ReportLayoutInput): ReportLayoutDeci
   const candidates: Array<{ value: ReportLayout; label: string }> = [
     { value: "map-full", label: `${mapWord} 크게` },
     { value: "map-summary", label: `${mapWord} + 요약` },
+    ...(input.hasCharts ? [{ value: "map-charts" as const, label: "지도 + 그래프" }] : []),
     { value: "numbers-first", label: "숫자 먼저" },
   ];
   for (const candidate of candidates) {

@@ -79,7 +79,7 @@ export type TerrainSectionLayout = {
 };
 
 export type SlideFormat = "wide" | "a3" | "a4";
-export type ReportLayoutName = "map-full" | "map-summary" | "numbers-first" | "side-by-side";
+export type ReportLayoutName = "map-full" | "map-summary" | "map-charts" | "numbers-first" | "side-by-side";
 
 /** 슬라이드 판형의 실제 PowerPoint inch 크기. wide 수치는 기존 골든과 같다. */
 export const SLIDE = { w: 13.333, h: 7.5, edge: 0.3, stripH: 0.36, infoRatio: 0.32 } as const;
@@ -531,13 +531,47 @@ export function layoutRects(layout: ReportLayoutName = "map-summary", format: Sl
       legend: { x: 0.03, y: 0.87, w: 0.94, h: 0.08 },
     };
   }
-  const panels = slidePanelRects({}, layout === "map-summary", undefined, format);
+  const panels = slidePanelRects({}, layout === "map-summary" || layout === "map-charts", undefined, format);
   return {
     map: { x: 0, y: 0, w: 1, h: 1 },
     title: normalized(panels.title, g)!,
     summary: normalized(panels.summary, g),
     legend: normalized(panels.legend, g),
   };
+}
+
+export type ChartsColumn = { headline: Rect; stat: Rect; composition: Rect; distance: Rect; sentence: Rect; notesChip: Rect };
+
+/**
+ * 「지도 + 그래프」 오른쪽 열의 여섯 칸(슬라이드 inch). 화면 미리보기와 PPT가 같은 함수를 쓴다.
+ * 높이 배분은 큰 숫자 20 · 한 줄 통계 6 · 구성비 26 · 거리 32 · 해석 16 %이고, 주석 칩 자리는 해석 몫에서 뗀다(거리 그래프 칸은 줄지 않는다).
+ * 바깥 여백은 고정(글자 배율을 따르지 않는다): 거리 그래프 칸이 글자 크기와 상관없이 같은 크기라 기하를 같은 값으로 검증한다.
+ * 칸 사이 간격만 글자 배율을 따르며, 위 칸은 아래쪽, 해석 칸은 위쪽에서 뗀다(거리 그래프 칸 자체는 줄이지 않는다).
+ */
+export function chartsColumnLayout(summaryRect: Rect, scale: number): ChartsColumn {
+  const pad = Math.min(0.18, summaryRect.w / 4, summaryRect.h / 4);
+  const x = summaryRect.x + pad;
+  const w = Math.max(0.01, summaryRect.w - pad * 2);
+  const H = Math.max(0.01, summaryRect.h - pad * 2);
+  const gap = Math.min(0.04 * scale, H * 0.01);
+  const chip = Math.min(0.26, H * 0.06);
+  let y = summaryRect.y + pad;
+  const take = (share: number, trailingGap = gap): Rect => {
+    const h = H * share;
+    const rect = { x, y, w, h: h - trailingGap };
+    y += h;
+    return rect;
+  };
+  const headline = take(0.2);
+  const stat = take(0.06);
+  const composition = take(0.26);
+  const distanceTop = y;
+  const sentenceTop = distanceTop + H * 0.32;
+  const bottom = summaryRect.y + pad + H;
+  const distance = { x, y: distanceTop, w, h: sentenceTop - distanceTop };
+  const sentence = { x, y: sentenceTop + gap, w, h: bottom - chip - sentenceTop - gap };
+  const notesChip = { x, y: bottom - chip, w, h: chip };
+  return { headline, stat, composition, distance, sentence, notesChip };
 }
 
 /** 펼침에서 오른쪽 정보 판(360px)을 뺀 영역의 가운데 (모바일은 0.5) */
