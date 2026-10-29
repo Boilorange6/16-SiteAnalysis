@@ -4,6 +4,7 @@ import type { MapBase } from "./basemap";
 import { paletteLayerStyle, type DiagramPaletteRef } from "./map-palette";
 import type { BasemapChoice } from "./map-projection";
 import type { BaseThemeRef, BaseToggleLayer } from "./map-theme";
+import type { SiteOutline } from "./site-outline";
 
 /** MapFigure가 그리는 입력. 카드·상세·PPT가 같은 것을 쓴다. */
 export type MapModel = {
@@ -17,6 +18,8 @@ export type MapModel = {
   basemap?: BasemapChoice;
   /** 분석 장면에서 만든 벡터 바탕 자료. 같은 장면의 모든 타일이 같은 객체를 공유한다. */
   base?: MapBase | null;
+  /** 대지 바깥 윤곽과 꼭짓점 표고. 치수선·표고 글자를 그릴 자료이며 같은 장면의 모든 타일이 같은 객체를 공유한다. */
+  siteOutline?: SiteOutline | null;
   /** 지도에 겹칠 압축 래스터 참조. */
   rasters?: RasterRef[];
   /** 엔진이 계산한 범례 경계. 있으면 정적 레이어명보다 우선해 표시한다. */

@@ -13,6 +13,7 @@ import type { MapColorChoice } from "../report/report-doc";
 import type { BaseToggleLayer } from "./map-theme";
 import { withMapColors } from "./map-colors";
 import { mapBaseFromScene, type MapBase } from "./basemap";
+import { siteOutlineFromScene } from "./site-outline";
 import type { MapModel } from "./map-layers";
 import type { MassModel } from "./mass-projection";
 import { catalogEntry, sourceName, TILE_CODES, type TileCode } from "./tile-catalog";
@@ -484,8 +485,9 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
   if (!scene?.origin) return view;
   // 한 장면의 모든 타일이 같은 바탕 객체를 공유한다(타일별 생략은 model.tileCode로 그리는 쪽이 정한다).
   const base = mapBaseFromScene(scene);
-  const withBase = (model: MapModel | null | undefined): MapModel | null | undefined => model ? { ...model, base } : model;
-  return { ...view, map: withBase(view.map) ?? null, backdrop: { ...view.backdrop, base }, ...(view.callout ? { callout: { ...view.callout, base } } : {}), ...(view.layerSourceMap ? { layerSourceMap: withBase(view.layerSourceMap) } : {}) };
+  const siteOutline = siteOutlineFromScene(scene);
+  const withBase = (model: MapModel | null | undefined): MapModel | null | undefined => model ? { ...model, base, siteOutline } : model;
+  return { ...view, map: withBase(view.map) ?? null, backdrop: { ...view.backdrop, base, siteOutline }, ...(view.callout ? { callout: { ...view.callout, base } } : {}), ...(view.layerSourceMap ? { layerSourceMap: withBase(view.layerSourceMap) } : {}) };
 }
 
 /** 설명선 모델에 고른 팔레트(`withCalloutPalette`)와 끈 바탕 레이어를 싣는다. 고른 것이 없으면 같은 객체. */
