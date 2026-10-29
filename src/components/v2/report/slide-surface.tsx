@@ -15,7 +15,7 @@ import { a05ReportModule } from "@/lib/v2/tile/a05/report";
 import { layerStyle, legendItemsOf, legendLabelOf, modelWithHiddenLayers } from "@/lib/v2/ui/map-layers";
 import { reportSummaryNotes, terrainCrossingLayer, terrainElevationLabel, terrainSectionAxisStops, terrainSectionBands, terrainSectionElevationAt, terrainSectionMarkerGeometry, terrainSectionPosition, terrainSectionTotal, sortTerrainCrossings, TERRAIN_CROSSING_LABELS, TERRAIN_SECTION_LABELS, TERRAIN_SECTION_TABLE_MAX_ROWS } from "@/lib/v2/ui/terrain-section";
 import MapFigure, { type MapFigureElementPick } from "../map-figure";
-import { locatorBox, northArrowBox, scaleBarBox, scaleChromeScaleForBox } from "@/lib/v2/ui/map-scene";
+import { locatorBox, NORTH_INSET, NORTH_RADIUS, northArrowBox, scaleBarBox, scaleChromeScaleForBox, scaleFontScaleForPt } from "@/lib/v2/ui/map-scene";
 import type { PageStyle } from "@/lib/v2/ui/board-state";
 import { clampTextBox, DEFAULT_REPORT_FONT_SIZES, TEXT_BOX_COLORS, TEXT_BOX_DEFAULTS, textBoxDefaults, type MapFrameState, type MapLabelBox, type PagePanelRect, type PagePanels, type TextBox, type TextBoxColor, type TextBoxKind } from "@/lib/v2/report/report-doc";
 import type { PlannedSlide } from "@/lib/v2/report/report-plan";
@@ -602,8 +602,8 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
   const locator = reportFrame?.decorations.locator && model.radiusM > 0 ? (savedLocatorBox ?? locatorBox(width, height, unit, avoid)) : null;
   const automaticScaleBox = showScale ? scaleBarBox(width, height, metersPerPixel(viewport.center[1], viewport.zoom), bottomInset, rightInset, false, undefined, layoutUnit) : null;
   const scaleBox = showScale ? (savedScaleBox ?? automaticScaleBox) : null;
-  const defaultNorthWidth = Math.max(1, northAvoid ? northAvoid.x1 - northAvoid.x0 : 26 * layoutUnit);
-  const defaultNorthHeight = Math.max(1, northAvoid ? northAvoid.y1 - northAvoid.y0 : 26 * layoutUnit);
+  const defaultNorthWidth = Math.max(1, northAvoid ? northAvoid.x1 - northAvoid.x0 : 2 * NORTH_RADIUS * layoutUnit);
+  const defaultNorthHeight = Math.max(1, northAvoid ? northAvoid.y1 - northAvoid.y0 : 2 * NORTH_RADIUS * layoutUnit);
   const northScale = savedNorthBox
     ? clampNumber(((savedNorthBox.x1 - savedNorthBox.x0) / defaultNorthWidth + (savedNorthBox.y1 - savedNorthBox.y0) / defaultNorthHeight) / 2, 0.5, 3)
     : 1;
@@ -850,7 +850,7 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
         scaleY={savedScaleBox ? savedScaleBox.y1 - 8 * layoutUnit : undefined}
         scaleBoxOverride={savedScaleBox ?? undefined}
         scaleChromeScale={scaleChromeScale}
-        scaleFontScale={fontSizeForStyle(style, "scale") / DEFAULT_REPORT_FONT_SIZES.scale}
+        scaleFontScale={scaleFontScaleForPt(fontSizeForStyle(style, "scale"))}
         calloutTop={calloutTop}
         calloutLeftBottom={calloutLeftBottom ?? (terrainLayout?.calloutLeftBottom ? terrainLayout.calloutLeftBottom * unit : undefined)}
          showAutomaticLabels={reportFrame?.labelRule !== "off"}
@@ -1941,7 +1941,7 @@ function SheetSurface({ slide, unit, basemap, thumbnail = false, editable = fals
               ...(cell.panels ? { panels: cell.panels } : {}),
             } : { ...(cell.style ?? slide.style), ...(cell.panels ? { panels: cell.panels } : {}) };
             const cellViewport = model ? slideViewport(model, cellStyle, { width, height, siteX: 0.5, fill: 0.8 }) : null;
-            const cellNorthBox = cell.reportFrame?.decorations.north ? northArrowBox(width, height, 0, 24) : null;
+            const cellNorthBox = cell.reportFrame?.decorations.north ? northArrowBox(width, height, 0, NORTH_INSET) : null;
             const cellScaleBox = cell.reportFrame?.decorations.scaleBar && cellViewport ? scaleBarBox(width, height, metersPerPixel(cellViewport.center[1], cellViewport.zoom)) : null;
             const cellLocatorBox = locatorBox(width, height, unit, [
               ...(cellNorthBox ? [cellNorthBox] : []),
@@ -2331,7 +2331,7 @@ function TileSurface({ slide, unit, basemap, panels, interactive, pickable = fal
     ? Math.max(0, width - panels.summary.x * unit + geometry.edge * unit * 0.5)
     : geometry.edge * unit;
   const northCalloutTop = (calloutAlignment?.calloutTop ?? panels.title.y + panels.title.h + geometry.edge * 0.5) * unit;
-  const northAvoid = model ? northArrowBox(width, height, northRightInset, northCalloutTop + 13 * northUnit, northUnit) : null;
+  const northAvoid = model ? northArrowBox(width, height, northRightInset, northCalloutTop + NORTH_RADIUS * northUnit, northUnit) : null;
   const [hoverLegend, setHoverLegend] = useState<string | null>(null);
   const onLegendPin = useCallback((key: string) => {
     if (!model || !onDirectPatch) return;

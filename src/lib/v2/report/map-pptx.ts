@@ -3,7 +3,7 @@ import { buildingStyleForRaster, isBuildingLayer, layerStyle, legendItems, legen
 import { isSiteParcelLayer } from "../ui/site-parcel";
 import { calloutLegendEntries, SLIDE, slideCalloutAvoidance, slideGeometry, slideLayout, slideLegend, slidePanelRects, slideReserved, slideSiteX, terrainSectionLayout, type SlideFormat } from "../ui/overlay-layout";
 import { SLIDE_OVERVIEW_FILL, slideCalloutFrame } from "../ui/callout-layout";
-import { buildMapScene, locatorBox, mapLabelEntries, nearestLineStroke, northArrowBox, RAIL_EXIT_COLOR, RAIL_EXIT_DOT_RADIUS, RAIL_EXIT_DOT_STROKE, scaleBarBox, scaleChromeScaleForBox, type MapScene, type MapSceneBaseBucket, type MapSceneBox } from "../ui/map-scene";
+import { buildMapScene, locatorBox, mapLabelEntries, nearestLineStroke, NORTH_GLYPH, NORTH_RADIUS, northArrowBox, northArrowPoints, RAIL_EXIT_COLOR, RAIL_EXIT_DOT_RADIUS, RAIL_EXIT_DOT_STROKE, SCALE_FONT_PX, SCALE_PANEL_ABOVE, SCALE_PANEL_BELOW, scaleBarBox, scaleChromeScaleForBox, scaleFontScaleForPt, type MapScene, type MapSceneBaseBucket, type MapSceneBox } from "../ui/map-scene";
 import { baseTheme, type BaseThemeRef } from "../ui/map-theme";
 import { badgeTextColor } from "../ui/map-labels";
 import { terrainSectionMapStyle } from "../ui/terrain-section";
@@ -572,7 +572,7 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
       // pinnedKeys로 고정한 사용자 라벨은 아래 후보에 계속 포함된다.
       showAutomaticLabels: false,
       labelScale: fontSizeForStyle(style, "labels") / 10,
-      scaleFontScale: fontSizeForStyle(style, "scale") / DEFAULT_REPORT_FONT_SIZES.scale,
+      scaleFontScale: scaleFontScaleForPt(fontSizeForStyle(style, "scale")),
       legendBox: cellLegend?.box ?? null,
       calloutTop: cellChipBottom + 8 * cellUnit,
       avoid: [],
@@ -614,10 +614,10 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
   const fill = calloutDetail?.fill ?? terrainLayout?.mapFill ?? (calloutOverview ? SLIDE_OVERVIEW_FILL : undefined);
   const rightInset = calloutDetail ? 0 : hasSummary ? Math.max(0, VIEW_W - summaryX * activePxPerInch + gap) : geometry.edge * activePxPerInch;
   // 방위표는 지도 scene의 고정 y(22u)만 쓰면 크게 키운 제목 판과 겹친다.
-  // 제목 판 아래에 13u 반지름과 안전 간격을 확보한 중심을 전달한다.
+  // 제목 판 아래에 방위표 반지름과 안전 간격을 확보한 중심을 전달한다.
   const calloutTopPx = calloutAlignment ? calloutAlignment.calloutTop * activePxPerInch : (panels.title.y + panels.title.h) * activePxPerInch + gap;
   const height = activeSceneHeight;
-  const northY = calloutTopPx + 13 * Math.min(1.5, Math.max(1, height / 360));
+  const northY = calloutTopPx + NORTH_RADIUS * Math.min(1.5, Math.max(1, height / 360));
   const bottomInset = geometry.stripH * activePxPerInch + (calloutLegend ? (calloutLegend.h + 0.18) * activePxPerInch : 0);
   const viewport = fixedScaleViewport(displayModel, frameStyle, reportFrame, { width: VIEW_W, height, siteX, siteY: terrainLayout?.mapSiteY ?? 0.5, fill: fill ?? 0.8 });
   const showScale = reportFrame?.decorations.scaleBar ?? true;
@@ -668,7 +668,7 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
     legendFocus: focus,
     showAutomaticLabels: reportFrame?.labelRule !== "off",
     labelScale: fontSizeForStyle(frameStyle, "labels") / 10,
-    scaleFontScale: fontSizeForStyle(frameStyle, "scale") / DEFAULT_REPORT_FONT_SIZES.scale,
+    scaleFontScale: scaleFontScaleForPt(fontSizeForStyle(frameStyle, "scale")),
     northScale,
     scaleChromeScale,
     north: showNorth ? (savedNorthBox ? (savedNorthBox.y0 + savedNorthBox.y1) / 2 : northY) : false,
@@ -1021,13 +1021,17 @@ function addRailOverlay(slide: Slide, code: string, scene: MapScene): void {
 function addNorth(slide: Slide, code: string, scene: MapScene): void {
   if (!scene.north) return;
   const u = scene.northUnit;
-  const x = Math.max(13 * u, Math.min(activeSceneWidth - 13 * u, scene.north.x));
-  const y = Math.max(13 * u, Math.min(activeClipBottom - 13 * u, scene.north.y));
-  if (activeSceneWidth < 26 * u || activeClipBottom < 26 * u) return;
+  const r = NORTH_RADIUS * u;
+  const x = Math.max(r, Math.min(activeSceneWidth - r, scene.north.x));
+  const y = Math.max(r, Math.min(activeClipBottom - r, scene.north.y));
+  if (activeSceneWidth < 2 * r || activeClipBottom < 2 * r) return;
   const key = "north";
-  slide.addShape("ellipse", { x: pxX(x - 13 * u), y: pxY(y - 13 * u), w: pxW(26 * u), h: pxH(26 * u), fill: { color: "FFFFFF", transparency: 10 }, line: { color: "FFFFFF", width: 0 }, objectName: tag(code, key, "방위표", "bg") });
-  addCustom(slide, [[ [x, y - 9 * u], [x + 4.5 * u, y + 3 * u], [x, y + 0.5 * u], [x - 4.5 * u, y + 3 * u] ]], { fill: INK, line: INK, lineWidth: 0.1, objectName: tag(code, key, "방위표", "arrow"), closed: true });
-  slide.addText("N", { x: pxX(x - 8 * u), y: pxY(y + 5 * u), w: pxW(16 * u), h: pxH(8 * u), align: "center", valign: "middle", fontFace: FONT, fontSize: fontPt(7.5 * u, 6), bold: true, color: INK, margin: 0, objectName: tag(code, key, "방위표", "label") });
+  // 화면 feDropShadow(아래 dy, 번짐 σ)와 같은 그림자: OOXML 바깥 그림자는 반지름이므로 2σ.
+  const shadow = { type: "outer" as const, angle: 90, color: "000000", opacity: NORTH_GLYPH.shadowOpacity, offset: pxPt(NORTH_GLYPH.shadowDy * u), blur: pxPt(2 * NORTH_GLYPH.shadowBlur * u) };
+  slide.addShape("ellipse", { x: pxX(x - r), y: pxY(y - r), w: pxW(2 * r), h: pxH(2 * r), fill: { color: "FFFFFF" }, line: { color: "FFFFFF", width: 0 }, shadow, objectName: tag(code, key, "방위표", "bg") });
+  addCustom(slide, [northArrowPoints(x, y, u)], { fill: INK, line: INK, lineWidth: 0.1, objectName: tag(code, key, "방위표", "arrow"), closed: true });
+  const letterH = NORTH_GLYPH.letterPx * 1.2 * u;
+  slide.addText("N", { x: pxX(x - 8 * u), y: pxY(y + NORTH_GLYPH.letterY * u - letterH / 2), w: pxW(16 * u), h: pxH(letterH), align: "center", valign: "middle", fontFace: FONT, fontSize: fontPt(NORTH_GLYPH.letterPx * u, 6), bold: true, color: INK, margin: 0, objectName: tag(code, key, "방위표", "label") });
 }
 
 function addScale(slide: Slide, code: string, scene: MapScene): void {
@@ -1039,13 +1043,16 @@ function addScale(slide: Slide, code: string, scene: MapScene): void {
   const maxBarX0 = activeSceneWidth - bar.px - 6 * u;
   const x0 = Math.max(6 * u, Math.min(maxBarX0, bar.x0));
   const x1 = x0 + bar.px;
-  const y = Math.max(14 * u, Math.min(activeClipBottom - 8 * u, bar.y));
-  if (maxBarX0 < 6 * u || activeClipBottom < 22 * u) return;
+  const y = Math.max(SCALE_PANEL_ABOVE * u, Math.min(activeClipBottom - SCALE_PANEL_BELOW * u, bar.y));
+  if (maxBarX0 < 6 * u || activeClipBottom < (SCALE_PANEL_ABOVE + SCALE_PANEL_BELOW) * u) return;
   slide.addShape("roundRect", { x: pxX(scene.scaleBox.x0), y: pxY(scene.scaleBox.y0), w: pxW(scene.scaleBox.x1 - scene.scaleBox.x0), h: pxH(scene.scaleBox.y1 - scene.scaleBox.y0), rectRadius: 0.06 * chrome, fill: { color: "FFFFFF", transparency: 15 }, line: { color: "FFFFFF", width: 0 }, objectName: tag(code, key, "축척", "bg") });
   addSegment(slide, [x0, y - 4 * chrome * u], [x0, y], INK, 1.6 * chrome * u, tag(code, key, "축척", "left"));
   addSegment(slide, [x0, y], [x1, y], INK, 1.6 * chrome * u, tag(code, key, "축척", "bar"));
   addSegment(slide, [x1, y], [x1, y - 4 * chrome * u], INK, 1.6 * chrome * u, tag(code, key, "축척", "right"));
-  slide.addText(bar.label, { x: pxX(x0), y: pxY(y - 11 * textChrome * u), w: pxW(bar.px), h: pxH(8 * textChrome * u), align: "center", valign: "middle", fontFace: FONT, fontSize: fontPt(9.5 * textChrome * u, 6), bold: true, color: INK, margin: 0, objectName: tag(code, key, "축척", "label") });
+  // 화면 글자의 기준선(막대 위 6·tc·u)과 크기에 맞춘 상자: 높이는 글자의 8/9.5, 숫자 가운데는 기준선 위 0.36 글자.
+  const fontPx = SCALE_FONT_PX * textChrome * u;
+  const labelH = fontPx * 8 / 9.5;
+  slide.addText(bar.label, { x: pxX(x0), y: pxY(y - 6 * textChrome * u - 0.36 * fontPx - labelH / 2), w: pxW(bar.px), h: pxH(labelH), align: "center", valign: "middle", fontFace: FONT, fontSize: fontPt(fontPx, 6), bold: true, color: INK, margin: 0, objectName: tag(code, key, "축척", "label") });
 }
 
 function addLocator(slide: Slide, code: string, model: MapModel, scene: MapScene, savedBox?: MapSceneBox | null): void {
@@ -1151,7 +1158,7 @@ export function addEditableMap(slide: Slide, plan: (PlannedSlide & { kind: "tile
     addSite(slide, code, scene, visibleModel.baseTheme ?? options.baseTheme);
     addLabels(slide, code, scene);
     addNorth(slide, code, scene);
-    addScale(slide, code, scene);
+    if (options.reportFrame?.decorations.scaleBar !== false) addScale(slide, code, scene);
     if (options.reportFrame?.decorations.locator) addLocator(slide, code, model, scene, savedPanelBox(options.style?.panels?.locator, (options.mode ?? "tile") === "cell" ? "frame" : "page"));
     if ((options.mode ?? "tile") === "cell") addCellLegend(slide, code, visibleModel, options.style);
     return status;
@@ -1184,7 +1191,7 @@ export function editableMapAvoid(plan: PlannedSlide & { kind: "tile" }, model: M
   const siteX = calloutDetail?.siteX ?? slideSiteX(style, hasSummary);
   const rightInset = calloutDetail ? 0 : hasSummary ? Math.max(0, VIEW_W - summaryX * PX_PER_INCH + gap) : SLIDE.edge * PX_PER_INCH;
   const calloutTopPx = calloutDetail ? (panels.title.y + panels.title.h) * PX_PER_INCH + gap : calloutAlignment.calloutTop * PX_PER_INCH;
-  const northY = calloutTopPx + 13 * Math.min(1.5, Math.max(1, VIEW_H / 360));
+  const northY = calloutTopPx + NORTH_RADIUS * Math.min(1.5, Math.max(1, VIEW_H / 360));
   const bottomInset = SLIDE.stripH * PX_PER_INCH + (calloutLegend ? (calloutLegend.h + 0.18) * PX_PER_INCH : 0);
   const fill = calloutDetail?.fill ?? terrainLayout?.mapFill ?? (plan.callout?.page === 0 ? SLIDE_OVERVIEW_FILL : 0.8);
   const viewport = slideViewport(model, style, { width: VIEW_W, height: VIEW_H, siteX, siteY: terrainLayout?.mapSiteY ?? 0.5, fill });

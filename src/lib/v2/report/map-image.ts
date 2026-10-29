@@ -31,7 +31,7 @@ import type { PageStyle } from "../ui/board-state";
 import { mapFrameScaleOptions, scaleOptionsForFrame, zoomForScale, type ReportScaleOptions } from "../ui/report-scale";
 import { DEFAULT_REPORT_FONT_SIZES, type MapFrameState } from "./report-doc";
 import { fontSizeForStyle } from "./pptx-kit";
-import { northArrowBox, scaleBarBox } from "../ui/map-scene";
+import { NORTH_INSET, NORTH_RADIUS, northArrowBox, scaleBarBox, scaleFontScaleForPt } from "../ui/map-scene";
 import { mapLayoutUnitForFrame } from "./report-geometry";
 
 // 슬라이드 비율(16:9)로 그린다: 지도가 슬라이드 전체이고 오버레이는 pptx 도형이 얹는다
@@ -96,7 +96,7 @@ export function svgOf(model: MapModel, tiles: Map<string, string>, layer: Basema
   const host = document.createElement("div");
   const root = createRoot(host);
   const { size: _size, bottomInset, style, viewport, highlightLabel, legendFocus, ...figureExtra } = extra;
-  const scaleFontScale = style?.fontSizes?.scale !== undefined ? style.fontSizes.scale / DEFAULT_REPORT_FONT_SIZES.scale : undefined;
+  const scaleFontScale = style?.fontSizes?.scale !== undefined ? scaleFontScaleForPt(style.fontSizes.scale) : undefined;
   try {
     const usable = tiles.size > 0;
     const activeLayer = effectiveLayer(model, layer);
@@ -321,18 +321,18 @@ function extraFor(p: PlannedSlide, model: MapModel): Extra {
   const calloutEntries = calloutOverview ? calloutLegendEntries(p.callout!.model, frame?.legend) : [];
   const calloutAlignment = slideCalloutAvoidance(panels, calloutEntries, undefined, "wide", fontSizeForStyle(baseStyle, "legend") / DEFAULT_REPORT_FONT_SIZES.legend);
   const calloutTop = calloutAlignment ? calloutAlignment.calloutTop * PX_PER_INCH : undefined;
-  const northTop = (calloutTop ?? (panels.title.y + panels.title.h) * PX_PER_INCH + SLIDE.edge * PX_PER_INCH * 0.5) + 13 * Math.min(1.5, Math.max(1, VIEW_H / 360));
+  const northTop = (calloutTop ?? (panels.title.y + panels.title.h) * PX_PER_INCH + SLIDE.edge * PX_PER_INCH * 0.5) + NORTH_RADIUS * Math.min(1.5, Math.max(1, VIEW_H / 360));
   const northAvoid = northArrowBox(VIEW_W, VIEW_H, rightInset, northTop);
   const siteX = calloutDetail?.siteX ?? slideSiteX(baseStyle, hasSummary);
   const fill = calloutDetail?.fill ?? terrainLayout?.mapFill ?? (calloutOverview ? SLIDE_OVERVIEW_FILL : 0.8);
   const siteY = terrainLayout?.mapSiteY ?? 0.5;
   const scaleOptions = frame ? mapFrameScaleOptions(p.format ?? "wide", p.page?.layout ?? "map-summary", { width: VIEW_W, height: VIEW_H, siteX, siteY, fill }) : null;
   const style = frame && scaleOptions ? reportFrameStyle(frame, baseStyle, model, scaleOptions) : baseStyle;
-  const frameOptions = frame ? { hiddenKeys: [...new Set([...(style.hiddenKeys ?? []), ...frame.hiddenLabelKeys])], deletedElementKeys: frame.deletedElementKeys, labelBoxes: frame.labelBoxes, showAutomaticLabels: frame.labelRule !== "off", north: frame.decorations.north ? 24 : (false as const), scale: frame.decorations.scaleBar } : {};
+  const frameOptions = frame ? { hiddenKeys: [...new Set([...(style.hiddenKeys ?? []), ...frame.hiddenLabelKeys])], deletedElementKeys: frame.deletedElementKeys, labelBoxes: frame.labelBoxes, showAutomaticLabels: frame.labelRule !== "off", north: frame.decorations.north ? NORTH_INSET : (false as const), scale: frame.decorations.scaleBar } : {};
   const highlightLabel = legendLabelOf(model, style.legendFocus);
   // 설명표 장: 두 칸 사이에 반경 원을 넣는 프레임 (렌더러가 점·표를 같은 프레임으로 놓는다)
   if (calloutDetail) {
-    const detailNorthY = (panels.title.y + panels.title.h) * PX_PER_INCH + SLIDE.edge * PX_PER_INCH * 0.5 + 13 * Math.min(1.5, Math.max(1, VIEW_H / 360));
+    const detailNorthY = (panels.title.y + panels.title.h) * PX_PER_INCH + SLIDE.edge * PX_PER_INCH * 0.5 + NORTH_RADIUS * Math.min(1.5, Math.max(1, VIEW_H / 360));
     const detailNorthAvoid = northArrowBox(VIEW_W, VIEW_H, 0, detailNorthY);
     return { siteX: calloutDetail.siteX, fill: calloutDetail.fill, avoid: detailNorthAvoid ? [detailNorthAvoid] : [], scale: false, rightInset: 0, style, highlightLabel, legendFocus: highlightLabel, ...(terrainShown ? { terrainSection: p.terrainSection } : {}), ...pinned };
   }
@@ -400,7 +400,7 @@ export async function buildMapImages(plan: PlannedSlide[], layer?: BasemapChoice
               deletedElementKeys: frame?.deletedElementKeys,
               labelBoxes: frame?.labelBoxes,
               showAutomaticLabels: frame?.labelRule !== "off",
-              north: frame ? (frame.decorations.north ? 24 : (false as const)) : undefined,
+              north: frame ? (frame.decorations.north ? NORTH_INSET : (false as const)) : undefined,
               scale: frame?.decorations.scaleBar,
               style: cellStyle,
               highlightLabel: legendLabelOf(model, cellStyle?.legendFocus),

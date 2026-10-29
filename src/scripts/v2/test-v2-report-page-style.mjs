@@ -17,7 +17,7 @@ const {
   sourcePageCountForViews,
 } = await import("../../lib/v2/report/report-plan.ts");
 const { withLegacyReport, withLegacyStyle, withLegacyTileState } = await import("./legacy-report-fixture.mjs");
-const { buildMapScene } = await import("../../lib/v2/ui/map-scene.ts");
+const { buildMapScene, NORTH_RADIUS, SCALE_PANEL_ABOVE, SCALE_PANEL_BELOW } = await import("../../lib/v2/ui/map-scene.ts");
 const { layerStyle } = await import("../../lib/v2/ui/map-layers.ts");
 const { slideViewport } = await import("../../lib/v2/ui/map-projection.ts");
 const { SLIDE, SLIDE_LEGEND, slideLegend, slideLegendGeometry, slideLegendRowRects, slidePanelRects, slideReserved, slideSiteX } = await import("../../lib/v2/ui/overlay-layout.ts");
@@ -480,7 +480,7 @@ const extraIndex = (plan, id) => plan.findIndex((slide) => slide.key === `extra:
       activeLayer: a03.map.basemap ?? "white",
       siteX,
       rightInset,
-      north: (panels.title.y + panels.title.h) * PX_PER_INCH + SLIDE.edge * PX_PER_INCH * 0.5 + 13 * Math.min(1.5, Math.max(1, VIEW_H / 360)),
+      north: (panels.title.y + panels.title.h) * PX_PER_INCH + SLIDE.edge * PX_PER_INCH * 0.5 + NORTH_RADIUS * Math.min(1.5, Math.max(1, VIEW_H / 360)),
       bottomInset: SLIDE.stripH * PX_PER_INCH,
       scale: true,
       showAutomaticLabels: false,
@@ -493,8 +493,8 @@ const extraIndex = (plan, id) => plan.findIndex((slide) => slide.key === `extra:
       title: panels.title,
       summary: panels.summary,
       legend: panels.legend,
-      scale: fromPixels(scene.scale.x0 - 6 * unit, scene.scale.y - 14 * unit, scene.scale.px + 12 * unit, 22 * unit),
-      north: scene.north ? fromPixels(scene.north.x - 13 * unit, scene.north.y - 13 * unit, 26 * unit, 26 * unit) : null,
+      scale: fromPixels(scene.scale.x0 - 6 * unit, scene.scale.y - SCALE_PANEL_ABOVE * unit, scene.scale.px + 12 * unit, (SCALE_PANEL_ABOVE + SCALE_PANEL_BELOW) * unit),
+      north: scene.north ? fromPixels(scene.north.x - NORTH_RADIUS * unit, scene.north.y - NORTH_RADIUS * unit, 2 * NORTH_RADIUS * unit, 2 * NORTH_RADIUS * unit) : null,
     };
     return Object.entries(rects).filter(([, rect]) => rect).map(([name, rect]) => ({ name, rect }));
   };

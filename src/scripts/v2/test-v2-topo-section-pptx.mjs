@@ -12,7 +12,7 @@ const { renderReportPptx } = await import("../../lib/v2/report/render-pptx.ts");
 const { SLIDE, slideCalloutAvoidance, slideLegend, slidePanelRects, slideReserved, slideSiteX, terrainSectionLayout } = await import("../../lib/v2/ui/overlay-layout.ts");
 const { terrainSectionBands, terrainSectionMapStyle } = await import("../../lib/v2/ui/terrain-section.ts");
 const { calloutFrame, PX } = await import("../../lib/v2/ui/callout-layout.ts");
-const { buildMapScene, mapLabelEntries, northArrowBox, scaleBarBox } = await import("../../lib/v2/ui/map-scene.ts");
+const { buildMapScene, mapLabelEntries, NORTH_RADIUS, northArrowBox, scaleBarBox } = await import("../../lib/v2/ui/map-scene.ts");
 const { metersPerPixel, slideViewport } = await import("../../lib/v2/ui/map-projection.ts");
 
 const source = GODEOK_RESULTS[0];
@@ -111,7 +111,7 @@ const mapAvoid = slideReserved(pxPerInch, { info: true, titleRect: previewPanels
 const calloutAlignment = slideCalloutAvoidance(previewPanels, []);
 const calloutTop = calloutAlignment.calloutTop * pxPerInch;
 const calloutLeftBottom = calloutAlignment.calloutLeftBottom === undefined ? undefined : calloutAlignment.calloutLeftBottom * pxPerInch;
-const northY = calloutTop + 13 * Math.min(1.5, Math.max(1, 540 / 360));
+const northY = calloutTop + NORTH_RADIUS * Math.min(1.5, Math.max(1, 540 / 360));
 const bottomInset = SLIDE.stripH * pxPerInch;
 const d17Viewport = slideViewport(fixtureSlide.map, fixtureSlide.style, { width: 960, height: 540, siteX: slideSiteX(fixtureSlide.style, true), siteY: previewLayout.mapSiteY ?? 0.5, fill: previewLayout.mapFill ?? 0.8 });
 const d17ScaleBox = scaleBarBox(960, 540, metersPerPixel(d17Viewport.center[1], d17Viewport.zoom), bottomInset, rightInset);
@@ -145,7 +145,7 @@ const previewViewport = slideViewport(fixtureSlide.map, fixtureSlide.style, { wi
 const previewScaleBox = scaleBarBox(previewWidth, previewHeight, metersPerPixel(previewViewport.center[1], previewViewport.zoom), previewBottomInset, previewInset, false, undefined, previewLayoutUnit);
 const previewCalloutTop = calloutAlignment.calloutTop * previewUnit;
 const previewCalloutLeftBottom = calloutAlignment.calloutLeftBottom === undefined ? undefined : calloutAlignment.calloutLeftBottom * previewUnit;
-const previewNorthBox = northArrowBox(previewWidth, previewHeight, previewInset, previewCalloutTop + 13 * previewLayoutUnit, previewLayoutUnit);
+const previewNorthBox = northArrowBox(previewWidth, previewHeight, previewInset, previewCalloutTop + NORTH_RADIUS * previewLayoutUnit, previewLayoutUnit);
 const previewRealScene = buildMapScene({ ...sceneOptions, width: previewWidth, height: previewHeight, rightInset: previewInset, bottomInset: previewBottomInset, calloutTop: previewCalloutTop, ...(previewCalloutLeftBottom === undefined ? {} : { calloutLeftBottom: previewCalloutLeftBottom }), north: false, viewport: previewViewport, layoutUnit: previewLayoutUnit, avoid: [...slideReserved(previewUnit, { info: true, titleRect: previewPanels.title, infoRect: previewPanels.summary, legend: previewPanels.legend, terrainSection: previewLayout.rect }), previewScaleBox, ...(previewNorthBox ? [previewNorthBox] : [])] });
 const placementColumns = (scene) => scene.labelPlacements.map(({ entry, placed }) => [entry.key, placed.side]).sort(([a], [b]) => a.localeCompare(b));
 assert.ok(previewScene.labelPlacements.length > 0, "D17 fixture has callouts to compare");
@@ -188,7 +188,7 @@ const previewSceneFor = (model, style = {}, pinnedKeys = []) => {
   const viewport = slideViewport(model, style, { width, height, siteX, siteY: 0.5, fill: 0.8 });
   const scale = scaleBarBox(width, height, metersPerPixel(viewport.center[1], viewport.zoom), sceneBottomInset, inset);
   const top = callout.calloutTop * unit;
-  const north = northArrowBox(width, height, inset, top + 13 * Math.min(1.5, Math.max(1, height / 360)));
+  const north = northArrowBox(width, height, inset, top + NORTH_RADIUS * Math.min(1.5, Math.max(1, height / 360)));
   const reserved = slideReserved(unit, { info: true, titleRect: panels.title, infoRect: panels.summary, legend: panels.legend });
   const scene = buildMapScene({
     model,

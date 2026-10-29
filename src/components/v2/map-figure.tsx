@@ -8,7 +8,7 @@ import type { MapFeature, MapLine, MapPolygon, RasterRef } from "@/lib/v2/tile-r
 import { maxOf, minOf } from "@/lib/v2/extent";
 import { isSiteParcelLayer } from "@/lib/v2/ui/site-parcel";
 import { calloutFrame, layoutCallouts, PX, PX_NARROW, type Placed } from "@/lib/v2/ui/callout-layout";
-import { buildMapScene, mapCalloutTextLayout, mapElementKey, mapFeatureKey, mapLabelEntries, mapTextWidth, nearestLineStroke, RAIL_EXIT_COLOR, RAIL_EXIT_DOT_RADIUS, RAIL_EXIT_DOT_STROKE, type MapCalloutTextLayout, type MapSceneLabel } from "@/lib/v2/ui/map-scene";
+import { buildMapScene, mapCalloutTextLayout, mapElementKey, mapFeatureKey, mapLabelEntries, mapTextWidth, nearestLineStroke, NORTH_GLYPH, NORTH_INSET, NORTH_RADIUS, northArrowPoints, SCALE_FONT_PX, RAIL_EXIT_COLOR, RAIL_EXIT_DOT_RADIUS, RAIL_EXIT_DOT_STROKE, type MapCalloutTextLayout, type MapSceneLabel } from "@/lib/v2/ui/map-scene";
 import { terrainSectionMapStyle } from "@/lib/v2/ui/terrain-section";
 import { resolveBasemap } from "@/lib/v2/ui/basemap";
 import { baseTheme, type BaseThemeRef } from "@/lib/v2/ui/map-theme";
@@ -1299,7 +1299,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseT
     );
   };
 
-  const north = scene.north ?? { x: northX ?? (W - rightInset - 20 * u), y: 22 * u };
+  const north = scene.north ?? { x: northX ?? (W - rightInset - NORTH_INSET * u), y: NORTH_INSET * u };
   const dim =`M0 0H${W}V${H}H0Z M${cx - R} ${cy}a${R} ${R} 0 1 0 ${2 * R} 0a${R} ${R} 0 1 0 ${-2 * R} 0Z`;
 
   return (
@@ -1330,6 +1330,9 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseT
         <filter id={`m${uid}`}>
           <feColorMatrix type="saturate" values="0" />
           <feGaussianBlur stdDeviation={2} />
+        </filter>
+        <filter id={`n${uid}`} x="-40%" y="-40%" width="180%" height="180%">
+          <feDropShadow dx={0} dy={NORTH_GLYPH.shadowDy * northUnit} stdDeviation={NORTH_GLYPH.shadowBlur * northUnit} floodColor="#000" floodOpacity={NORTH_GLYPH.shadowOpacity} />
         </filter>
         <clipPath id={`c${uid}`}>
           <rect width={W} height={H} />
@@ -1769,9 +1772,9 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseT
         {/* 북쪽 */}
         {showNativeChrome && northOpt !== false && (
           <g>
-            <circle cx={north.x} cy={north.y} r={13 * northUnit} fill="#fff" fillOpacity={0.9} />
-            <path d={`M${north.x} ${north.y - 9 * northUnit}L${north.x + 4.5 * northUnit} ${north.y + 3 * northUnit}L${north.x} ${north.y + 0.5 * northUnit}L${north.x - 4.5 * northUnit} ${north.y + 3 * northUnit}Z`} fill={INK} />
-            <text x={north.x} y={north.y + 11 * northUnit} fontSize={7.5 * northUnit} fontWeight={700} textAnchor="middle" fill={INK}>
+            <circle cx={north.x} cy={north.y} r={NORTH_RADIUS * northUnit} fill="#fff" filter={`url(#n${uid})`} />
+            <path d={`M${northArrowPoints(north.x, north.y, northUnit).map(([x, y]) => `${x} ${y}`).join("L")}Z`} fill={INK} />
+            <text x={north.x} y={north.y + NORTH_GLYPH.letterY * northUnit} fontSize={NORTH_GLYPH.letterPx * northUnit} fontWeight={700} textAnchor="middle" dominantBaseline="central" fill={INK}>
               N
             </text>
           </g>
@@ -1783,7 +1786,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseT
             <>
               <rect x={scene.scaleBox.x0} y={scene.scaleBox.y0} width={scene.scaleBox.x1 - scene.scaleBox.x0} height={scene.scaleBox.y1 - scene.scaleBox.y0} rx={5 * scaleUnit} fill="#fff" fillOpacity={0.85} />
               <path d={`M${barX0} ${barY - 4 * scaleUnit}V${barY}H${barX1}V${barY - 4 * scaleUnit}`} fill="none" stroke={INK} strokeWidth={1.6 * scaleUnit} />
-              <text x={barX0 + bar.px / 2} y={barY - 6 * scaleTextUnit} fontSize={9.5 * scaleTextUnit} fontWeight={700} textAnchor="middle" fill={INK}>
+              <text x={barX0 + bar.px / 2} y={barY - 6 * scaleTextUnit} fontSize={SCALE_FONT_PX * scaleTextUnit} fontWeight={700} textAnchor="middle" fill={INK}>
                 {bar.label}
               </text>
             </>

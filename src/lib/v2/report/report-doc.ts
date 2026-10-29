@@ -21,7 +21,7 @@ export const DEFAULT_REPORT_FONT_SIZES: ReportFontSizes = {
   legend: 10,
   labels: 10,
   source: 9,
-  scale: 9,
+  scale: 11,
 };
 
 export const REPORT_FONT_SIZE_LIMITS: Record<FontSizeKey, { min: number; max: number }> = {

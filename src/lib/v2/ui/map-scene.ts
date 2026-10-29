@@ -53,13 +53,39 @@ type ScaleBarLayout = {
   unit: number;
 };
 
+/** §9-12 방위표 A형: 지름 46 px(지도 단위 u = 1). 중심은 오른쪽·위 가장자리에서 반지름 + 7 안쪽이다. */
+export const NORTH_RADIUS = 23;
+export const NORTH_INSET = NORTH_RADIUS + 7;
+/** §9-12 축척 막대: 최대 길이 134 px, 길이 글자 12 px(u = 1). */
+export const SCALE_MAX_PX = 134;
+export const SCALE_FONT_PX = 12;
+/** 축척 판이 막대 기준선 위로 올라가는 높이(글자 + 5)·아래로 내려가는 높이(u 단위). */
+export const SCALE_PANEL_ABOVE = SCALE_FONT_PX + 5;
+export const SCALE_PANEL_BELOW = 8;
+/** 방위표 그림(중심 기준, u 단위): 화살촉 끝·날개·파인 곳, N 글자 중심·크기, 그림자(아래 1·번짐 1.4·검정 28 %). */
+export const NORTH_GLYPH = { tipY: -15.6, wingX: 7.8, wingY: 2.8, notchY: -0.9, letterY: 12.4, letterPx: 11, shadowDy: 1, shadowBlur: 1.4, shadowOpacity: 0.28 } as const;
+
+/** 방위표 화살촉의 네 꼭짓점(끝 → 오른쪽 날개 → 파인 곳 → 왼쪽 날개). */
+export function northArrowPoints(x: number, y: number, u: number): [number, number][] {
+  const g = NORTH_GLYPH;
+  return [[x, y + g.tipY * u], [x + g.wingX * u, y + g.wingY * u], [x, y + g.notchY * u], [x - g.wingX * u, y + g.wingY * u]];
+}
+
+/** 이전 보고서 pt → px 환산(9pt가 9.5 px였다). 보고서 축척 글자는 pt가 정본이다. */
+export const SCALE_PT_TO_PX = 9.5 / 9;
+
+/** 보고서 축척 글자 pt를 장면 `scaleFontScale`로 바꾼다. */
+export function scaleFontScaleForPt(pt: number): number {
+  return (pt * SCALE_PT_TO_PX) / SCALE_FONT_PX;
+}
+
 /** 북쪽 표시의 실제 배경·화살표·N 문자를 함께 감싸는 회피 상자. */
 export function northArrowBox(width: number, height: number, rightInset = 0, north?: number | false, unitOverride?: number): MapSceneBox | null {
   if (north === false) return null;
   const u = unitOverride ?? Math.min(1.5, Math.max(1, height / 360));
-  const x = width - rightInset - 20 * u;
-  const y = north || 22 * u;
-  return { x0: Math.max(0, x - 13 * u), y0: Math.max(0, y - 13 * u), x1: Math.min(width, x + 13 * u), y1: Math.min(height, y + 13 * u) };
+  const x = width - rightInset - NORTH_INSET * u;
+  const y = north || NORTH_INSET * u;
+  return { x0: Math.max(0, x - NORTH_RADIUS * u), y0: Math.max(0, y - NORTH_RADIUS * u), x1: Math.min(width, x + NORTH_RADIUS * u), y1: Math.min(height, y + NORTH_RADIUS * u) };
 }
 
 function boxesOverlap(a: MapSceneBox, b: MapSceneBox): boolean {
@@ -95,7 +121,7 @@ export function locatorBox(width: number, height: number, pxPerInch: number, res
   return candidates(0.44)[0]!;
 }
 
-function scaleBarLayout(width: number, height: number, mpp: number, bottomInset = 0, rightInset = 0, scaleLeft = false, scaleX?: number, unitOverride?: number, maxBarPx = 88, scaleY?: number): ScaleBarLayout {
+function scaleBarLayout(width: number, height: number, mpp: number, bottomInset = 0, rightInset = 0, scaleLeft = false, scaleX?: number, unitOverride?: number, maxBarPx = SCALE_MAX_PX, scaleY?: number): ScaleBarLayout {
   const unit = unitOverride ?? Math.min(1.5, Math.max(1, height / 360));
   const bar = scaleBar(mpp, maxBarPx * unit);
   const y = scaleY ?? (height - bottomInset - 20 * unit);
@@ -105,13 +131,13 @@ function scaleBarLayout(width: number, height: number, mpp: number, bottomInset 
 
 function scaleBarBoxFromLayout(width: number, height: number, layout: ScaleBarLayout): MapSceneBox {
   const { x0, x1, y, unit } = layout;
-  const box = { x0: Math.max(0, x0 - 6 * unit), y0: Math.max(0, y - 14 * unit) };
+  const box = { x0: Math.max(0, x0 - 6 * unit), y0: Math.max(0, y - SCALE_PANEL_ABOVE * unit) };
   // 작은 썸네일·큰 하단 여백에서는 막대가 화면 밖이라 상자가 뒤집히지 않게 빈 상자로 둔다.
-  return { ...box, x1: Math.max(box.x0, Math.min(width, x1 + 6 * unit)), y1: Math.max(box.y0, Math.min(height, y + 8 * unit)) };
+  return { ...box, x1: Math.max(box.x0, Math.min(width, x1 + 6 * unit)), y1: Math.max(box.y0, Math.min(height, y + SCALE_PANEL_BELOW * unit)) };
 }
 
 /** 축척 막대의 실제 불투명 판·막대·문자 영역과 같은 회피 상자. */
-export function scaleBarBox(width: number, height: number, mpp: number, bottomInset = 0, rightInset = 0, scaleLeft = false, scaleX?: number, unitOverride?: number, maxBarPx = 88): MapSceneBox {
+export function scaleBarBox(width: number, height: number, mpp: number, bottomInset = 0, rightInset = 0, scaleLeft = false, scaleX?: number, unitOverride?: number, maxBarPx = SCALE_MAX_PX): MapSceneBox {
   return scaleBarBoxFromLayout(width, height, scaleBarLayout(width, height, mpp, bottomInset, rightInset, scaleLeft, scaleX, unitOverride, maxBarPx));
 }
 
@@ -1231,7 +1257,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     viewport: viewportOpt,
     layoutUnit,
     labelScale: labelScaleOpt = 1,
-    scaleMaxPx = 88,
+    scaleMaxPx = SCALE_MAX_PX,
     scaleY,
     scaleBoxOverride,
     scaleChromeScale: scaleChromeScaleOpt = 1,
@@ -1343,7 +1369,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
   const scaleBoxWidth = Math.max(0, scaleBox.x1 - scaleBox.x0);
   const barX0 = scaleBoxOverride ? scaleBox.x0 + Math.max(0, scaleBoxWidth - bar.px) / 2 : scaleLayout.x0;
   const barX1 = barX0 + bar.px;
-  const north = northOpt === false ? null : { x: northX ?? (W - rightInset - 20 * u), y: northOpt || 22 * u };
+  const north = northOpt === false ? null : { x: northX ?? (W - rightInset - NORTH_INSET * u), y: northOpt || NORTH_INSET * u };
   const northBox = north ? northArrowBox(W, H, rightInset, northOpt, northUnit) : null;
   const calloutAvoid = [
     ...avoid,

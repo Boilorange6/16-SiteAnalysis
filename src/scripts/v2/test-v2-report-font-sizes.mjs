@@ -54,15 +54,15 @@ assert.match(previewSource, /fontSizeForStyle\(style, "title"\)/, "preview title
 assert.match(previewSource, /fontSizeForStyle\(slide\.style, "summary"\)/, "preview summary reads the shared pt value");
 assert.match(previewSource, /fontSizeForStyle\(slide\.style, "legend"\)/, "preview legend reads the shared pt value");
 assert.match(previewSource, /fontSizeForStyle\(style, "labels"\)\s*\/\s*DEFAULT_REPORT_FONT_SIZES\.labels/, "preview map labels read the shared pt value");
-assert.match(previewSource, /fontSizeForStyle\(style, "scale"\)\s*\/\s*DEFAULT_REPORT_FONT_SIZES\.scale/, "preview scale text reads the shared pt value");
+assert.match(previewSource, /scaleFontScaleForPt\(fontSizeForStyle\(style, "scale"\)\)/, "preview scale text reads the shared pt value");
 assert.match(previewSource, /fitFooterText\(slide\.footer[\s\S]*fontSizeForStyle\(slide\.style, "source"\)/, "preview source footer starts from the shared pt value");
 assert.match(mapFigureSource, /scaleFontScale\?: number/, "map preview accepts the scale text size value");
 assert.match(mapFigureSource, /scene\.scaleFontScale/, "map preview renders scale text with the shared scale value");
-assert.match(mapPptxSource, /scaleFontScale: fontSizeForStyle\(style, "scale"\)\s*\/\s*DEFAULT_REPORT_FONT_SIZES\.scale/, "PPT map scene reads the page scale text value");
+assert.match(mapPptxSource, /scaleFontScale: scaleFontScaleForPt\(fontSizeForStyle\(style, "scale"\)\)/, "PPT map scene reads the page scale text value");
 assert.match(mapPptxSource, /scene\.scaleFontScale/, "PPT scale text renders with the shared scale value");
 
 assert.deepEqual(defaultReportFontSizes(), DEFAULT_REPORT_FONT_SIZES, "default helper exposes the pt defaults");
-assert.equal(DEFAULT_REPORT_FONT_SIZES.scale, 9, "축척 기본 글자 크기는 9pt다");
+assert.equal(DEFAULT_REPORT_FONT_SIZES.scale, 11, "축척 기본 글자 크기는 11pt다(카드 12 px와 같은 크기)");
 assert.deepEqual(REPORT_FONT_SIZE_LIMITS.scale, { min: 7, max: 14 }, "축척 글자 크기 범위는 7–14pt다");
 assert.deepEqual(
   mergeReportFontSizes(
@@ -129,11 +129,12 @@ const basePlan = buildReportPlan({ summary, views, board, analysisDate: "2026-10
 const baseTile = basePlan.find((slide) => slide.kind === "tile" && slide.map);
 assert.ok(baseTile, "PPT parity tile fixture");
 const parityMap = { ...baseTile.map, features: baseTile.map.features.slice(0, 1), lines: [], polygons: [], total: 1, notes: [] };
-const { buildMapScene } = await import("../../lib/v2/ui/map-scene.ts");
+const { buildMapScene, SCALE_FONT_PX, SCALE_PT_TO_PX, scaleFontScaleForPt } = await import("../../lib/v2/ui/map-scene.ts");
 const defaultScaleScene = buildMapScene({ model: parityMap, width: 960, height: 540, activeLayer: "white", scale: true, north: false, avoid: [] });
-const largeScaleScene = buildMapScene({ model: parityMap, width: 960, height: 540, activeLayer: "white", scale: true, north: false, scaleFontScale: 14 / 9, avoid: [] });
-assert.equal(defaultScaleScene.scaleFontScale, 1, "축척 기본 글자 배율은 9pt 기준이다");
-assert.equal(largeScaleScene.scaleFontScale, 14 / 9, "축척 글자 14pt가 장면에 보존된다");
+const largeScaleScene = buildMapScene({ model: parityMap, width: 960, height: 540, activeLayer: "white", scale: true, north: false, scaleFontScale: scaleFontScaleForPt(14), avoid: [] });
+assert.equal(defaultScaleScene.scaleFontScale, 1, "카드(옵션 없음)의 축척 글자 배율은 1, 곧 SCALE_FONT_PX다");
+assert.equal(largeScaleScene.scaleFontScale, scaleFontScaleForPt(14), "축척 글자 14pt가 장면에 보존된다");
+assert.ok(Math.abs(SCALE_FONT_PX * scaleFontScaleForPt(DEFAULT_REPORT_FONT_SIZES.scale) - DEFAULT_REPORT_FONT_SIZES.scale * SCALE_PT_TO_PX) < 1e-9, "보고서 글자 px는 pt × SCALE_PT_TO_PX다");
 const parityTile = { ...baseTile, map: parityMap, footer: "출처", style: { ...baseTile.style, ...style } };
 const tinyPng = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
 const bytes = await renderReportPptx([parityTile], Object.fromEntries(mapKeysOf([parityTile]).map((key) => [key, tinyPng])));
