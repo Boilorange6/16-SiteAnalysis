@@ -1,5 +1,5 @@
 import { toLngLat, type LngLat } from "../crs";
-import type { GreenKind, Scene } from "../scene";
+import { isPreBasemapScene, type GreenKind, type Scene } from "../scene";
 import { publicRailLine, railLineColor } from "../tile/rail-presentation";
 import type { MapFrameState } from "../report/report-doc";
 import type { BasemapChoice } from "./map-projection";
@@ -17,6 +17,11 @@ export type MapBase = {
   rail: { color: string; points: LngLat[] }[];
   stations: { name: string; p: LngLat; color: string }[];
   places: { name: string; kind: "dong" | "park"; p: LngLat }[];
+  /**
+   * 벡터 바탕으로 쓰면 안 되는 장면. legacy = 1단계 이전 장면(이름·철도·녹지 분류 없음),
+   * truncated = 건물·필지가 장면 상한에 잘려 바깥 고리가 빈다. 없으면 쓸 수 있음.
+   */
+  flaw?: "legacy" | "truncated";
 };
 
 /** 타일이 같은 내용을 주제 레이어로 직접 그리는 경우 바탕에서는 뺀다. */
@@ -52,12 +57,26 @@ export function mapBaseFromScene(scene: Scene): MapBase {
     stations: (context?.stations ?? []).map((station) => ({ name: station.name, p: ll([station.x, station.y]), color: station.color })),
     places: (context?.places ?? []).map((place) => ({ name: place.name, kind: place.kind, p: ll([place.x, place.y]) })),
   };
+  const { buildingsTotal, buildingsIncluded, parcelsTotal, parcelsIncluded } = scene.counts;
+  if (isPreBasemapScene(scene)) base.flaw = "legacy";
+  else if (buildingsTotal > buildingsIncluded || parcelsTotal > parcelsIncluded) base.flaw = "truncated";
   memo.set(scene, base);
   return base;
 }
 
-/** 도로 맥락이 하나라도 있어야 벡터 바탕으로 쓴다. 맥락 없이 건물·필지만 그리면 깨져 보인다. */
-export const baseUsable = (base: MapBase | null | undefined): base is MapBase => !!base && base.roads.length > 0;
+/**
+ * 도로 맥락이 하나라도 있어야 벡터 바탕으로 쓴다. 맥락 없이 건물·필지만 그리면 깨져 보인다.
+ * 1단계 이전 장면(이름·철도 없음)과 상한에 잘린 장면(바깥 고리가 빔)도 쓰지 않고 일반지도로 돌아간다.
+ */
+export const baseUsable = (base: MapBase | null | undefined): base is MapBase => !!base && base.roads.length > 0 && !base.flaw;
+
+/** 「기본 지도」를 쓸 수 없는 이유를 사용자 말로. 쓸 수 있으면 null. */
+export function basemapUnavailableText(base: MapBase | null | undefined): string | null {
+  const flaw = base?.flaw;
+  if (flaw === "legacy") return "새로고침하면 기본 지도를 쓸 수 있습니다";
+  if (flaw === "truncated") return "반경이 넓어 기본 지도를 그리지 않습니다";
+  return baseUsable(base) ? null : "이 분석에는 기본 지도 자료가 없습니다";
+}
 
 /**
  * 바탕 결정: 결과가 지정한 바탕(D01·D10 위성) > 사용자가 고른 바탕 > 쓸 수 있는 바탕 자료가 있으면 벡터 > 일반지도.

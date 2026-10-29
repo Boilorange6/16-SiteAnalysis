@@ -11,6 +11,7 @@ import { parseTileResult, type RasterRef, type TileResult } from "../tile-result
 import { loadTileRaster, saveTileRasters } from "../raster-store";
 import { EngineContext, type RasterValues } from "./context";
 import { buildScene } from "./scene";
+import { isPreBasemapScene } from "../scene";
 import { cacheKeyFor, cacheKeyForRun as cacheKeyForStoredRun, conditionsForRun, s03InputsHash, saveTileResultWithElapsed } from "./run";
 import { restoreSiteFromParameters } from "./site";
 import { DATE_INDEPENDENT, HEAVY_TILES, TILES } from "../tile/server";
@@ -276,7 +277,7 @@ export function runHeavyTiles(appDb: Db, dataDir: string, analysisId: string): v
       { rasterReader: rasterReader(appDb, analysisId), reuseDataFiles: true, pooledKeys: parcels ? ["core", "parcels"] : ["core"], topo },
     );
     const scene = loadScene(appDb, analysisId);
-    refreshScene = scene === null || scene.manifestHash !== run.manifestHash;
+    refreshScene = scene === null || scene.manifestHash !== run.manifestHash || isPreBasemapScene(scene);
   } catch (error) {
     if (!ctx) closeTopoHandle(topo);
     if (parcels) releaseDataFile(parcels);

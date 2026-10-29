@@ -25,6 +25,7 @@ import { hitPoint } from "./tiles/common";
 import { demReader, demSources, DEM_LIMITATION } from "./tiles/terrain-shared";
 import type { LocalGrid } from "./tiles/raster-grid";
 import { mergedRoadLines, roadLineMeta } from "./tiles/topo-roads";
+import { DEFAULT_RAIL_COLOR } from "../tile/rail-presentation";
 
 function localRings(hit: FeatureHit, origin: { x: number; y: number }): Ring[] {
   return polygonParts(hit.geometry).flatMap((rings) => rings.map((ring) => toLocalRing(ring, origin)));
@@ -214,8 +215,6 @@ function greenKindOf(hit: FeatureHit): GreenKind {
   const cls = hit.properties.cls;
   return GREEN_KINDS.find((kind) => kind === cls) ?? "park";
 }
-
-const DEFAULT_RAIL_COLOR = "#555555";
 
 /**
  * 철도 노선·역·지명(법정동 면의 무게중심, 공원 점). 원천이 적재되지 않은 필드는 아예 넣지 않는다.

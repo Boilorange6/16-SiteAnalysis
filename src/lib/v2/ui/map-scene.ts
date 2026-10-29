@@ -1014,7 +1014,8 @@ const BASE_ROAD_RANK = ["고속도로", "간선", "보조간선", "집산", "국
 const BASE_VIEW_MARGIN = 24;
 const BASE_STATION_SIDES = 12;
 const BASE_LABEL_MIN_WIDTH = 600;
-const BASE_LABEL_GAP = 1;
+/** `layoutUnit`이 주어지는 표면(보고서 미리보기·내보내기)에서 PPT(u = 1.5)와 같은 비율로 맞추는 기준 단위. */
+const BASE_LABEL_REFERENCE_UNIT = 1.5;
 const baseProjectionCache = new WeakMap<MapBase, Map<string, BaseProjection>>();
 const BASE_PROJECTION_CACHE_SIZE = 12;
 
@@ -1125,9 +1126,13 @@ function baseLabels(projection: BaseProjection, theme: BaseTheme, width: number,
   const textHeight = fontSize * 1.3;
   const placed: MapSceneBaseLabel[] = [];
   const blockers: MapSceneBox[] = [...occupied];
+  // 후광 획(map-figure: strokeWidth = max(2, 0.3·fontSize))이 글자 상자 밖으로 나가는 폭. 겹침·프레임·반경 판정은 후광까지 넓힌 상자로 한다.
+  const halo = Math.max(1, fontSize * 0.15);
   const inCircle = (box: MapSceneBox) => !circle || [box.x0, box.x1].every((x) => [box.y0, box.y1].every((y) => Math.hypot(x - circle.cx, y - circle.cy) <= circle.r));
-  const fits = (box: MapSceneBox) => box.x0 >= 0 && box.y0 >= 0 && box.x1 <= width && box.y1 <= height && inCircle(box)
-    && !blockers.some((other) => boxesOverlap({ x0: box.x0 - BASE_LABEL_GAP, y0: box.y0 - BASE_LABEL_GAP, x1: box.x1 + BASE_LABEL_GAP, y1: box.y1 + BASE_LABEL_GAP }, other));
+  const fits = (raw: MapSceneBox) => {
+    const box = { x0: raw.x0 - halo, y0: raw.y0 - halo, x1: raw.x1 + halo, y1: raw.y1 + halo };
+    return box.x0 >= 0 && box.y0 >= 0 && box.x1 <= width && box.y1 <= height && inCircle(box) && !blockers.some((other) => boxesOverlap(box, other));
+  };
   const place = (label: Omit<MapSceneBaseLabel, "fontSize" | "halo" | "color" | "box">, color: string, box: MapSceneBox): boolean => {
     if (!fits(box)) return false;
     placed.push({ ...label, fontSize, color, halo: theme.label.halo, box });
@@ -1493,8 +1498,12 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     const suppress = new Set<BaseLayerKind>([...(BASE_SUPPRESS[model.tileCode ?? ""] ?? []), ...(model.baseHide ?? [])]);
     const projection = baseProjection(model.base, theme, vp, W, H, mpp, suppress);
     // 바탕 라벨은 가장 낮은 우선순위: 방위표·축척·범례·대지 표식·철도 라벨·주제 라벨이 먼저 자리를 잡는다.
-    const labelOccupied = [...(legendBox ? [legendBox] : []), ...calloutAvoid, ...(showSiteMarker && !muted ? [siteBounds] : []), ...labelPlacements.flatMap((placement) => [placement.box, placement.leader]), ...rail.occupiedBoxes];
-    baseScene = { bg: theme.bg, buckets: projection.buckets, labels: compact || W < BASE_LABEL_MIN_WIDTH ? [] : baseLabels(projection, theme, W, H, labelScale, labelOccupied, showRadius ? { cx, cy, r: radiusPx } : null) };
+    // 주제 점 기호는 라벨 위에 그려지므로 점 상자(중심 ± 반지름)도 비켜 간다.
+    const pointBoxes = drawn.map(({ p, radius }): MapSceneBox => ({ x0: p[0] - radius, y0: p[1] - radius, x1: p[0] + radius, y1: p[1] + radius }));
+    const labelOccupied = [...(legendBox ? [legendBox] : []), ...calloutAvoid, ...(showSiteMarker && !muted ? [siteBounds] : []), ...labelPlacements.flatMap((placement) => [placement.box, placement.leader]), ...rail.occupiedBoxes, ...pointBoxes];
+    // 바탕 라벨은 표면 폭에 비례한다: layoutUnit이 있으면 PPT(u = 1.5)와 같은 비율로 글자와 600 px 최소 폭 기준을 맞춘다.
+    const labelUnit = layoutUnit ? layoutUnit / BASE_LABEL_REFERENCE_UNIT : 1;
+    baseScene = { bg: theme.bg, buckets: projection.buckets, labels: compact || W / labelUnit < BASE_LABEL_MIN_WIDTH ? [] : baseLabels(projection, theme, W, H, labelScale * labelUnit, labelOccupied, showRadius ? { cx, cy, r: radiusPx } : null) };
   }
   return {
     width: W,

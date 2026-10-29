@@ -79,4 +79,32 @@ const plate = tileSvg(view, { width: 1600, height: 1200, withFrame: false, tileH
 assert.doesNotMatch(plate, /<text[^>]*>범례/);
 assert.match(plate, /href="data:image\/png/);
 
+// I-4: 타일 저장은 고른 바탕 테마를 따르고, 실제로 그린 바탕의 출처를 적는다
+{
+  const { baseTheme } = await import("../../lib/v2/ui/map-theme.ts");
+  const base = {
+    buildings: [], parcels: [], water: [], green: [], rail: [], stations: [], places: [],
+    roads: [{ hierarchy: "간선", widthM: 20, name: null, points: [[127.15, 37.555], [127.158, 37.555]] }],
+  };
+  const vectorView = { ...view, map: { ...model, base }, backdrop: { ...model, base } };
+  const opts = { width: 1600, height: 1200, layer: "vector" };
+  const warm = tileSvg(vectorView, { ...opts, withFrame: true });
+  const cool = tileSvg(vectorView, { ...opts, withFrame: true, baseTheme: "cool" });
+  assert.ok(cool.includes(baseTheme("cool").bg), "cool 바탕색");
+  assert.ok(!cool.includes(baseTheme("warm").bg) && warm.includes(baseTheme("warm").bg), "기본은 warm 바탕색");
+  assert.match(cool, /바탕지도 · © OpenStreetMap contributors/, "판 출처 줄에 OSM 문구");
+  // 모델에 붙은 테마가 먼저
+  const modelFirst = tileSvg({ ...vectorView, map: { ...vectorView.map, baseTheme: "ink" } }, { ...opts, withFrame: true, baseTheme: "cool" });
+  assert.ok(modelFirst.includes(baseTheme("ink").bg) && !modelFirst.includes(baseTheme("cool").bg), "model.baseTheme > 옵션");
+  // 판 없는 도판은 지도 안 credit이 출처를 맡는다
+  const platePlain = tileSvg(vectorView, { ...opts, withFrame: false, baseTheme: "cool" });
+  assert.match(platePlain, /© OpenStreetMap contributors/);
+  assert.ok(!/바탕지도 ·/.test(platePlain));
+  // 일반지도(VWorld)로 그리면 VWorld 문구
+  assert.match(tileSvg(view, { width: 1600, height: 1200, withFrame: true }), /바탕지도 · © VWorld/);
+  // 바탕이 없는 3D 매스·바람장미 저장에는 바탕 출처를 붙이지 않는다
+  const dirs = Array.from({ length: 16 }, () => [1, 0, 0, 0, 0]);
+  assert.doesNotMatch(tileSvg({ ...view, code: "D22", rose: { station: "near", dirs, calmHours: 1, missingHours: 0, totalHours: 10 } }, { width: 1600, height: 1200, withFrame: true }), /바탕지도 ·/);
+}
+
 console.log("✓ v2 tile SVG external-free contract and file names");

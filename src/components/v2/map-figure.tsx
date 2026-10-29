@@ -32,7 +32,7 @@ export type MapFigureProps = {
    * 결과가 지정한 바탕(model.basemap) > 이 값 > 바탕 자료(model.base)가 있으면 "vector" > "white".
    */
   layer?: BasemapChoice;
-  /** 벡터 바탕의 색 테마. 없으면 BaseThemeContext, 그것도 없으면 기본 테마. */
+  /** 벡터 바탕의 색 테마. 우선순위: model.baseTheme > 이 값 > BaseThemeContext > 기본 테마. */
   baseTheme?: BaseThemeRef;
   /** 배경 타일 주소 → 실제 href (PPT용: data URI로 바꿔 넣는다). 반환 undefined면 그 타일은 생략 */
   tileHref?: (url: string) => string | undefined;
@@ -615,7 +615,8 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseT
     view,
     viewport,
     legendFocus,
-    layoutUnit: u,
+    // 호출자가 준 값만 넘긴다(없으면 장면이 같은 식으로 계산). 바탕 라벨이 "표면이 단위를 정했는가"를 구분한다.
+    layoutUnit,
     labelScale: safeLabelScale,
   }), [activeLayer, themeId, avoid, bare, bottomInset, calloutLeftBottom, calloutTopOpt, compact, deletedElementKeys, effectiveLabelBoxes, emphasisKey, fill, fixed, H, hiddenKeys, highlightLabel, layoutUnit, legendFocus, mapCenterY, mapFill, mapSiteX, mapSiteY, muted, model, northOpt, northScale, northX, panelH, panelW, panelX, panelY, path, rightInset, safeLabelScale, scale, scaleChromeScale, scaleFontScale, scaleLeft, scaleX, scaleY, scaleBoxOverride, sceneDragging, sceneHoverKey, showAutomaticLabels, showLegend, showRadius, showSiteMarker, siteX, selectedFids, terrainSection, pinnedKeys, W, view, viewport]);
   const vp = scene.viewport;

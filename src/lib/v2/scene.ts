@@ -116,6 +116,15 @@ export const SCENE_MAX_BUILDINGS = 5000;
 export const SCENE_MAX_PARCELS = 5000;
 export const SCENE_GRID_MAX = 65;
 
+/**
+ * 1단계(벡터 바탕지도) 이전에 만든 장면인가. 새 장면 빌더는 도로마다 `name` 키를 늘 쓴다(이름이 없으면 null).
+ * 도로가 있는데 키가 하나도 없으면 이름·철도·녹지 분류가 없는 옛 장면이라 바탕지도로 쓰지 않고, 새로고침 때 다시 만든다.
+ */
+export const isPreBasemapScene = (scene: Pick<Scene, "context">): boolean => {
+  const roads = scene.context?.roads ?? [];
+  return roads.length > 0 && roads.every((road) => road.name === undefined);
+};
+
 const PointSchema = z.tuple([z.number().finite(), z.number().finite()]);
 const RingSchema: z.ZodType<Ring> = z.array(PointSchema);
 

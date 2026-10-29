@@ -2159,9 +2159,21 @@ button.badge:focus-visible {
   line-height: 1.2;
   cursor: pointer;
 }
-.seg button:disabled {
+.seg button:disabled,
+.seg button[aria-disabled="true"] {
   opacity: 0.45;
   cursor: not-allowed;
+}
+/* 바탕이 고정된 타일의 눌린 버튼은 현재 상태이므로 흐리게 하지 않는다. */
+.seg button[aria-disabled="true"][aria-pressed="true"] {
+  opacity: 1;
+  cursor: default;
+}
+/* 비활성 이유를 버튼 옆에 보이는 글로 알린다(aria-describedby로 연결). */
+.segHint {
+  color: var(--muted, #5b616c);
+  font-size: 12px;
+  white-space: nowrap;
 }
 .seg button[aria-pressed="true"] {
   /* 상세 창은 body 포털이라 .root의 --black 상속 범위 밖에서도 같은 선택 대비를 유지한다. */

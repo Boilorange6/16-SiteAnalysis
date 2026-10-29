@@ -35,7 +35,7 @@ const COMMON = {
   road: { casingM: 0.8, widthScale: 1, minWidthPx: 0.6 },
   rail: { widthPx: 1.5, dash: "6 5", opacity: 0.6 },
   station: { fill: "#ffffff", line: "#333333", radiusPx: 3.5 },
-  // 라벨 글자색은 어느 테마 bg에서도 4.5:1 이상(디자인 언어 §8-1).
+  // 라벨 글자색은 어느 테마 bg에서도 4.5:1 이상(디자인 언어 §3).
   label: { road: "#6b655b", place: "#736c60", park: "#557447", station: "#2b2b2b", fontPx: 11 },
   siteLineWidthPx: 2,
 } as const;

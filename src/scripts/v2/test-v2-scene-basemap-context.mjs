@@ -7,6 +7,7 @@ const { buildEngineFixture } = await import("./engine-fixture.mjs");
 const { openV2AppDb, loadScene } = await import("../../lib/v2/app-db.ts");
 const { runAnalysis } = await import("../../lib/v2/engine/run.ts");
 const { parseScene } = await import("../../lib/v2/scene.ts");
+const { DEFAULT_RAIL_COLOR } = await import("../../lib/v2/tile/rail-presentation.ts");
 
 const input = { address: "경기도 남양주시 다산동 100", radiusM: 800, analysisDate: "2026-10-27" };
 const appDb = openV2AppDb(join(mkdtempSync(join(tmpdir(), "v2-scene-basemap-app-")), "app.sqlite"));
@@ -43,7 +44,7 @@ try {
   assert.ok(daechi);
   assert.equal(daechi.color, "#ED6C00");
   assert.ok(Math.abs(daechi.x + 150) < 1 && Math.abs(daechi.y + 100) < 1, `역 좌표 ${daechi.x},${daechi.y}`);
-  assert.equal(c.stations.find((s) => s.name === "나래역")?.color, "#555555", "색 자료 없으면 회색");
+  assert.equal(c.stations.find((s) => s.name === "나래역")?.color, DEFAULT_RAIL_COLOR, "색 자료 없으면 A01과 같은 기본 회색");
 
   // 지명
   assert.ok(c.places);

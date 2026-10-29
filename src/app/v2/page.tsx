@@ -12,7 +12,7 @@ import { BaseThemeContext } from "@/components/v2/base-theme-context";
 import { resolveMapColors, withMapColors } from "@/lib/v2/ui/map-colors";
 import { MapColorBoardPopover } from "@/components/v2/map-colors/map-color-popover";
 import type { MapColorChoice } from "@/lib/v2/report/report-doc";
-import { baseUsable, mapBaseFromScene } from "@/lib/v2/ui/basemap";
+import { basemapUnavailableText, baseUsable, mapBaseFromScene } from "@/lib/v2/ui/basemap";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import styles from "@/components/v2/board.module.css";
 import { SUMMARY_ID, boardReducer, boardStorageKey, initBoard, nextCopyId, rebaseSnapshotAnalysisId, selectBoardSnapshotForLoad, serializeBoardState, sourceTileId, viewOf, type CardFace, type CutSpec, type GridColumns, type PinnedLabel, type TerrainSectionId } from "@/lib/v2/ui/board-state";
@@ -592,7 +592,10 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
   });
   const [note, setNote] = useState(""); // 스크린리더 안내(aria-live)
   const [highlightedTileId, setHighlightedTileId] = useState<string | null>(null);
-  const vectorAvailable = useMemo(() => (scene?.origin ? baseUsable(mapBaseFromScene(scene)) : false), [scene]);
+  const vectorBase = useMemo(() => (scene?.origin ? mapBaseFromScene(scene) : null), [scene]);
+  const vectorAvailable = baseUsable(vectorBase);
+  // 장면이 아직 오지 않았을 때는 이유를 보이지 않는다(불러오는 중에 깜박이지 않게).
+  const vectorUnavailableText = vectorBase ? basemapUnavailableText(vectorBase) : null;
   const [basemap, setBasemap] = useState<BasemapChoice>("vector");
   // 지도 색 팝오버: 열림 여부, 줄 위에 올려 둔 미리 보기(저장하지 않음), 연 버튼.
   // 같은 기본 지도 버튼이 머리 줄(bar)과 접힌 「더 보기」 메뉴(menu) 두 곳에 있어서, 어느 쪽에서 열었는지 기억해 그 버튼에 붙인다.
@@ -618,18 +621,20 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
   // 이미 눌린 기본 지도를 다시 누르면 지도 색 팝오버를 연다(`기본 지도 ▾`). 눌리지 않았으면 지금처럼 바탕만 바꾼다.
   const basemapButton = (b: (typeof BASEMAPS)[number], from: "bar" | "menu") => {
     const mapColorTrigger = b.id === "vector" && shownBasemap === "vector";
+    // 쓸 수 없는 「기본 지도」는 disabled가 아니라 aria-disabled: 키보드 초점이 가고, 이유는 바로 옆에 보이는 글로 알린다.
+    const blocked = b.id === "vector" && !vectorAvailable;
     return (
       <button
         key={b.id}
         ref={b.id === "vector" ? (from === "bar" ? mapColorBarRef : mapColorMenuRef) : undefined}
         type="button"
         aria-pressed={shownBasemap === b.id}
-        disabled={b.id === "vector" && !vectorAvailable}
-        title={b.id === "vector" && !vectorAvailable ? "이 분석에는 기본 지도 자료가 없습니다" : undefined}
+        aria-disabled={blocked || undefined}
+        aria-describedby={blocked && vectorUnavailableText ? `board-basemap-hint-${from}` : undefined}
         aria-label={mapColorTrigger ? b.label : undefined}
         aria-haspopup={mapColorTrigger ? "dialog" : undefined}
         aria-expanded={mapColorTrigger ? mapColorFrom === from : undefined}
-        onClick={() => (mapColorTrigger ? setMapColorFrom((cur) => (cur === from ? null : from)) : setBasemap(b.id))}
+        onClick={() => (blocked ? undefined : mapColorTrigger ? setMapColorFrom((cur) => (cur === from ? null : from)) : setBasemap(b.id))}
       >
         {mapColorTrigger ? "기본 지도 ▾" : b.label}
       </button>
@@ -1156,6 +1161,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
                   <span className={styles.seg} role="group" aria-label="배경지도">
                     {BASEMAPS.map((b) => basemapButton(b, "bar"))}
                   </span>
+                  {vectorUnavailableText && <span id="board-basemap-hint-bar" className={styles.segHint}>{vectorUnavailableText}</span>}
                   {mapColorFrom !== null && shownBasemap === "vector" && (
                     <MapColorBoardPopover
                       key={mapColorFrom}
@@ -1229,6 +1235,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
                     <span className={styles.seg} role="group" aria-label="배경지도">
                       {BASEMAPS.map((b) => basemapButton(b, "menu"))}
                     </span>
+                    {vectorUnavailableText && <span id="board-basemap-hint-menu" className={styles.segHint}>{vectorUnavailableText}</span>}
                   </span>
                   <div className={styles.mobileRail}>
                     <BoardRail

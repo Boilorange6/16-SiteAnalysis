@@ -103,6 +103,39 @@ const build = (model, options = {}) => buildMapScene({ model, width: 800, height
   assert.equal(roadlessScene.activeLayer, "white");
 }
 
+// ── I-1·I-2: 옛 장면·잘린 장면은 일반지도, 이유 문구는 한 함수 ──
+{
+  const { basemapUnavailableText } = await import("../../lib/v2/ui/basemap.ts");
+  const { isPreBasemapScene } = await import("../../lib/v2/scene.ts");
+  assert.equal(base.flaw, undefined);
+  assert.equal(basemapUnavailableText(base), null);
+  assert.equal(isPreBasemapScene(scene), false);
+  // 옛 장면: 도로에 name 키가 하나도 없다
+  const legacy = makeScene();
+  for (const road of legacy.context.roads) delete road.name;
+  assert.equal(isPreBasemapScene(legacy), true, "재생성 판정");
+  assert.equal(isPreBasemapScene({ context: undefined }), false, "도로 없는 장면은 옛 장면이 아니다");
+  const oldBase = mapBaseFromScene(legacy);
+  assert.equal(baseUsable(oldBase), false);
+  assert.equal(resolveBasemap({ base: oldBase }), "white");
+  assert.equal(resolveBasemap({ base: oldBase }, "vector"), "white");
+  assert.equal(resolveBasemap({ base: oldBase }, "Base"), "Base");
+  assert.equal(basemapUnavailableText(oldBase), "새로고침하면 기본 지도를 쓸 수 있습니다");
+  // 일부 도로만 이름 키가 없으면 새 장면이다(이름 없는 도로는 null)
+  const mixed = makeScene(); delete mixed.context.roads[0].name;
+  assert.equal(isPreBasemapScene(mixed), false);
+  // 잘린 장면
+  for (const counts of [{ buildingsTotal: 5001, buildingsIncluded: 5000, parcelsTotal: 3, parcelsIncluded: 3 }, { buildingsTotal: 5, buildingsIncluded: 5, parcelsTotal: 6000, parcelsIncluded: 5000 }]) {
+    const cut = makeScene(); cut.counts = counts;
+    const cutBase = mapBaseFromScene(cut);
+    assert.equal(baseUsable(cutBase), false);
+    assert.equal(resolveBasemap({ base: cutBase }), "white");
+    assert.equal(basemapUnavailableText(cutBase), "반경이 넓어 기본 지도를 그리지 않습니다");
+  }
+  assert.equal(basemapUnavailableText(null), "이 분석에는 기본 지도 자료가 없습니다");
+  assert.equal(basemapUnavailableText(mapBaseFromScene({ ...makeScene(), context: undefined })), "이 분석에는 기본 지도 자료가 없습니다");
+}
+
 // ── 출처 표기: 벡터일 때만 OSM 문구 ──
 {
   const { VECTOR_ATTRIBUTION, basemapAttribution, BASEMAP_ATTRIBUTION } = await import("../../lib/v2/ui/map-projection.ts");
@@ -221,6 +254,48 @@ const build = (model, options = {}) => buildMapScene({ model, width: 800, height
   // 역·철도 바탕이 빠지면 역 라벨도 없다
   assert.ok(!build(modelOf("A01")).base.labels.some((l) => l.kind === "station"));
   assert.ok(!build(modelOf("D13")).base.labels.some((l) => l.kind === "road"));
+}
+
+// ── I-3: 바탕 라벨은 표면 폭에 비례 — 미리보기 폭·내보내기 폭·PPT가 같은 라벨 집합 ──
+{
+  const dense = makeScene();
+  // 대지 표식(상자 32 px)은 표면 폭에 비례하지 않아 바로 옆을 지나는 도로의 라벨은 표면마다 갈릴 수 있다: 표식에서 먼 도로로 옮긴다.
+  dense.context.roads[0].points = line(-450, -150, 450, -150);
+  dense.context.places.push({ name: "삼성동", kind: "dong", x: -300, y: 60 }, { name: "개포동", kind: "dong", x: 330, y: -120 });
+  dense.context.stations.push({ name: "선릉", x: 300, y: 10, color: "#ED6C00" });
+  const denseModel = { ...modelOf("A04"), base: mapBaseFromScene(dense) };
+  const textsAt = (W, withUnit) => {
+    const H = (W * 9) / 16;
+    const scene = buildMapScene({ model: denseModel, width: W, height: H, activeLayer: "vector", ...(withUnit ? { layoutUnit: (1.5 * W) / 960 } : {}) });
+    return { texts: scene.base.labels.map((l) => l.text).sort(), ratio: (scene.base.labels[0]?.fontSize ?? 0) / W };
+  };
+  const ppt = textsAt(960, false);
+  assert.ok(ppt.texts.length >= 5, `PPT 라벨 ${ppt.texts.join(",")}`);
+  for (const W of [700, 860, 1200]) {
+    const surface = textsAt(W, true);
+    assert.deepEqual(surface.texts, ppt.texts, `W=${W} 라벨 집합이 PPT와 같다`);
+    assert.ok(Math.abs(surface.ratio - ppt.ratio) < 1e-9, `W=${W} 글자 크기 비율 ${surface.ratio} vs ${ppt.ratio}`);
+  }
+  // 600 px 최소 폭은 논리 폭(W / (layoutUnit / 1.5))으로 비교: 좁은 미리보기에서도 PPT처럼 그린다. layoutUnit이 없으면 절대 px 그대로.
+  assert.deepEqual(textsAt(500, true).texts, ppt.texts);
+  assert.equal(textsAt(560, false).texts.length, 0);
+  assert.ok(textsAt(620, false).texts.length > 0);
+}
+
+// ── M-3: 바탕 라벨이 주제 점 기호 상자를 피한다 ──
+{
+  const { toLngLat } = await import("../../lib/v2/crs.ts");
+  const [lng, lat] = toLngLat([ox + 60, oy - 300]); // 지명 "역삼동"의 점 바로 위
+  const without = build(modelOf("A04"));
+  const target = without.base.labels.find((l) => l.text === "역삼동");
+  assert.ok(target, "점이 없으면 역삼동 라벨이 있다");
+  const withDot = build(modelOf("A04", { features: [{ fid: "dot", layer: "park", lng, lat, name: "점" }], total: 1 }));
+  assert.ok(!withDot.base.labels.some((l) => l.text === "역삼동"), "점 기호 위에 놓일 라벨은 비켜 가거나 빠진다");
+  // 후광 획(약 0.15·글자 크기)까지 프레임 안에 든다
+  for (const l of without.base.labels) {
+    const halo = Math.max(1, l.fontSize * 0.15);
+    assert.ok(l.box.x0 - halo >= 0 && l.box.y0 - halo >= 0 && l.box.x1 + halo <= 800 && l.box.y1 + halo <= 600, `${l.text} 후광이 프레임 밖`);
+  }
 }
 
 // ── base-fallback ──

@@ -42,6 +42,7 @@ function mapUnion(layers: TileView[]): MapModel | null {
     features: maps.flatMap((map) => map.features),
     polygons: maps.flatMap((map) => map.polygons ?? []),
     siteParcel: maps.find((map) => map.siteParcel && map.siteParcel.length > 0)?.siteParcel ?? first.siteParcel ?? null,
+    base: first.base ?? layers[0]?.backdrop.base,
     polygonsTotal: maps.reduce((sum, map) => sum + (map.polygonsTotal ?? map.polygons?.length ?? 0), 0),
     total: maps.reduce((sum, map) => sum + map.total, 0),
     notes: unique(maps.flatMap((map) => map.notes)),

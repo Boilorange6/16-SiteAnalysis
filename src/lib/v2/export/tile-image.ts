@@ -13,7 +13,8 @@ import WindRoseFigure from "@/components/v2/wind-rose-figure";
 import type { RasterRef, RoseSeason } from "../tile-result";
 import type { MapModel } from "../ui/map-layers";
 import { legendItems } from "../ui/map-layers";
-import { BASEMAP_STACK, framedViewport, tilesFor, tileUrl, type BasemapChoice } from "../ui/map-projection";
+import { basemapAttribution, BASEMAP_STACK, framedViewport, tilesFor, tileUrl, type BasemapChoice } from "../ui/map-projection";
+import type { BaseThemeRef } from "../ui/map-theme";
 import type { MassModel } from "../ui/mass-projection";
 import type { RoseModel } from "../ui/wind-rose";
 import type { TileView } from "../ui/tile-view";
@@ -39,6 +40,8 @@ export type TileImageOptions = {
   /** S01 WebGL 결과를 PNG data URL로 주입할 때 사용한다. */
   visualHref?: string | null;
   layer?: BasemapChoice;
+  /** 보드에서 고른 바탕 테마. 저장 그림은 화면의 React Context 밖에서 그려지므로 직접 넘긴다(모델에 붙은 테마가 먼저). */
+  baseTheme?: BaseThemeRef;
   roseSeason?: RoseSeason;
 };
 
@@ -118,12 +121,14 @@ function staticMap(model: MapModel, layout: TileLayout, options: ResolvedOptions
     fixed: true,
     basemap: tiles.size > 0 ? "tiles" : "none",
     layer,
+    ...(options.baseTheme ? { baseTheme: options.baseTheme } : {}),
     tileHref: (url) => tiles.get(url),
     rasterHref: (ref) => rasters.get(rasterKey(model, ref.name)) ?? null,
     label: `${options.withFrame ? "" : ""}분석 지도`,
     legend: true,
     north: 42,
-    credit: false,
+    // 판이 없는 도판은 바깥 출처 줄이 없으므로 지도 안 credit이 출처를 맡는다.
+    credit: !options.withFrame,
     scale: true,
   };
   return renderToStaticMarkup(createElement(MapFigure, props));
@@ -133,7 +138,7 @@ function mapVisual(model: MapModel, layout: TileLayout, options: ResolvedOptions
   const { layer, tiles, rasters } = resourceMaps(model, layout, options);
   if (typeof document !== "undefined") {
     try {
-      return svgOf(model, tiles, layer, { legend: true, north: 42, credit: false, scale: true, label: "분석 지도" }, rasters, layout.visualWidth, layout.visualHeight);
+      return svgOf(model, tiles, layer, { legend: true, north: 42, credit: !options.withFrame, scale: true, label: "분석 지도", ...(options.baseTheme ? { baseTheme: options.baseTheme } : {}) }, rasters, layout.visualWidth, layout.visualHeight);
     } catch {
       // React DOM이 아직 준비되지 않은 환경에서는 동일한 정적 컴포넌트로 계속한다.
     }
@@ -234,6 +239,9 @@ export function tileSvg(view: TileView, options: TileImageOptions = {}): string 
   const source = view.sourceLine || "출처 없음";
   const limitation = limitationText(view);
   const footerY = resolved.height - Math.round(resolved.height * 0.105);
+  // 지도가 시각물일 때만 실제로 그린 바탕의 출처를 적는다(3D 매스·바람장미는 바탕이 없다).
+  const rose = view.roses?.[resolved.roseSeason ?? "annual"] ?? view.rose;
+  const credit = view.map && !view.mass && !rose && !resolved.visualHref ? basemapAttribution(effectiveLayer(view.map, resolved.layer)) : null;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${resolved.width}" height="${resolved.height}" viewBox="0 0 ${resolved.width} ${resolved.height}" role="img" aria-labelledby="tile-title tile-source">
   <title id="tile-title">${escapeXml(title)}</title>
   <rect width="100%" height="100%" fill="#FFFFFF" />
@@ -243,7 +251,8 @@ export function tileSvg(view: TileView, options: TileImageOptions = {}): string 
   <line x1="${Math.round(resolved.width * 0.02)}" y1="${footerY - 18}" x2="${Math.round(resolved.width * 0.98)}" y2="${footerY - 18}" stroke="#D9DCE2" />
   <text x="${Math.round(resolved.width * 0.02)}" y="${footerY + 12}" font-family="Noto Sans KR, Malgun Gothic, sans-serif" font-size="16" fill="#676C76">출처 · ${escapeXml(source)}</text>
   <text x="${Math.round(resolved.width * 0.02)}" y="${footerY + 42}" font-family="Noto Sans KR, Malgun Gothic, sans-serif" font-size="15" fill="#676C76">한계 · ${escapeXml(limitation)}</text>
-  <text x="${Math.round(resolved.width * 0.98)}" y="${footerY + 42}" text-anchor="end" font-family="Noto Sans KR, Malgun Gothic, sans-serif" font-size="15" fill="#676C76">북쪽 ↑ · 축척 · 분석 반경</text>
+  <text x="${Math.round(resolved.width * 0.98)}" y="${footerY + 42}" text-anchor="end" font-family="Noto Sans KR, Malgun Gothic, sans-serif" font-size="15" fill="#676C76">북쪽 ↑ · 축척 · 분석 반경</text>${credit ? `
+  <text x="${Math.round(resolved.width * 0.02)}" y="${footerY + 68}" font-family="Noto Sans KR, Malgun Gothic, sans-serif" font-size="14" fill="#676C76">바탕지도 · ${escapeXml(credit)}</text>` : ""}
 </svg>`;
 }
 

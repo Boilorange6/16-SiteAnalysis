@@ -22,6 +22,13 @@ assert.equal(stacked.map.features.length, a01.map.features.length + d04.map.feat
 assert.equal(stacked.map.total, a01.map.total + d04.map.total);
 assert.ok(stacked.notes.includes("입지·대중교통") && stacked.notes.includes("준공 연대"));
 assert.ok(stacked.sourceLine.includes("OSM 철도") && stacked.sourceLine.includes("GIS건물통합정보"));
+// M-2: 겹친 카드도 바탕 자료를 잃지 않는다(다른 카드는 벡터인데 겹친 카드만 일반지도가 되던 문제)
+{
+  const withBase = { ...a01, map: { ...a01.map, base: { buildings: [], parcels: [], water: [], green: [], roads: [], rail: [], stations: [], places: [] } } };
+  assert.strictEqual(stackView("stack:b", [withBase, d04]).map.base, withBase.map.base);
+  const onlyBackdrop = { ...a01, map: null, backdrop: { ...a01.backdrop, base: withBase.map.base } };
+  assert.strictEqual(stackView("stack:c", [onlyBackdrop]).map.base, withBase.map.base);
+}
 assert.equal(stacked.hasFace, false);
 assert.equal(stacked.chart, null);
 assert.doesNotMatch(JSON.stringify(stacked), /종합|도보/);

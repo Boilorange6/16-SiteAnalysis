@@ -12,7 +12,8 @@ import { CUT_CODES } from "@/lib/v2/tile/client";
 import { downloadBytes, EXPORT_MIME } from "@/lib/v2/export/download";
 import { BASEMAPS, BasemapContext, SetBasemapContext } from "./map-box";
 import { mapLabelEntries } from "./map-figure";
-import { baseUsable, resolveBasemap } from "@/lib/v2/ui/basemap";
+import { basemapUnavailableText, baseUsable, resolveBasemap } from "@/lib/v2/ui/basemap";
+import { BaseThemeContext } from "./base-theme-context";
 import SourcePanel from "./source-panel";
 import styles from "./board.module.css";
 import { dialogPanelFor } from "@/lib/v2/tile/components";
@@ -117,8 +118,14 @@ export default function TileDialog({ view, layer, onLayer, onRetry, cut, onCut, 
   const basemap = useContext(BasemapContext);
   const setBasemap = useContext(SetBasemapContext);
   // 이 타일의 지도에 쓸 수 있는 기본 지도 자료가 없으면 그려지는 것은 일반지도다. 선택 표시도 실제로 그려지는 바탕을 따른다.
-  const vectorAvailable = baseUsable((view.map ?? view.backdrop).base);
-  const shownBasemap = resolveBasemap(view.map ?? view.backdrop, basemap);
+  const mapModel = view.map ?? view.backdrop;
+  const vectorAvailable = baseUsable(mapModel.base);
+  const shownBasemap = resolveBasemap(mapModel, basemap);
+  const baseThemeRef = useContext(BaseThemeContext);
+  // 결과가 바탕을 정한 타일(D01·D10 위성)은 어느 버튼도 보드 선택을 바꾸지 못한다. 아니면 기본 지도를 쓸 수 없는 이유.
+  const basemapPinned = !!mapModel.basemap;
+  const basemapNote = basemapPinned ? "이 타일은 항공 사진 고정" : basemapUnavailableText(mapModel.base);
+  const basemapNoteId = `dlg-${view.tileId}-basemap-note`;
 
   useFocusTrap({ ref, onClose });
 
@@ -142,10 +149,10 @@ export default function TileDialog({ view, layer, onLayer, onRetry, cut, onCut, 
       const exportView = cutView;
       const withFrame = kind !== "plate";
       if (kind === "svg") {
-        const svg = await tileSvgForView(exportView, { width: 1600, height: 1200, withFrame: true, layer: basemap });
+        const svg = await tileSvgForView(exportView, { width: 1600, height: 1200, withFrame: true, layer: basemap, baseTheme: baseThemeRef });
         downloadBytes(tileFileName(view.code, view.title, address, analysisDate, "svg"), svg, EXPORT_MIME.svg);
       } else {
-        const png = await tilePng(exportView, { width: 1600, height: 1200, withFrame, scale: 2, layer: basemap });
+        const png = await tilePng(exportView, { width: 1600, height: 1200, withFrame, scale: 2, layer: basemap, baseTheme: baseThemeRef });
         downloadBytes(tileFileName(view.code, withFrame ? view.title : `${view.title} 도판`, address, analysisDate, "png"), png, EXPORT_MIME.png);
       }
     } catch (error) {
@@ -166,11 +173,15 @@ export default function TileDialog({ view, layer, onLayer, onRetry, cut, onCut, 
 
         <div className={styles.dlgTop}>
           <span className={`${styles.plate} ${styles.seg}`} role="group" aria-label="배경지도">
-            {BASEMAPS.map((b) => (
-              <button key={b.id} type="button" aria-pressed={shownBasemap === b.id} disabled={b.id === "vector" && !vectorAvailable} title={b.id === "vector" && !vectorAvailable ? "이 분석에는 기본 지도 자료가 없습니다" : undefined} onClick={() => setBasemap(b.id)}>
-                {b.label}
-              </button>
-            ))}
+            {BASEMAPS.map((b) => {
+              const blocked = basemapPinned || (b.id === "vector" && !vectorAvailable);
+              return (
+                <button key={b.id} type="button" aria-pressed={shownBasemap === b.id} aria-disabled={blocked || undefined} aria-describedby={blocked ? basemapNoteId : undefined} onClick={() => !blocked && setBasemap(b.id)}>
+                  {b.label}
+                </button>
+              );
+            })}
+            {basemapNote && <span id={basemapNoteId} className={styles.segHint}>{basemapNote}</span>}
           </span>
           <button type="button" className={`${styles.plate} ${styles.closeBtn}`} onClick={onClose} aria-label="닫기">
             닫기 ×
