@@ -522,7 +522,7 @@ function DecorationTransformFrame({ label, box, bounds, onDragStart, onDragMove,
   </div>;
 }
 
-function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, interactive, pickable = false, selectedElementKey = null, selectedElementLabelVisible, selectedLabelKey = null, selectedPanelKey = null, onMapElementSelect, onMapLabelSelect, onLabelBoxChange, onLabelBoxReset, onDeleteElement, onHideLabel, onShowLabel, selectedDecorationKey = null, onDecorationSelect, onDecorationDelete, onMapHoverLegend, panelInteraction, mapEditEntry = false, onMapMoveActive, thumbnail = false, onPatch, onDirectPatch, hoverLegend, terrainSection, terrainLayout, calloutLegend, calloutTop, calloutLeftBottom, northAvoid, scale = true, label, format = "wide", frame, panelBasis = "page", reportFrame, preserveShortCalloutLabels = false, fontHighlight, onFontContextMenu, contextCell, fill, callout }: MapLayerProps) {
+function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, interactive, pickable = false, selectedElementKey = null, selectedElementLabelVisible, selectedLabelKey = null, selectedPanelKey = null, onMapElementSelect, onMapLabelSelect, onLabelBoxChange, onLabelBoxReset, onDeleteElement, onHideLabel, onShowLabel, selectedDecorationKey = null, onDecorationSelect, onDecorationDelete, onMapHoverLegend, panelInteraction, mapEditEntry = false, onMapMoveActive, thumbnail = false, onPatch, onDirectPatch, hoverLegend, terrainSection, terrainLayout, calloutLegend, calloutTop, calloutLeftBottom, northAvoid: northAvoidProp, scale = true, label, format = "wide", frame, panelBasis = "page", reportFrame, preserveShortCalloutLabels = false, fontHighlight, onFontContextMenu, contextCell, fill, callout }: MapLayerProps) {
   const styles = useSurfaceStyles();
   const selectSurface = useContext(SurfaceSelectContext);
   const geometry = slideGeometry(format);
@@ -575,7 +575,9 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
     ? mapLayoutUnitForFrame(height)
     : 1.5 * (unit / (960 / geometry.w));
   const showNorth = reportFrame?.decorations.north ?? false;
-  const showScale = reportFrame?.decorations.scaleBar ?? scale;
+  // 조판 칸(frame 기준)은 호출자가 방위표 자리를 주지 않으므로 칸 지도가 그리는 기본 방위표 상자를 피한다(위치도·바탕 라벨).
+  const northAvoid = northAvoidProp ?? (panelBasis === "frame" && showNorth ? northArrowBox(width, height, rightInset, undefined, layoutUnit) : null);
+  const showScale =reportFrame?.decorations.scaleBar ?? scale;
   const savedNorthBox = panelRectInMap(style.panels?.north, format, unit, frame, panelBasis, width, height);
   const savedScaleBox = panelRectInMap(style.panels?.scaleBar, format, unit, frame, panelBasis, width, height);
   const savedLocatorBox = panelRectInMap(style.panels?.locator, format, unit, frame, panelBasis, width, height);
@@ -1947,13 +1949,6 @@ function SheetSurface({ slide, unit, basemap, thumbnail = false, editable = fals
               offsetM: cell.reportFrame.offsetM,
               ...(cell.panels ? { panels: cell.panels } : {}),
             } : { ...(cell.style ?? slide.style), ...(cell.panels ? { panels: cell.panels } : {}) };
-            const cellViewport = model ? slideViewport(model, cellStyle, { width, height, siteX: 0.5, fill: 0.8 }) : null;
-            const cellNorthBox = cell.reportFrame?.decorations.north ? northArrowBox(width, height, geometry.edge * unit) : null;
-            const cellScaleBox = cell.reportFrame?.decorations.scaleBar && cellViewport ? scaleBarBox(width, height, metersPerPixel(cellViewport.center[1], cellViewport.zoom)) : null;
-            const cellLocatorBox = locatorBox(width, height, unit, [
-              ...(cellNorthBox ? [cellNorthBox] : []),
-              ...(cellScaleBox ? [cellScaleBox] : []),
-            ]);
              const mapSelection = selection?.kind === "map" || selection?.kind === "mapElement" || selection?.kind === "mapLabel" || selection?.kind === "decoration";
              const selectionCell = mapSelection ? selection.cell : undefined;
              const cellSelection = selection?.kind === "sheetCell" && selection.cell === index;
@@ -2059,7 +2054,6 @@ function SheetSurface({ slide, unit, basemap, thumbnail = false, editable = fals
                 {chart ? <ChartPlaceholder view={cell.view} unit={unit} /> : model ? (
                   <div className={styles.sheetCellMap} data-surface-map="true" data-map-cell-index={index}>
                     {cellMap}
-                    {cell.reportFrame?.decorations.locator && model.radiusM > 0 && <LocatorInset model={model} basemap={basemap} box={cellLocatorBox} />}
                   </div>
                 ) : <VisualPlaceholder title={cell.view.title} message="이 장은 지도 대신 도판으로 표시됩니다." unit={unit} />}
                 <span className={styles.sheetLabel} style={fontStyle(9, unit)}>{cell.view.title}</span>

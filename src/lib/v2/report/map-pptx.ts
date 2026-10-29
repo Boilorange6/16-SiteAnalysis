@@ -552,8 +552,8 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
     const cellLegend = cellLegendLayout(displayModel);
     const style = options.style ?? {};
     const cellUnit = mapLayoutUnitForFrame(activeFrame.h * activePxPerInch);
-    const showNorth = reportFrame?.decorations.north ?? true;
-    // 화면은 reportFrame이 없는 칸에 축척 막대를 그리지 않는다.
+    // 화면은 reportFrame이 없는 칸에 방위표·축척 막대를 그리지 않는다.
+    const showNorth = reportFrame?.decorations.north ?? false;
     const drawScale = reportFrame?.decorations.scaleBar ?? false;
     const savedNorthBox = savedPanelBox(style.panels?.north, "frame");
     const savedScaleBox = savedPanelBox(style.panels?.scaleBar, "frame");
@@ -643,13 +643,14 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
   const northY = calloutTopPx + NORTH_RADIUS * Math.min(1.5, Math.max(1, height / 360));
   const bottomInset = geometry.stripH * activePxPerInch + (calloutLegend ? (calloutLegend.h + 0.18) * activePxPerInch : 0);
   const viewport = fixedScaleViewport(displayModel, frameStyle, reportFrame, { width: VIEW_W, height, siteX, siteY: terrainLayout?.mapSiteY ?? 0.5, fill: fill ?? 0.8 });
-  const showScale = reportFrame?.decorations.scaleBar ?? true;
+  // 축척·방위표는 장식 설정이 정한다(상세 장도 같다). 설정이 없는 옛 계획은 화면처럼 상세 장에서만 축척을 뺀다.
+  const showScale = reportFrame?.decorations.scaleBar ?? !calloutDetail;
   const showNorth = reportFrame?.decorations.north ?? true;
   const savedNorthBox = savedPanelBox(style.panels?.north);
   const savedScaleBox = savedPanelBox(style.panels?.scaleBar);
   const nativeScaleMaxPx = reportFrame?.scaleDenominator !== null && reportFrame?.scaleDenominator !== undefined ? 150 : undefined;
-  const defaultScaleBox = calloutDetail || !showScale ? null : scaleBarBox(VIEW_W, height, metersPerPixel(viewport.center[1], viewport.zoom), bottomInset, rightInset, false, undefined, undefined, nativeScaleMaxPx);
-  const defaultNorthBox = calloutDetail || !showNorth ? null : northArrowBox(VIEW_W, height, rightInset, northY);
+  const defaultScaleBox = !showScale ? null : scaleBarBox(VIEW_W, height, metersPerPixel(viewport.center[1], viewport.zoom), bottomInset, rightInset, false, undefined, undefined, nativeScaleMaxPx);
+  const defaultNorthBox = !showNorth ? null : northArrowBox(VIEW_W, height, rightInset, northY);
   const scaleAvoid = savedScaleBox ?? defaultScaleBox;
   const northAvoid = savedNorthBox ?? defaultNorthBox;
   const northScale = boxScale(savedNorthBox, defaultNorthBox);
@@ -660,10 +661,11 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
   const avoid = calloutDetail
     ? []
      : [...slideReserved(activePxPerInch, { info: hasSummary, titleRect: panels.title, infoRect: panels.summary, legend, calloutLegend, terrainSection: terrainLayout?.rect, format }).map(localize), ...(savedScaleBox ? [] : scaleAvoid ? [scaleAvoid] : []), ...(savedNorthBox ? [] : northAvoid ? [northAvoid] : [])];
+  // 상세 장은 avoid가 비어 있어도 장면이 방위표·축척을 그리므로 장면이 그릴 자리(저장 상자 또는 기본 상자)를 직접 예약한다.
   const locator = locatorFor(displayModel, reportFrame, savedPanelBox(style.panels?.locator), [
     ...avoid,
-    ...(showNorth && savedNorthBox ? [savedNorthBox] : []),
-    ...(showScale && !calloutDetail && savedScaleBox ? [savedScaleBox] : []),
+    ...(showNorth && northAvoid ? [northAvoid] : []),
+    ...(showScale && scaleAvoid ? [scaleAvoid] : []),
   ]);
   const focus = legendLabelOf(displayModel, style.legendFocus);
   const pinnedKeys = [...new Set([
@@ -685,7 +687,7 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
     fill,
     siteX,
     bottomInset,
-    scale: !calloutDetail,
+    scale: showScale,
     muted: !!plan.muted,
     pinnedKeys,
     hiddenKeys: frameStyle.hiddenKeys ?? [],
@@ -708,7 +710,7 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
     viewport,
     ...(nativeScaleMaxPx !== undefined ? { scaleMaxPx: nativeScaleMaxPx } : {}),
   });
-  return { scene, locator, drawScale: !calloutDetail && showScale };
+  return { scene, locator, drawScale: showScale };
 }
 
 type Bucket = { paths: PixelPath[]; fill?: string; fillOpacity?: number; line?: string; lineWidth?: number; lineOpacity?: number; dash?: string; key: string; display: string };

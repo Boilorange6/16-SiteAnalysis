@@ -229,23 +229,84 @@ const draw = (reportFrame) => {
   const deco = (decorations) => ({ ...defaultFrame(), decorations: { north: true, scaleBar: true, locator: false, ...decorations } });
   assert.equal(has(cell(deco({ north: false })), "|방위표|"), false, "D3 조판 칸: north=false면 방위표 도형이 없다");
   assert.ok(has(cell(deco({ north: true })), "|방위표|"), "D3 조판 칸: north=true면 방위표가 있다");
+  assert.equal(has(cell(undefined), "|방위표|"), false, "D3 reportFrame 없는 조판 칸은 화면처럼 방위표가 없다");
   assert.equal(has(cell(undefined), "|축척|"), false, "D5 reportFrame 없는 조판 칸은 화면처럼 축척 막대가 없다");
   assert.equal(has(cell(deco({ scaleBar: false })), "|축척|"), false, "D5 조판 칸 scaleBar=false");
   assert.ok(has(cell(deco({ scaleBar: true })), "|축척|"), "D5 조판 칸 scaleBar=true면 축척이 있다");
 
-  const { slide, calls } = stub();
-  addEditableMap(slide, { ...plan, callout: { page: 1, pages: 2 } }, plan.map, { style: plan.style, format: "wide", reportFrame: defaultFrame() });
-  assert.equal(has(calls, "|축척|"), false, "D4 설명표 상세 장은 장면처럼 축척 막대가 없다");
-  assert.ok(has(calls, "|방위표|"), "D4 설명표 상세 장에도 방위표는 남는다");
+  // 설명표 상세 장: 축척은 화면처럼 장식 설정이 정한다(켬 -> 있음, 끔 -> 없음). 방위표는 늘 장식대로.
+  const detail = (decorations, locator = false) => {
+    const { slide, calls } = stub();
+    addEditableMap(slide, { ...plan, callout: { page: 1, pages: 2 } }, plan.map, { style: plan.style, format: "wide", reportFrame: deco({ locator, ...decorations }) });
+    return calls;
+  };
+  assert.ok(has(detail({ scaleBar: true }), "|축척|"), "I2 설명표 상세 장 + 장식 scaleBar 켬 -> 축척이 있다");
+  assert.equal(has(detail({ scaleBar: false }), "|축척|"), false, "I2 설명표 상세 장 + 장식 scaleBar 끔 -> 축척이 없다");
+  assert.ok(has(detail({ scaleBar: false }), "|방위표|"), "I2 설명표 상세 장에도 방위표는 남는다");
+
+  // I1: 설명표 상세 장 위치도는 그 장면이 그리는 방위표·축척을 덮지 않는다(가장자리 걸침까지, 상자 교차로 판정)
+  const shapeBox = (calls, part) => {
+    const o = calls.map((c) => c.args[1]).find((a) => typeof a?.objectName === "string" && a.objectName.includes(part));
+    return o ? { x0: o.x, y0: o.y, x1: o.x + o.w, y1: o.y + o.h } : null;
+  };
+  const cross = (a, b) => a.x0 < b.x1 && a.x1 > b.x0 && a.y0 < b.y1 && a.y1 > b.y0;
+  const withLocator = detail({ scaleBar: true }, true);
+  const locatorFrame = shapeBox(withLocator, "|위치도|frame");
+  assert.ok(locatorFrame, "I1 상세 장 위치도 틀");
+  assert.equal(cross(locatorFrame, shapeBox(withLocator, "|방위표|bg")), false, "I1 상세 장 위치도가 방위표와 겹치지 않는다");
+  assert.equal(cross(locatorFrame, shapeBox(withLocator, "|축척|bg")), false, "I1 상세 장 위치도가 축척과 겹치지 않는다");
 }
 
-// D1: 조판 칸 위치도가 피하는 방위표 상자는 칸 지도가 그리는 원과 같은 중심(NORTH_INSET·u, 우측 여백 포함)을 쓴다
+// I3: 조판 칸 화면(SSR)은 칸마다 위치도 하나, 칸 방위표와 안 겹치고 바탕 라벨도 위치도를 피한다
 {
-  const surface = readFileSync(new URL("../../components/v2/report/slide-surface.tsx", import.meta.url), "utf8");
-  const line = surface.split("\n").find((text) => text.includes("const cellNorthBox"));
-  assert.ok(line, "cellNorthBox 계산 줄");
-  assert.doesNotMatch(line, /NORTH_INSET/, "고정 30 px 중심을 넘기지 않는다(u > 1에서 원보다 위로 어긋남)");
-  assert.match(line, /northArrowBox\(width, height, geometry\.edge \* unit\)/, "칸 지도와 같은 우측 여백으로 기본 중심 상자를 쓴다");
+  const { toUtmk } = await import("../../lib/v2/crs.ts");
+  const { mapBaseFromScene } = await import("../../lib/v2/ui/basemap.ts");
+  const { sheetView } = await import("../../lib/v2/ui/sheet.ts");
+  // SSR에는 측정할 DOM이 없어 표면이 unit = 1(폭 13.3 px)로 그려진다. 1280 px 폭을 잰 것처럼 크기 상태의 초기값만 바꿔 실제 크기로 그린다.
+  const { default: ReactModule } = await import("react");
+  const realUseState = ReactModule.useState;
+  ReactModule.useState = (init) => realUseState(init && typeof init === "object" && init.width === 0 && init.height === 0 ? { width: 1280, height: 720 } : init);
+  const { SlideSurface } = await import("../../components/v2/report/slide-surface.tsx");
+  const LNG = 127.0636;
+  const LAT = 37.4979;
+  const [ox, oy] = toUtmk([LNG, LAT]);
+  const places = [];
+  for (let i = 0; i < 7; i += 1) for (let j = 0; j < 5; j += 1) places.push({ name: `${"가나다라마바사"[i]}${"동서남북중"[j]}동`, kind: "dong", x: -420 + i * 140, y: -300 + j * 150 });
+  const baseScene = {
+    version: "v2-scene@2", analysisId: "a-i3", manifestHash: "h",
+    origin: { epsg: "EPSG:5179", x: ox, y: oy, lng: LNG, lat: LAT }, radiusM: 500, ground: { kind: "flat" }, site: null,
+    buildings: [{ id: "b0", name: null, sublabel: null, labelPriority: 0, rings: [[[0, 0], [20, 0], [20, 20], [0, 20], [0, 0]]], baseZ: null, heightM: 9, heightMethod: "source", floorsAbove: 3, useCode: null, approvalDate: null }],
+    parcels: [],
+    context: { roads: [{ points: [[-450, -60], [450, -60]], widthM: 20, hierarchy: "간선", name: "테헤란로" }], green: [], greenKinds: [], water: [], rail: [], stations: [], places },
+    counts: { buildingsTotal: 1, buildingsIncluded: 1, parcelsTotal: 0, parcelsIncluded: 0 }, sources: [], limitations: [],
+  };
+  const model = { center: [LNG, LAT], radiusM: 500, features: [], total: 0, notes: [], tileCode: "A04", base: mapBaseFromScene(baseScene) };
+  const tile = { ...toTileView(source), map: model, backdrop: model };
+  const frameOn = { ...defaultFrame(), decorations: { north: true, scaleBar: true, locator: true } };
+  const cells = [0, 1, 2, 3].map((i) => ({ view: tile, face: "front", mapKey: `cell-${i}`, reportFrame: frameOn }));
+  const page = { id: "p-i3", layout: "map-summary", panels: {}, textBoxes: [], notes: "", kind: "compare", grid: "2x2", sameExtent: false, cells: cells.map(() => ({ tileId: tile.tileId, settings: { face: "front", callout: "overview" }, frame: frameOn })) };
+  const slide = { kind: "sheet", view: sheetView("sheet-i3", [tile], "2x2"), grid: "2x2", cells, no: 1, total: 1, footer: "출처 없음", key: "p-i3", style: {}, page };
+  const markup = renderToStaticMarkup(createElement(SlideSurface, { slide, basemap: "vector", mode: "view" }));
+  ReactModule.useState = realUseState;
+  const parts = markup.split(/(?=data-map-cell-index=")/).filter((part) => part.startsWith("data-map-cell-index="));
+  assert.equal(parts.length, 4, "조판 칸 4개");
+  const cross = (a, b) => a.x0 < b.x1 && a.x1 > b.x0 && a.y0 < b.y1 && a.y1 > b.y0;
+  let labelsSeen = 0;
+  for (const [index, part] of parts.entries()) {
+    const locators = [...part.matchAll(/data-map-locator="true"[^>]*style="left:([\d.]+)px;top:([\d.]+)px;width:([\d.]+)px;height:([\d.]+)px/g)];
+    assert.equal(locators.length, 1, `칸 ${index}: 위치도는 하나만 그린다`);
+    const [, left, top, width, height] = locators[0].map(Number);
+    const locator = { x0: left, y0: top, x1: left + width, y1: top + height };
+    const north = [...part.matchAll(/<circle cx="([\d.]+)" cy="([\d.]+)" r="([\d.]+)" fill="#fff"/g)].map((m) => ({ cx: Number(m[1]), cy: Number(m[2]), r: Number(m[3]) })).find((c) => c.r > 15);
+    assert.ok(north, `칸 ${index}: 방위표 원`);
+    assert.equal(cross(locator, { x0: north.cx - north.r, y0: north.cy - north.r, x1: north.cx + north.r, y1: north.cy + north.r }), false, `칸 ${index}: 위치도가 방위표와 겹치지 않는다`);
+    for (const m of part.matchAll(/<text data-map-base-label="[^"]*" x="([\d.]+)" y="([\d.]+)"/g)) {
+      labelsSeen += 1;
+      const [x, y] = [Number(m[1]), Number(m[2])];
+      assert.ok(!(x > locator.x0 && x < locator.x1 && y > locator.y0 && y < locator.y1), `칸 ${index}: 바탕 라벨 (${x}, ${y})이 위치도 안`);
+    }
+  }
+  assert.ok(labelsSeen > 0, "칸 화면에 바탕 라벨이 그려진다(검증이 비어 있지 않다)");
 }
 
 console.log("v2 map chrome (§9-12) contracts passed");
