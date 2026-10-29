@@ -652,7 +652,6 @@ export type MapScene = {
   hiddenKeys: ReadonlySet<string>;
   rail: MapSceneRail;
   occupiedBoxes: MapSceneBox[];
-  polygonOpacity: number;
   lineColor: string;
   /** 반경 원·점선 고리 색. 위성은 흰색, 벡터 바탕은 테마의 ring, 그 밖은 잉크색(= lineColor). */
   ringColor: string;
@@ -1718,7 +1717,6 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     hiddenKeys: hidden,
     rail,
     occupiedBoxes,
-    polygonOpacity: sat ? 0.45 : 0.35,
     lineColor,
     ringColor: theme?.ring ?? lineColor,
     isLayerHighlighted,

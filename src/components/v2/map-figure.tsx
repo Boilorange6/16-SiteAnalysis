@@ -1,6 +1,6 @@
 import * as React from "react";
 import { memo, useCallback, useContext, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { buildingStyleForRaster, isBuildingLayer, isUnclippedZoneLayer, layerStyle, legendItems, modelLayerStyle, RASTER_STYLES, type MapModel, type RasterStyle } from "@/lib/v2/ui/map-layers";
+import { buildingStyleForRaster, isBuildingLayer, isUnclippedZoneLayer, layerStyle, legendItems, modelLayerStyle, polygonPaint, RASTER_STYLES, type MapModel, type RasterStyle } from "@/lib/v2/ui/map-layers";
 import { badgeTextColor, mapLabelText as formatMapLabelText } from "@/lib/v2/ui/map-labels";
 import { applyView, basemapAttribution, BASEMAP_STACK, framedViewport, makeProjector, metersPerPixel, scaleBar, tilesFor, tileUrl, worldPx, type BasemapChoice, type MapView, type Viewport } from "@/lib/v2/ui/map-projection";
 import { rasterAffine, rasterLegendColor, rasterLegendEntries, resolveRasterStyle } from "@/lib/v2/ui/raster-image";
@@ -713,7 +713,6 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseT
   const siteParcels = scene.siteParcels;
   type ScreenPolygon = (typeof polygons)[number];
   const rings = scene.rings;
-  const polygonOpacity = scene.polygonOpacity;
   const radiusByIndex = new Map(scene.features.map((feature) => [feature.index, feature.radius]));
   const radiusOf = (f: MapFigureProps["model"]["features"][number]) => radiusByIndex.get(model.features.indexOf(f)) ?? (f.highlight ? 4.6 : 2.6) * u;
   const isEstimated = (polygon: ScreenPolygon) => polygon.polygon.layer.endsWith("_est") || layerStyle(polygon.polygon.layer).label.startsWith("[추정]") || layerStyle(polygon.polygon.layer).hatch === true;
@@ -1315,6 +1314,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseT
   const drawPolygon = (polygon: ScreenPolygon) => {
     if (isSiteParcelLayer(polygon.polygon.layer) || !shouldRasterizeLayer(polygon.polygon.layer)) return null;
     const st = modelLayerStyle(model, polygon.polygon.layer);
+    const paint = polygonPaint(polygon.polygon.layer, st, sat);
     const estimated = isEstimated(polygon);
     const neutralBuilding = rasterImages.length > 0 && isBuildingLayer(polygon.polygon.layer);
     const buildingStyle = buildingStyleForRaster(polygon.polygon.layer, rasterImages.length > 0);
@@ -1328,7 +1328,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseT
     return (
       <g key={`poly${polygon.index}`}>
         {elementSelected && <path data-map-selection-band={polygonKey} d={polygonPath(polygon.rings)} fill="none" stroke="#dbeafe" strokeWidth={5 * u} strokeLinejoin="round" pointerEvents="none" />}
-        <path data-poly="true" data-map-layer={polygon.polygon.layer} d={polygonPath(polygon.rings)} fillRule="evenodd" fill={neutralBuilding ? buildingStyle.fill : estimated ? `url(#${hatchId(polygon.index)})` : st.fill ?? st.color} fillOpacity={neutralBuilding ? buildingStyle.fillOpacity : estimated ? 1 : st.fillOpacity ?? polygonOpacity} opacity={isElementDimmed(polygon.polygon.layer, polygonKey) ? 0.2 : undefined} stroke={elementSelected ? "#1d5bd8" : strong || polygonSelected ? INK : neutralBuilding ? buildingStyle.stroke : st.stroke ?? st.color} strokeWidth={(elementSelected ? 1.5 : strong ? 1.6 : polygonSelected ? 3 : neutralBuilding ? buildingStyle.strokeWidth ?? 0.8 : st.strokeWidth ?? 1) * u} strokeDasharray={st.dash} {...pick} />
+        <path data-poly="true" data-map-layer={polygon.polygon.layer} d={polygonPath(polygon.rings)} fillRule="evenodd" fill={neutralBuilding ? buildingStyle.fill : estimated ? `url(#${hatchId(polygon.index)})` : st.fill ?? st.color} fillOpacity={neutralBuilding ? buildingStyle.fillOpacity : estimated ? 1 : paint.fillOpacity} opacity={isElementDimmed(polygon.polygon.layer, polygonKey) ? 0.2 : undefined} stroke={elementSelected ? "#1d5bd8" : strong || polygonSelected ? INK : neutralBuilding ? buildingStyle.stroke : paint.stroke ?? "none"} strokeWidth={(elementSelected ? 1.5 : strong ? 1.6 : polygonSelected ? 3 : neutralBuilding ? buildingStyle.strokeWidth ?? 0.8 : paint.strokeWidth) * u} strokeDasharray={st.dash} {...pick} />
         {Object.keys(pick).length > 0 && <path data-map-hit="polygon" d={polygonPath(polygon.rings)} fill="transparent" stroke="transparent" {...hitProps(pick)} />}
       </g>
     );
@@ -1386,7 +1386,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseT
           const st = modelLayerStyle(model, polygon.polygon.layer);
           return (
             <pattern key={hatchId(polygon.index)} id={hatchId(polygon.index)} patternUnits="userSpaceOnUse" width={10 * u} height={10 * u} patternTransform="rotate(45)">
-              <rect width={10 * u} height={10 * u} fill={st.fill ?? st.color} fillOpacity={st.fillOpacity ?? polygonOpacity} />
+              <rect width={10 * u} height={10 * u} fill={st.fill ?? st.color} fillOpacity={polygonPaint(polygon.polygon.layer, st, sat).fillOpacity} />
               <path d={`M0 0V${10 * u}`} stroke={st.color} strokeWidth={1.2 * u} strokeOpacity={0.75} />
             </pattern>
             );

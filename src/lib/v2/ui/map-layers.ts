@@ -795,6 +795,28 @@ export const modelLayerStyle = (model: Pick<MapModel, "palette"> | null | undefi
 
 export const isBuildingLayer = (layer: string): boolean => layer === "building" || layer === "svf_building" || layer.startsWith("bldg_") || layer.includes("building");
 
+/** §9-12 주제 레이어 톤: 떨어진 면은 외곽선 없이 25 %, 땅을 나누는 구역 면은 흰 외곽선 1.7u·30 %. 선 굵기는 u 단위(렌더러가 u를 곱한다). */
+export const POLYGON_TONES = {
+  separate: { fillOpacity: 0.25, stroke: null, strokeWidth: 0 },
+  zone: { fillOpacity: 0.3, stroke: "#ffffff", strokeWidth: 1.7 },
+} as const;
+
+const TONE_EXEMPT_KEYS = ["fillOpacity", "stroke", "strokeWidth", "dash", "hatch"] as const;
+
+/** 레이어 스타일이 채움·선을 직접 정하면 null(지금 값 그대로). 건물·용도·층수류는 "separate", 나머지 면은 "zone". */
+export function polygonTone(layer: string): "separate" | "zone" | null {
+  const style = layerStyle(layer);
+  if (TONE_EXEMPT_KEYS.some((key) => style[key] !== undefined)) return null;
+  return /^(use:|floors_|tall_|low_|bldg_)/.test(layer) || isBuildingLayer(layer) ? "separate" : "zone";
+}
+
+/** 면의 채움 투명도·선. 화면과 PPT가 함께 쓴다. 위성 바탕은 채움만 0.45. 선택·강조·흐림·추정 빗금은 호출한 쪽이 이 값보다 먼저 적용한다. */
+export function polygonPaint(layer: string, style: LayerStyle, satellite: boolean): { fillOpacity: number; stroke: string | null; strokeWidth: number } {
+  const tone = polygonTone(layer);
+  if (tone === null) return { fillOpacity: style.fillOpacity ?? (satellite ? 0.45 : 0.35), stroke: style.stroke ?? style.color, strokeWidth: style.strokeWidth ?? 1 };
+  return { ...POLYGON_TONES[tone], fillOpacity: satellite ? 0.45 : POLYGON_TONES[tone].fillOpacity };
+}
+
 /** 반경 원으로 자르지 않고 원래 형태 그대로 그리는 구역 경계 레이어(사용자 결정 2026-10-28). PPT는 원래 반경으로 자르지 않는다. */
 export const isUnclippedZoneLayer = (layer: string): boolean => /^maint_(stage|area):/.test(layer);
 
