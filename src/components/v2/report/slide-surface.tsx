@@ -15,7 +15,7 @@ import { a05ReportModule } from "@/lib/v2/tile/a05/report";
 import { layerStyle, legendItemsOf, legendLabelOf, modelWithHiddenLayers } from "@/lib/v2/ui/map-layers";
 import { reportSummaryNotes, terrainCrossingLayer, terrainElevationLabel, terrainSectionAxisStops, terrainSectionBands, terrainSectionElevationAt, terrainSectionMarkerGeometry, terrainSectionPosition, terrainSectionTotal, sortTerrainCrossings, TERRAIN_CROSSING_LABELS, TERRAIN_SECTION_LABELS, TERRAIN_SECTION_TABLE_MAX_ROWS } from "@/lib/v2/ui/terrain-section";
 import MapFigure, { type MapFigureElementPick } from "../map-figure";
-import { locatorBox, NORTH_RADIUS, northArrowBox, scaleBarBox, scaleChromeScaleForBox, scaleFontScaleForPt } from "@/lib/v2/ui/map-scene";
+import { locatorBox, NORTH_RADIUS, northArrowBox, northScaleForBox, scaleBarBox, scaleChromeScaleForBox, scaleFontScaleForPt } from "@/lib/v2/ui/map-scene";
 import type { PageStyle } from "@/lib/v2/ui/board-state";
 import { clampTextBox, DEFAULT_REPORT_FONT_SIZES, frameSiteMarks, TEXT_BOX_COLORS, TEXT_BOX_DEFAULTS, textBoxDefaults, type MapFrameState, type MapLabelBox, type PagePanelRect, type PagePanels, type TextBox, type TextBoxColor, type TextBoxKind } from "@/lib/v2/report/report-doc";
 import type { PlannedSlide } from "@/lib/v2/report/report-plan";
@@ -577,7 +577,7 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
   const showNorth = reportFrame?.decorations.north ?? false;
   // 조판 칸(frame 기준)은 호출자가 방위표 자리를 주지 않으므로 칸 지도가 그리는 기본 방위표 상자를 피한다(위치도·바탕 라벨).
   const northAvoid = northAvoidProp ?? (panelBasis === "frame" && showNorth ? northArrowBox(width, height, rightInset, undefined, layoutUnit) : null);
-  const showScale =reportFrame?.decorations.scaleBar ?? scale;
+  const showScale = reportFrame?.decorations.scaleBar ?? scale;
   const savedNorthBox = panelRectInMap(style.panels?.north, format, unit, frame, panelBasis, width, height);
   const savedScaleBox = panelRectInMap(style.panels?.scaleBar, format, unit, frame, panelBasis, width, height);
   const savedLocatorBox = panelRectInMap(style.panels?.locator, format, unit, frame, panelBasis, width, height);
@@ -610,11 +610,8 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
   const avoid = useMemo(() => locator ? [...avoidWithoutLocator, locator] : avoidWithoutLocator, [avoidWithoutLocator, locator?.x0, locator?.y0, locator?.x1, locator?.y1]);
   const automaticScaleBox = showScale ? scaleBarBox(width, height, metersPerPixel(viewport.center[1], viewport.zoom), bottomInset, rightInset, false, undefined, layoutUnit) : null;
   const scaleBox = showScale ? (savedScaleBox ?? automaticScaleBox) : null;
-  const defaultNorthWidth = Math.max(1, northAvoid ? northAvoid.x1 - northAvoid.x0 : 2 * NORTH_RADIUS * layoutUnit);
-  const defaultNorthHeight = Math.max(1, northAvoid ? northAvoid.y1 - northAvoid.y0 : 2 * NORTH_RADIUS * layoutUnit);
-  const northScale = savedNorthBox
-    ? clampNumber(((savedNorthBox.x1 - savedNorthBox.x0) / defaultNorthWidth + (savedNorthBox.y1 - savedNorthBox.y0) / defaultNorthHeight) / 2, 0.5, 3)
-    : 1;
+  const defaultNorthSize = 2 * NORTH_RADIUS * layoutUnit;
+  const northScale = northScaleForBox(savedNorthBox, northAvoid ?? { x0: 0, y0: 0, x1: defaultNorthSize, y1: defaultNorthSize });
   const scaleChromeScale = scaleChromeScaleForBox(savedScaleBox, automaticScaleBox);
   const decorationBoxes: Partial<Record<SurfaceDecorationKey, { x0: number; y0: number; x1: number; y1: number }>> = {
     ...(showNorth && (savedNorthBox ?? northAvoid) ? { north: savedNorthBox ?? northAvoid! } : {}),

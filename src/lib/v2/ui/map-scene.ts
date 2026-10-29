@@ -309,6 +309,17 @@ export function scaleChromeScaleForBox(saved: MapSceneBox | null | undefined, au
   if (!saved || !automatic) return 1;
   return Math.max(0.5, Math.min(3, (saved.y1 - saved.y0) / Math.max(1, automatic.y1 - automatic.y0)));
 }
+
+/** 방위표 크기 배율의 하한. 장식 상자의 최소(32×24 px)까지 줄여도 지름 46u 원이 상자 안에 들도록 1/2보다 낮게 둔다. */
+export const NORTH_SCALE_MIN = 0.1;
+
+/** 저장한 방위표 상자 안에 원이 늘 들어가는 크기 배율: 자동 상자 대비 짧은 쪽 비율. 화면·PPT·장면이 같은 식을 쓴다. */
+export function northScaleForBox(saved: MapSceneBox | null | undefined, automatic: MapSceneBox | null | undefined): number {
+  if (!saved || !automatic) return 1;
+  const w = (saved.x1 - saved.x0) / Math.max(1, automatic.x1 - automatic.x0);
+  const h = (saved.y1 - saved.y0) / Math.max(1, automatic.y1 - automatic.y0);
+  return Math.max(NORTH_SCALE_MIN, Math.min(3, w, h));
+}
 type ScreenPoint = readonly [number, number];
 
 export type MapLabelEntry = {
@@ -1434,7 +1445,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
   const sat = layer === "Satellite";
   const lineColor = sat ? "#fff" : "#16181d";
   const u = layoutUnit ?? Math.min(1.5, Math.max(1, H / 360));
-  const northScale = Number.isFinite(northScaleOpt) && northScaleOpt > 0 ? Math.min(3, Math.max(0.5, northScaleOpt)) : 1;
+  const northScale = Number.isFinite(northScaleOpt) && northScaleOpt > 0 ? Math.min(3, Math.max(NORTH_SCALE_MIN, northScaleOpt)) : 1;
   const scaleChromeScale = Number.isFinite(scaleChromeScaleOpt) && scaleChromeScaleOpt > 0 ? Math.min(3, Math.max(0.5, scaleChromeScaleOpt)) : 1;
   const scaleFontScale = Number.isFinite(scaleFontScaleOpt) && scaleFontScaleOpt > 0 ? Math.min(3, Math.max(0.5, scaleFontScaleOpt)) : 1;
   const northUnit = u * northScale;

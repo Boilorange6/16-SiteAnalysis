@@ -3,7 +3,7 @@ import { buildingStyleForRaster, isBuildingLayer, layerStyle, legendItems, legen
 import { isSiteParcelLayer } from "../ui/site-parcel";
 import { calloutLegendEntries, SLIDE, slideCalloutAvoidance, slideGeometry, slideLayout, slideLegend, slidePanelRects, slideReserved, slideSiteX, terrainSectionLayout, type SlideFormat } from "../ui/overlay-layout";
 import { SLIDE_OVERVIEW_FILL, slideCalloutFrame } from "../ui/callout-layout";
-import { buildMapScene, locatorBox, mapLabelEntries, nearestLineStroke, NORTH_GLYPH, NORTH_RADIUS, northArrowBox, northArrowPoints, RAIL_EXIT_COLOR, RAIL_EXIT_DOT_RADIUS, RAIL_EXIT_DOT_STROKE, SCALE_FONT_PX, SCALE_PANEL_ABOVE, SCALE_PANEL_BELOW, SITE_MARK, scaleBarBox, scaleChromeScaleForBox, scaleFontScaleForPt, type MapScene, type MapSceneBaseBucket, type MapSceneBox } from "../ui/map-scene";
+import { buildMapScene, locatorBox, mapLabelEntries, nearestLineStroke, NORTH_GLYPH, NORTH_RADIUS, northArrowBox, northArrowPoints, northScaleForBox, RAIL_EXIT_COLOR, RAIL_EXIT_DOT_RADIUS, RAIL_EXIT_DOT_STROKE, SCALE_FONT_PX, SCALE_PANEL_ABOVE, SCALE_PANEL_BELOW, SITE_MARK, scaleBarBox, scaleChromeScaleForBox, scaleFontScaleForPt, type MapScene, type MapSceneBaseBucket, type MapSceneBox } from "../ui/map-scene";
 import { baseTheme, type BaseThemeRef } from "../ui/map-theme";
 import { badgeTextColor } from "../ui/map-labels";
 import { terrainSectionMapStyle } from "../ui/terrain-section";
@@ -31,15 +31,6 @@ function savedPanelBox(panel: PagePanelRect | undefined, basis: "page" | "frame"
   const x0 = Math.max(0, Math.min(activeSceneWidth - 1, panel.x * sourceWidth - originX));
   const y0 = Math.max(0, Math.min(activeSceneHeight - 1, panel.y * sourceHeight - originY));
   return { x0, y0, x1: Math.max(x0 + 1, Math.min(activeSceneWidth, x0 + panel.w * sourceWidth)), y1: Math.max(y0 + 1, Math.min(activeSceneHeight, y0 + panel.h * sourceHeight)) };
-}
-
-function boxScale(saved: MapSceneBox | null, automatic: MapSceneBox | null): number {
-  if (!saved || !automatic) return 1;
-  const savedWidth = Math.max(1, saved.x1 - saved.x0);
-  const savedHeight = Math.max(1, saved.y1 - saved.y0);
-  const automaticWidth = Math.max(1, automatic.x1 - automatic.x0);
-  const automaticHeight = Math.max(1, automatic.y1 - automatic.y0);
-  return Math.max(0.5, Math.min(3, (savedWidth / automaticWidth + savedHeight / automaticHeight) / 2));
 }
 
 export type NativeMapFrame = { x: number; y: number; w: number; h: number };
@@ -561,7 +552,7 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
     const cellMpp = metersPerPixel(cellViewport.center[1], cellViewport.zoom);
     const defaultNorthBox = northArrowBox(width, height, 0, undefined, cellUnit);
     const defaultScaleBox = scaleBarBox(width, height, cellMpp, cellLegend ? cellLegend.h + 32 : 0, 0, false, undefined, cellUnit);
-    const northScale = boxScale(savedNorthBox, defaultNorthBox);
+    const northScale = northScaleForBox(savedNorthBox, defaultNorthBox);
     const scaleChromeScale = scaleChromeScaleForBox(savedScaleBox, defaultScaleBox);
     const focus = legendLabelOf(displayModel, style.legendFocus);
     const northChrome = showNorth ? savedNorthBox ?? defaultNorthBox : null;
@@ -581,7 +572,7 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
       baseTheme: options.baseTheme,
       siteX: 0.5,
       bottomInset: cellLegend ? cellLegend.h + 32 : 0,
-      scale: true,
+      scale: drawScale,
       compact: true,
       pinnedKeys: style.pinnedKeys ?? [],
       hiddenKeys: style.hiddenKeys ?? [],
@@ -648,12 +639,11 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
   const showNorth = reportFrame?.decorations.north ?? true;
   const savedNorthBox = savedPanelBox(style.panels?.north);
   const savedScaleBox = savedPanelBox(style.panels?.scaleBar);
-  const nativeScaleMaxPx = reportFrame?.scaleDenominator !== null && reportFrame?.scaleDenominator !== undefined ? 150 : undefined;
-  const defaultScaleBox = !showScale ? null : scaleBarBox(VIEW_W, height, metersPerPixel(viewport.center[1], viewport.zoom), bottomInset, rightInset, false, undefined, undefined, nativeScaleMaxPx);
+  const defaultScaleBox = !showScale ? null : scaleBarBox(VIEW_W, height, metersPerPixel(viewport.center[1], viewport.zoom), bottomInset, rightInset);
   const defaultNorthBox = !showNorth ? null : northArrowBox(VIEW_W, height, rightInset, northY);
   const scaleAvoid = savedScaleBox ?? defaultScaleBox;
   const northAvoid = savedNorthBox ?? defaultNorthBox;
-  const northScale = boxScale(savedNorthBox, defaultNorthBox);
+  const northScale = northScaleForBox(savedNorthBox, defaultNorthBox);
   const scaleChromeScale = scaleChromeScaleForBox(savedScaleBox, defaultScaleBox);
   const frameOriginX = activeFrame.x * activePxPerInch;
   const frameOriginY = activeFrame.y * activePxPerInch;
@@ -708,7 +698,6 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
     avoid: locator ? [...avoid, locator] : avoid,
     bare: false,
     viewport,
-    ...(nativeScaleMaxPx !== undefined ? { scaleMaxPx: nativeScaleMaxPx } : {}),
   });
   return { scene, locator, drawScale: showScale };
 }

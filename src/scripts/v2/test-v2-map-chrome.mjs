@@ -257,6 +257,63 @@ const draw = (reportFrame) => {
   assert.equal(cross(locatorFrame, shapeBox(withLocator, "|축척|bg")), false, "I1 상세 장 위치도가 축척과 겹치지 않는다");
 }
 
+// M-1: 축척을 고정한 장의 PPT 막대도 화면과 같은 최대 길이(134u)에서 고른다(150u로 늘려 「50 m」·「100 m」로 갈리지 않는다)
+{
+  const { slide, calls } = stub();
+  // 1:1300 -> 한 px = 1300 × 0.0254 / 72 m. 960×540 PPT는 u = 1.5라 최대 201 px: 50 m = 109 px, 100 m = 218 px(150u = 225 px에는 들어간다)
+  addEditableMap(slide, plan, plan.map, { style: plan.style, format: "wide", reportFrame: { ...defaultFrame(), scaleDenominator: 1300, locked: true } });
+  const metersPerPx = 1300 * 0.0254 / 72;
+  const label = calls.find((c) => c.method === "addText" && c.args[1].objectName?.includes("|축척|label"));
+  const bar = calls.find((c) => c.method === "addShape" && c.args[1].objectName?.includes("|축척|bar"));
+  assert.ok(label && bar, "고정 축척 장의 축척 막대");
+  const barPx = bar.args[1].w * 72;
+  assert.ok(barPx <= SCALE_MAX_PX * 1.5 + 1e-6, `PPT 막대 ${barPx} px가 화면 최대 ${SCALE_MAX_PX * 1.5} px(134u)를 넘지 않는다`);
+  assert.match(label.args[0], /^50 ?m$/, `화면 규칙(134u)에서 고른 막대: ${label.args[0]}`);
+  near(barPx * metersPerPx, 50, "막대 길이 50 m", 0.5);
+}
+
+// M-2: 축척을 끈 조판 칸 PPT 장면은 보이지 않는 막대 자리를 피하지 않는다(켠 칸은 그 자리를 비워 고정 라벨이 줄어든다)
+{
+  const { mapLabelEntries } = await import("../../lib/v2/ui/map-scene.ts");
+  const keys = mapLabelEntries(plan.map).map((entry) => entry.key);
+  const labelShapes = (scaleBar) => {
+    const { slide, calls } = stub();
+    addEditableMap(slide, null, plan.map, { mode: "cell", frame: { x: 0.5, y: 0.5, w: 6, h: 3.5 }, style: { pinnedKeys: keys }, format: "wide", reportFrame: { ...defaultFrame(), pinnedKeys: keys, decorations: { north: true, scaleBar, locator: false } } });
+    return calls.filter((c) => /label|callout|card/.test(c.args[1]?.objectName ?? "") && !/축척|방위표/.test(c.args[1]?.objectName ?? "")).length;
+  };
+  assert.ok(labelShapes(false) > labelShapes(true), `축척을 끄면 그 자리를 비워 두지 않는다: 끔 ${labelShapes(false)} > 켬 ${labelShapes(true)}`);
+}
+
+// M-3: 저장한 방위표 상자를 장식 최소(32×24 px)까지 줄여도 원은 상자 안에 든다(화면·PPT 같은 식)
+{
+  const { northScaleForBox } = await import("../../lib/v2/ui/map-scene.ts");
+  const { SlideSurface } = await import("../../components/v2/report/slide-surface.tsx");
+  // PPT: 쪽 960×540 px 기준 저장 패널 32×24 px
+  const panels = { north: { x: 0.4, y: 0.4, w: 32 / 960, h: 24 / 540 } };
+  const { slide, calls } = stub();
+  addEditableMap(slide, plan, plan.map, { style: { ...plan.style, panels }, format: "wide", reportFrame: defaultFrame() });
+  const bg = calls.find((c) => c.method === "addShape" && c.args[1].objectName?.includes("|방위표|bg"));
+  assert.ok(bg, "PPT 방위표 원");
+  assert.ok(bg.args[1].w * 72 <= 24.05 && bg.args[1].h * 72 <= 24.05, `PPT 원 지름 ${bg.args[1].w * 72}×${bg.args[1].h * 72} px ≤ 상자 짧은 변 24`);
+  // 화면: 1280×720 표면에서 같은 32×24 px 상자
+  const { default: ReactModule } = await import("react");
+  const realUseState = ReactModule.useState;
+  ReactModule.useState = (init) => realUseState(init && typeof init === "object" && init.width === 0 && init.height === 0 ? { width: 1280, height: 720 } : init);
+  const page = { id: "p-m3", layout: "map-summary", panels: {}, textBoxes: [], notes: "", kind: "tile", tileId: plan.view.tileId, part: { type: "single" }, settings: {}, frame: defaultFrame() };
+  const screenPanels = { north: { x: 0.4, y: 0.4, w: 32 / 1280, h: 24 / 720 } };
+  const markup = renderToStaticMarkup(createElement(SlideSurface, { slide: { ...plan, page, style: { ...plan.style, panels: screenPanels } }, basemap: "none", mode: "view" }));
+  ReactModule.useState = realUseState;
+  const circles = [...markup.matchAll(/<circle cx="([\d.-]+)" cy="([\d.-]+)" r="([\d.]+)" fill="#fff"/g)].map((m) => Number(m[3])).filter((r) => r < 23);
+  assert.ok(circles.length > 0, "화면 방위표 원(저장 상자에 맞춰 줄어듦)");
+  for (const r of circles) assert.ok(2 * r <= 24.05, `화면 원 지름 ${2 * r} px ≤ 상자 짧은 변 24`);
+  // 공용 함수: 자동 상자(46u)보다 작은 어떤 저장 상자에서도 짧은 변을 넘지 않는다
+  for (const u of [1, 1.5, 2]) {
+    const automatic = { x0: 0, y0: 0, x1: 46 * u, y1: 46 * u };
+    const saved = { x0: 10, y0: 10, x1: 42, y1: 34 };
+    assert.ok(46 * u * northScaleForBox(saved, automatic) <= 24 + 1e-6, `u ${u}: 지름 ≤ 24`);
+  }
+}
+
 // I3: 조판 칸 화면(SSR)은 칸마다 위치도 하나, 칸 방위표와 안 겹치고 바탕 라벨도 위치도를 피한다
 {
   const { toUtmk } = await import("../../lib/v2/crs.ts");

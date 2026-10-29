@@ -92,7 +92,16 @@ const noteNames = Object.keys(a3.zip.files).filter((name) => /^ppt\/notesSlides\
 const notes = (await Promise.all(noteNames.map((name) => a3.zip.file(name).async("string")))).join("|");
 assert.match(notes, /발표자 메모/, "발표자 메모가 speaker notes로 전달된다");
 const scaleText = (xml) => [...xml.matchAll(/<p:grpSp>[\s\S]*?name="([^"]*map-D04-scale[^"]*)"[\s\S]*?<a:t>([^<]*)<\/a:t>[\s\S]*?<\/p:grpSp>/g)].map((match) => match[2]).join("|");
-assert.equal(scaleText(a3.slide), scaleText(wide.slide), "잠긴 지도는 판형이 바뀌어도 축척이 같다");
+// 막대 길이는 화면과 같은 최대(134u) 안에서 판형마다 1·2·5×10ⁿ m로 고르므로 라벨은 달라질 수 있다. 같아야 하는 것은 축척(라벨 m ÷ 막대 실제 길이)이다.
+const scaleRatio = (xml) => {
+  const bar = [...xml.matchAll(/<p:(?:sp|cxnSp)>([\s\S]*?)<\/p:(?:sp|cxnSp)>/g)].map((match) => match[1]).find((block) => /\|축척\|bar/.test(block));
+  const emu = Number(bar?.match(/<a:ext cx="(\d+)"/)?.[1]);
+  const label = scaleText(xml).trim().toLowerCase();
+  const meters = label.endsWith("km") ? Number.parseFloat(label) * 1000 : Number.parseFloat(label);
+  assert.ok(emu > 0 && meters > 0, `축척 막대·라벨: ${emu} EMU / ${label}`);
+  return meters / ((emu / 914400) * 0.0254);
+};
+assert.ok(Math.abs(scaleRatio(a3.slide) - scaleRatio(wide.slide)) / scaleRatio(wide.slide) < 0.05, "잠긴 지도는 판형이 바뀌어도 축척이 같다");
 
 // M-4: 바탕 이름 라벨은 위치도·옮긴 방위표를 피한다(도형 이름의 바탕 라벨 글상자 중심이 두 상자 안에 없다)
 {
