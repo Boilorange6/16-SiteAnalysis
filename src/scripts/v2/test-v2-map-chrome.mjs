@@ -177,6 +177,34 @@ const draw = (reportFrame) => {
     assert.ok(now.scale.x0 >= box.x0 - 1e-6, `${width}×${height} 막대 시작이 저장 상자 안`);
     assert.ok(now.scale.x1 <= width, `${width}×${height} 막대 끝이 지도 안`);
     assert.match(now.scale.label, /^[125]0*k?m$/, `${width}×${height} 1·2·5×10ⁿ 규칙 유지: ${now.scale.label}`);
+    assert.ok(now.scale.meters >= old.scale.meters, `${width}×${height} 옛 상자 안에 옛 막대가 그대로 들어간다: ${old.scale.label} → ${now.scale.label}`);
+  }
+}
+
+// 기본 크기로 저장한 축척 상자(그대로·비율 왕복·드래그 평행이동)는 기본 장면과 같은 막대를 그린다(경계값 부동소수 오차로 한 단계 짧아지지 않는다)
+{
+  const sw = 13.333 * 72;
+  const sh = 7.5 * 72;
+  for (const lat of [33.2, 35.1, 36.5, 37.62, 38.1]) {
+    for (const radiusM of [300, 500, 750, 1000, 1500, 2000, 3000]) {
+      for (const [width, height] of [[800, 330], [960, 540], [560, 250], [640, 400], [1280, 720], [333, 217]]) {
+        const model = { center: [127.15, lat], radiusM, features: [], polygons: [], lines: [], total: 0, notes: [] };
+        const base = { model, width, height, activeLayer: "white", scale: true, north: false, avoid: [] };
+        const def = buildMapScene(base);
+        const u = def.unit;
+        const b = def.scaleBox;
+        const ratio = { x: b.x0 / sw, y: b.y0 / sh, w: (b.x1 - b.x0) / sw, h: (b.y1 - b.y0) / sh };
+        const boxes = {
+          그대로: b,
+          "비율 왕복": { x0: ratio.x * sw, y0: ratio.y * sh, x1: ratio.x * sw + ratio.w * sw, y1: ratio.y * sh + ratio.h * sh },
+          드래그: { x0: b.x0 - 37.3, y0: b.y0, x1: b.x1 - 37.3, y1: b.y1 },
+        };
+        for (const [kind, box] of Object.entries(boxes)) {
+          const now = buildMapScene({ ...base, scaleBoxOverride: box, scaleX: box.x0 + 6 * u, scaleY: box.y1 - 8 * u });
+          assert.equal(now.scale.meters, def.scale.meters, `${kind} lat ${lat} r ${radiusM} ${width}×${height}: ${def.scale.label} → ${now.scale.label}`);
+        }
+      }
+    }
   }
 }
 

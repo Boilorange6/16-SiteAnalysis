@@ -1366,7 +1366,8 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
   const rings: number[] = [];
   if (showRadius) for (let meters = 500; meters < model.radiusM - 1; meters += 500) rings.push(meters / mpp);
   // 저장된 축척 상자(옛 최대 길이로 만든 것 포함)보다 막대가 길어지지 않게 상자 폭에서 좌우 여백을 뺀 길이로 묶는다.
-  const scaleBarMaxPx = scaleBoxOverride ? Math.max(1, Math.min(scaleMaxPx, (scaleBoxOverride.x1 - scaleBoxOverride.x0) / u - 2 * SCALE_PANEL_SIDE)) : scaleMaxPx;
+  // 기본 상자 폭은 막대 + 12u라 경계값(scaleBar의 m <= maxM)과 같다. 저장·이동 중 부동소수 오차로 한 단계 짧아지지 않게 1e-6 px 허용한다.
+  const scaleBarMaxPx = scaleBoxOverride ? Math.max(1, Math.min(scaleMaxPx, (scaleBoxOverride.x1 - scaleBoxOverride.x0 + 1e-6) / u - 2 * SCALE_PANEL_SIDE)) : scaleMaxPx;
   const scaleLayout = scaleBarLayout(W, H, mpp, bottomInset, rightInset, scaleLeft, scaleX, u, scaleBarMaxPx, scaleY);
   const { bar, y: barY } = scaleLayout;
   const scaleBox = scaleBoxOverride ?? scaleBarBoxFromLayout(W, H, scaleLayout);
