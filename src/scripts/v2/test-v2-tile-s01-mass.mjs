@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
@@ -12,6 +13,8 @@ const { boardReducer, initBoard } = await import("../../lib/v2/ui/board-state.ts
 const { toSummaryView, toTileView, withPalette } = await import("../../lib/v2/ui/tile-view.ts");
 const { buildReportPlan, mapKeyOf } = await import("../../lib/v2/report/report-plan.ts");
 const { renderReportPptx } = await import("../../lib/v2/report/render-pptx.ts");
+const { EMPTY_REPORT_DOC } = await import("../../lib/v2/report/report-doc.ts");
+const { importLegacyReport, planReportDoc } = await import("../../lib/v2/report/report-doc-plan.ts");
 const JSZip = (await import("jszip")).default;
 
 const ring = (x, y, size = 10) => [[x - size, y - size], [x + size, y - size], [x + size, y + size], [x - size, y + size], [x - size, y - size]];
@@ -264,6 +267,20 @@ const explodedBoard = boardReducer(board, { type: "cut", id: "t-S01", cut: { til
 const explodedPlan = buildReportPlan({ summary: toSummaryView({ address: "테스트", areaM2: null, zoning: null, radiusM: 100, facts: [] }, [tile]), views: new Map([[tile.tileId, view]]), board: explodedBoard, analysisDate: "2026-09-30" });
 const explodedSlide = explodedPlan.find((p) => p.kind === "tile");
 assert.deepEqual(explodedSlide?.mass?.exploded, { spreadPct: 24, scheme: "use" }, "S01 PPT는 선택한 분해 매스를 같은 MassFigure 경로로 렌더링");
+// 보고서·쪽 수준 팔레트가 PPT 계획의 S01 매스(slide.mass)에도 실린다.
+const docViews = new Map([[tile.tileId, view]]);
+const docContext = { summary: toSummaryView({ address: "테스트", areaM2: null, zoning: null, radiusM: 100, facts: [] }, [tile]), analysisDate: "2026-09-30", views: docViews };
+const docPages = importLegacyReport(EMPTY_REPORT_DOC, board, docViews, docContext);
+const docMassSlide = (doc) => planReportDoc(doc, docViews, docContext).find((slide) => slide.kind === "tile" && slide.mass);
+assert.equal(docMassSlide({ ...EMPTY_REPORT_DOC, pages: docPages })?.mass?.palette, undefined, "팔레트를 안 고르면 매스에 키가 없다");
+assert.equal(docMassSlide({ ...EMPTY_REPORT_DOC, pages: docPages, mapColors: { palette: "vivid" } })?.mass?.palette, "vivid", "보고서 팔레트가 slide.mass에 실린다");
+const massPageId = docPages.find((page) => page.kind === "tile")?.id;
+assert.equal(docMassSlide({ ...EMPTY_REPORT_DOC, pages: docPages.map((page) => (page.id === massPageId ? { ...page, mapColors: { palette: "earth" } } : page)), mapColors: { palette: "vivid" } })?.mass?.palette, "earth", "쪽 팔레트가 보고서 팔레트를 이긴다");
+// 타일 이미지 내보내기는 view.mass 전체(팔레트 포함)를 래스터 경로에 넘긴다. 호출부는 DOM·WebGL이 있어야 실행되어 소스로 확인한다.
+const tileImageSource = readFileSync(new URL("../../lib/v2/export/tile-image.ts", import.meta.url), "utf8");
+const mapImageSource = readFileSync(new URL("../../lib/v2/report/map-image.ts", import.meta.url), "utf8");
+assert.ok(/rasterizeMass\(view\.mass,/.test(tileImageSource), "tile-image는 MassModel 전체를 rasterizeMass에 넘긴다");
+assert.ok(!/rasterizeMass\(scene: Scene/.test(mapImageSource), "scene/camera 오버로드가 없어 palette가 빠질 길이 없다");
 const zip = await JSZip.loadAsync(await renderReportPptx(plan));
 const xml = await zip.file("ppt/slides/slide2.xml").async("string");
 assert.match(xml, /DXF·GLB는 내보내기에서/);

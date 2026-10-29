@@ -277,7 +277,7 @@ export async function tileSvgForView(view: TileView, options: TileImageOptions =
   }
   if (view.mass && !prepared.visualHref && typeof document !== "undefined") {
     try {
-      prepared.visualHref = await rasterizeMass(view.mass.scene, view.mass.camera, layout.visualWidth, layout.visualHeight, view.mass.exploded);
+      prepared.visualHref = await rasterizeMass(view.mass, view.mass.exploded, layout.visualWidth, layout.visualHeight);
     } catch {
       // tileSvg의 MassFigure 정적 경로로 계속한다.
     }

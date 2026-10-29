@@ -497,13 +497,17 @@ export function withCalloutColors(model: CalloutModel, colors: Pick<MapColorChoi
   return hide ? { ...withColors, baseHide: [...hide] } : withColors;
 }
 
+/** 매스 모델에 고른 팔레트를 싣는다. 고른 것이 없거나 매스가 없으면 같은 값. */
+export const withMassPalette = <M extends MassModel | null | undefined>(mass: M, colors: Pick<MapColorChoice, "palette">): M =>
+  (mass && colors.palette !== undefined ? { ...mass, palette: colors.palette } : mass) as M;
+
 /** view의 모든 지도 모델(지도·배경·원본 지도)과 설명선에 고른 색(바탕 테마·팔레트·끈 레이어)을 붙인다. 고른 것이 없으면 같은 view. */
 export function withPalette(view: TileView, colors: MapColorChoice): TileView {
   const map = withMapColors(view.map, colors) ?? null;
   const backdrop = withMapColors(view.backdrop, colors);
   const layerSourceMap = withMapColors(view.layerSourceMap, colors);
   const callout = view.callout ? withCalloutColors(view.callout, colors) : view.callout;
-  const mass = view.mass && colors.palette !== undefined ? { ...view.mass, palette: colors.palette } : view.mass;
+  const mass = withMassPalette(view.mass, colors);
   if (map === view.map && backdrop === view.backdrop && layerSourceMap === view.layerSourceMap && callout === view.callout && mass === view.mass) return view;
   return { ...view, map, backdrop, ...(view.layerSourceMap !== undefined ? { layerSourceMap } : {}), ...(view.callout ? { callout } : {}), mass };
 }

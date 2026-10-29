@@ -18,7 +18,7 @@ import type { MapModel } from "../ui/map-layers";
 import { catalogEntry, TILE_CODES } from "../ui/tile-catalog";
 import type { SourceDetailRow, SourceMeta } from "../ui/source-details";
 import { sourceDetailsFor, UNKNOWN_AS_OF } from "../ui/source-details";
-import { toTileView, withCalloutColors, withPalette, type SummaryView, type TileView } from "../ui/tile-view";
+import { toTileView, withCalloutColors, withMassPalette, withPalette, type SummaryView, type TileView } from "../ui/tile-view";
 import { mergeMapColors, withMapColors } from "../ui/map-colors";
 import type { Scene } from "../scene";
 import type { MapPolygon, TileResult } from "../tile-result";
@@ -698,10 +698,11 @@ function colorSlide<S extends ReportSlide>(slide: S, colors: MapColorChoice | un
       ...slide,
       map: withMapColors(slide.map, colors) ?? null,
       view: withPalette(slide.view, colors),
+      ...(slide.mass ? { mass: withMassPalette(slide.mass, colors) } : {}),
       ...(slide.callout ? { callout: { ...slide.callout, model: withCalloutColors(slide.callout.model, colors) } } : {}),
     };
   }
-  return { ...slide, view: withPalette(slide.view, colors), cells: slide.cells.map((cell) => (cell ? { ...cell, view: withPalette(cell.view, colors) } : cell)) };
+  return { ...slide, view: withPalette(slide.view, colors), cells: slide.cells.map((cell) => (cell ? { ...cell, view: withPalette(cell.view, colors), ...(cell.mass ? { mass: withMassPalette(cell.mass, colors) } : {}) } : cell)) };
 }
 
 export function printedPageCount(doc: ReportDoc, views: ReadonlyMap<string, TileView>, ctx: ReportDocPlanContext): number {

@@ -10,11 +10,10 @@ import MapFigure, { type MapFigureProps } from "@/components/v2/map-figure";
 import MassFigure from "@/components/v2/mass-figure";
 import WindRoseFigure from "@/components/v2/wind-rose-figure";
 import { legendLabelOf, type MapModel } from "../ui/map-layers";
-import type { MassCamera, MassColorScheme, MassModel } from "../ui/mass-projection";
+import type { MassColorScheme, MassModel } from "../ui/mass-projection";
 import type { RoseModel } from "../ui/wind-rose";
 import { S01_MASS_LABEL } from "../tile/s01/cut";
 import type { RoseSeason } from "../tile-result";
-import type { Scene } from "../scene";
 import { renderMass3dPng } from "../ui/mass-3d-runtime";
 import { calloutLegendEntries, SLIDE, slideCalloutAvoidance, slideLayout, slidePanelRects, slideReserved, slideSiteX, slideLegend, terrainSectionLayout } from "../ui/overlay-layout";
 import { exportBasemap, resolveBasemap } from "../ui/basemap";
@@ -257,22 +256,14 @@ function mapForCell(cell: SheetCell): MapModel | null {
   return model.tileCode ? model : { ...model, tileCode: cell.view.code };
 }
 
-export function rasterizeMass(mass: MassModel, exploded?: MassExplodedOptions): Promise<string>;
-export function rasterizeMass(scene: Scene | null, camera: MassCamera, width?: number, height?: number, exploded?: MassExplodedOptions): Promise<string>;
+/** MassModel 전체(팔레트 포함)를 받는다. scene/camera를 따로 받으면 palette가 빠지므로 그런 형태는 두지 않는다. */
 export async function rasterizeMass(
-  sceneOrMass: Scene | MassModel | null,
-  cameraOrExploded?: MassCamera | MassExplodedOptions,
+  model: MassModel,
+  exploded: MassExplodedOptions | undefined = model.exploded,
   width = VIEW_W,
   height = VIEW_H,
-  exploded?: MassExplodedOptions,
 ): Promise<string> {
-  const isCamera = Boolean(cameraOrExploded && "azimuthDeg" in cameraOrExploded && "elevationDeg" in cameraOrExploded);
-  const mass: MassModel = isCamera
-    ? { scene: sceneOrMass as Scene | null, camera: cameraOrExploded as MassCamera, exploded }
-    : {
-        ...(sceneOrMass as MassModel),
-        exploded: exploded ?? (cameraOrExploded && "spreadPct" in cameraOrExploded ? cameraOrExploded : undefined),
-      };
+  const mass: MassModel = { ...model, exploded };
   try {
     return await renderMass3dPng({
       scene: mass.scene,
