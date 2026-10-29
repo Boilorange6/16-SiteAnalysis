@@ -93,6 +93,12 @@ export const SITE_MARK = {
   dimMinM: 35, dimOffset: 8, dimFont: 10.5, dimExtStart: 2, dimExtOver: 4, dimTick: 3.2, dimTextGap: 0.8, dimProbe: 4,
   /** 화면에서 변(두 연장선 사이)이 글자 상자 폭의 이 비율보다 짧으면 그 치수는 생략한다(0.6: 대지 확대 시안의 37.3 m 변은 남는다). */
   dimFitRatio: 0.6,
+  /**
+   * 표고가 피하는 대지 표식 상자의 반변(u 단위): 필지는 ◇ 중심 표식, 링은 원·십자 전체.
+   * 그려진 표식은 siteR(고정 10 px·PPT 7 px)이라 장면 크기마다 u와의 비가 달라, 상자를 siteR로 만들면
+   * 같은 장이 미리보기 폭·PPT에서 다른 표고를 남긴다. u에 비례하는 값으로 두어 어느 크기에서나 같은 판정이 나게 한다.
+   */
+  markerHalfParcel: 6.5, markerHalfRing: 11.5,
   dimInk: "#2b2b2b", dimParallelWidth: 0.8, dimExtWidth: 0.7, dimTickWidth: 1.1, dimWeight: 500,
   elevFont: 8.5, elevCross: 3, elevTextGap: 1.1, elevMinGap: 3.2, elevHaloWidth: 3, elevInkWidth: 1.2, elevInk: "#16181d", elevWeight: 400,
   /** 흰 halo 굵기 = 글자 크기 × 0.36 (치수·표고 공통). */
@@ -1675,10 +1681,9 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
   }
   const siteOutline = model.siteOutline;
   const siteDims = siteMarks?.dims && siteOutline ? siteDimScene(siteOutline, project, u) : [];
-  // 대지 표식: 필지는 ◇ 중심 표식(중심 ± (1.1·siteR + 선 반폭)), 링은 십자·원 전체. 표고 글자는 치수 글자·이 상자를 피한다.
-  const siteMarkerBox: MapSceneBox | null = !showSiteMarker || muted ? null
-    : siteMode === "parcel" ? { x0: cx - diamondExtent - markerHalfStroke, y0: cy - diamondExtent - markerHalfStroke, x1: cx + diamondExtent + markerHalfStroke, y1: cy + diamondExtent + markerHalfStroke }
-    : siteBounds;
+  // 대지 표식: 필지는 ◇ 중심 표식, 링은 십자·원 전체. 표고 글자는 치수 글자·이 상자(u 비례, SITE_MARK.markerHalf*)를 피한다.
+  const markerHalf = (siteMode === "parcel" ? SITE_MARK.markerHalfParcel : SITE_MARK.markerHalfRing) * u;
+  const siteMarkerBox: MapSceneBox | null = !showSiteMarker || muted ? null : { x0: cx - markerHalf, y0: cy - markerHalf, x1: cx + markerHalf, y1: cy + markerHalf };
   const siteElevations = siteMarks?.elevations && siteOutline ? siteElevationScene(siteOutline, project, u, siteDims, siteMarkerBox) : [];
   const siteMarkBoxes = [...siteDims.map((dim) => dim.box), ...siteElevations.map((elevation) => elevation.box)];
   const occupiedBoxes: MapSceneBox[] = [

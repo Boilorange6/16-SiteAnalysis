@@ -204,6 +204,23 @@ const BOTH = { dims: true, elevations: true };
   for (const el of full.siteElevations) for (const dim of full.siteDims) assert.ok(!overlaps(el.box, dim.box), `전체 보기: 표고 ${el.text}·치수 ${dim.text} 겹침`);
 }
 
+// scale-invariant: 같은 장은 화면 미리보기(고정 표식 10 px, 무대 폭마다 u가 다름)와 PPT(960 px, u 1.5)에서 같은 치수·표고가 남는다
+{
+  const local = [[138.3, -117.5], [-45, -161.5], [-114.4, -39.1], [-82, -20.4], [-144.4, 86.8], [-12.7, 161.8], [-5.4, 159.8], [144.3, -103.8]];
+  const outline = outlineOf(local, [19.1, 19.1, 18.9, 17.8, 18.9, 17.5, 17.4, 18]);
+  const ring = outline.rings[0].points;
+  const model = modelOf(outline, { radiusM: 1000, siteParcel: [{ layer: "parcel_site", fid: "p", rings: [[...ring, ring[0]]] }] });
+  const marksAt = (width, fixed, zoomDelta) => {
+    const scene = buildMapScene({ model, width, height: Math.round((width * 9) / 16), activeLayer: "white", fixed, layoutUnit: (1.5 * width) / 960, view: { zoomDelta, offsetM: [0, 0] }, siteMarks: BOTH });
+    return JSON.stringify([scene.siteDims.map((d) => d.text), scene.siteElevations.map((e) => e.text)]);
+  };
+  for (const zoomDelta of [0, 0.5, 1]) {
+    const reference = marksAt(960, false, zoomDelta);
+    for (const width of [960, 1032, 1258]) for (const fixed of [false, true]) assert.equal(marksAt(width, fixed, zoomDelta), reference, `줌 ${zoomDelta}: 폭 ${width}·fixed ${fixed}에서 PPT(960)와 같은 치수·표고`);
+  }
+  assert.equal(JSON.parse(marksAt(960, false, 0))[1].length, 2, "1:13,120 근처 장은 표고 2개(19.1·17.5)");
+}
+
 // svg: MapFigure siteMarks on → 글자·회전·× 경로, off면 없음
 {
   const model = modelOf(outlineOf(rect(100, 60), [18.9, 17.5, 18.2, 18.0]));
