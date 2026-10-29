@@ -3,6 +3,7 @@ import { isPreBasemapScene, type GreenKind, type Scene } from "../scene";
 import { publicRailLine, railLineColor } from "../tile/rail-presentation";
 import type { MapFrameState } from "../report/report-doc";
 import type { BasemapChoice } from "./map-projection";
+import { mergeOverlapping } from "./poly-overlap";
 
 /** 벡터 바탕이 그리는 층. 묶음(`MapSceneBaseBucket.layer`)과 타일별 생략(`BASE_SUPPRESS`)이 같은 이름을 쓴다. */
 export type BaseLayerKind = "water" | "green" | "parcel" | "road" | "rail" | "building" | "station";
@@ -43,12 +44,19 @@ export function mapBaseFromScene(scene: Scene): MapBase {
   const rings = (list: readonly (readonly (readonly [number, number])[])[]): LngLat[][] => list.map((ring) => ring.map(ll));
   const context = scene.context;
   const green = context?.green ?? [];
+  // 층마다 겹친 면을 합친다(층당 경로 하나를 even-odd로 칠하면 겹친 곳이 구멍이 된다). 바탕 지물은 선택·라벨 대상이 아니라 합쳐도 잃는 것이 없다.
+  // 분류가 없는 옛 장면의 녹지는 공원으로 본다. 과수원은 화면에서 잔디와 같은 층으로 그리므로 잔디로 묶는다.
+  const greenByKind = new Map<GreenKind, (typeof green)[number][]>();
+  green.forEach((list, index) => {
+    const kind = context?.greenKinds?.[index] ?? "park";
+    const key = kind === "orchard" ? "grass" : kind;
+    greenByKind.set(key, [...(greenByKind.get(key) ?? []), list]);
+  });
   const base: MapBase = {
-    buildings: scene.buildings.map((building) => rings(building.rings)),
+    buildings: mergeOverlapping(scene.buildings.map((building) => building.rings)).map(rings),
     parcels: scene.parcels.map((parcel) => rings(parcel.rings)),
-    water: (context?.water ?? []).map(rings),
-    // 분류가 없는 옛 장면의 녹지는 공원으로 본다.
-    green: green.map((list, index) => ({ kind: context?.greenKinds?.[index] ?? "park", rings: rings(list) })),
+    water: mergeOverlapping(context?.water ?? []).map(rings),
+    green: [...greenByKind].flatMap(([kind, lists]) => mergeOverlapping(lists).map((list) => ({ kind, rings: rings(list) }))),
     roads: (context?.roads ?? []).map((road) => ({ hierarchy: road.hierarchy, widthM: road.widthM, name: road.name ?? null, points: road.points.map(ll) })),
     // A01 타일과 같은 공식 노선색으로 맞추고, 셔틀 등 비공용 노선은 뺀다.
     rail: (context?.rail ?? [])

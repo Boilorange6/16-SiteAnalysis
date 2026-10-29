@@ -7,6 +7,7 @@ import { buildMapScene, locatorBox, mapLabelEntries, nearestLineStroke, NORTH_GL
 import { baseTheme, type BaseThemeRef } from "../ui/map-theme";
 import { badgeTextColor } from "../ui/map-labels";
 import { terrainSectionMapStyle } from "../ui/terrain-section";
+import { splitOverlapping } from "../ui/poly-overlap";
 import { FONT, fontSizeForStyle, INK, hex, textIn, type Slide } from "./pptx-kit";
 import type { PlannedSlide } from "./report-plan";
 import type { PageStyle } from "../ui/board-state";
@@ -763,6 +764,7 @@ function addBaseLabels(slide: Slide, code: string, scene: MapScene, muted: boole
 
 function addPolygons(slide: Slide, code: string, scene: MapScene, model: MapModel): void {
   const buckets = new Map<string, Bucket>();
+  const faces = new Map<string, PixelPath[][]>();
   const hasRaster = (model.rasters?.length ?? 0) > 0;
   for (const polygon of scene.polygons) {
     if (isSiteParcelLayer(polygon.polygon.layer) || isRasterizedLayer(polygon.polygon.layer)) continue;
@@ -783,10 +785,16 @@ function addPolygons(slide: Slide, code: string, scene: MapScene, model: MapMode
     const dash = estimated ? "dash" : undefined;
     const key = `${groupKey}-polygon-${safeKey(`${fill}-${fillOpacity}-${stroke}-${lineWidth}-${lineOpacity}-${dash ?? "solid"}`)}`;
     const bucket = buckets.get(key) ?? { paths: [], fill, fillOpacity, line: stroke, lineWidth, lineOpacity, dash, key: groupKey, display: `범례 ${legendLabel}` };
-    bucket.paths.push(...polygon.rings);
     buckets.set(key, bucket);
+    const list = faces.get(key);
+    if (list) list.push(polygon.rings); else faces.set(key, [polygon.rings]);
   }
-  addBuckets(slide, code, buckets, true);
+  // 한 도형 안에서는 even-odd라 겹친 면이 구멍이 된다. 같은 스타일 묶음을 겹치는 면끼리 갈라 하위 묶음마다 도형을 만든다(화면은 면마다 경로가 따로).
+  const parts = new Map<string, Bucket>();
+  for (const [key, bucket] of buckets) {
+    splitOverlapping(faces.get(key) ?? []).forEach((group, index) => parts.set(`${key}-${index}`, { ...bucket, paths: group.flat() }));
+  }
+  addBuckets(slide, code, parts, true);
 }
 
 function addLines(slide: Slide, code: string, scene: MapScene, model: MapModel): void {
