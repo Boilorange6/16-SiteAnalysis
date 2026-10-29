@@ -36,6 +36,14 @@ assert.equal(siteOutlineFromScene(sceneOf([])), null);
   assert.deepEqual(outline.rings[0].elevations, [null, null, null, null], "flat 지반은 표고 null");
 }
 
+// 시작점이 변 가운데(또는 모서리에서 0.3 m 벗어남)여도 가짜 꼭짓점이 남지 않는다(고리 1개 = union을 건너뛰는 경로)
+for (const start of [[50, 0], [50, 0.3]]) {
+  const ring = [start, [75, 0], [100, 0], [100, 25], [100, 50], [50, 50], [0, 50], [0, 25], [0, 0], [25, 0], start];
+  const { points } = siteOutlineFromScene(sceneOf([ring])).rings[0];
+  assert.equal(points.length, 4, `시작점 ${start}: 꼭짓점 4개`);
+  assert.ok(points.every((p) => { const [x] = local(p); return Math.abs(x) < 0.5 || Math.abs(x - 100) < 0.5; }), `시작점 ${start}: 모서리만 남는다`);
+}
+
 // dem: z = 0.01·x 평면, originZ 15 → x=100 꼭짓점 16.0, x=0 꼭짓점 15.0
 {
   const cols = 21, rows = 21, cellM = 10;

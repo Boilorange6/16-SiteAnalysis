@@ -31,14 +31,14 @@ function simplifyChain(chain: [number, number][], tol: number): [number, number]
   return [...simplifyChain(chain.slice(0, far + 1), tol).slice(0, -1), ...simplifyChain(chain.slice(far), tol)];
 }
 
-/** 닫는 점이 없는 고리를 첫 점에서 가장 먼 점으로 둘로 나눠 각각 줄인다(통째로 줄이면 시작=끝이라 2점만 남는다). */
-function simplifyClosed(ring: [number, number][], tol: number): [number, number][] {
-  let split = 0;
-  let splitD = -1;
-  ring.forEach((p, i) => {
-    const d = Math.hypot(p[0] - ring[0][0], p[1] - ring[0][1]);
-    if (d > splitD) { splitD = d; split = i; }
-  });
+/** 닫는 점이 없는 고리를 가장 먼 두 점으로 둘로 나눠 각각 줄인다(통째로 줄이면 시작=끝이라 2점만 남는다). */
+function simplifyClosed(points: [number, number][], tol: number): [number, number][] {
+  const farthestFrom = (from: readonly [number, number]): number =>
+    points.reduce((best, p, i) => Math.hypot(p[0] - from[0], p[1] - from[1]) > Math.hypot(points[best][0] - from[0], points[best][1] - from[1]) ? i : best, 0);
+  // 시작점이 변 가운데일 수 있으니 첫 점에서 가장 먼 점(볼록 껍질 꼭짓점 = 진짜 모서리)으로 시작을 돌린다.
+  const rotate = farthestFrom(points[0]);
+  const ring = [...points.slice(rotate), ...points.slice(0, rotate)];
+  const split = farthestFrom(ring[0]);
   const a = simplifyChain(ring.slice(0, split + 1), tol);
   const b = simplifyChain([...ring.slice(split), ring[0]], tol);
   return [...a.slice(0, -1), ...b.slice(0, -1)];
