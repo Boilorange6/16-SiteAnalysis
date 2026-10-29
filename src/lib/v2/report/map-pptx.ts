@@ -743,23 +743,23 @@ const BASE_MUTED_OPACITY = 0.55;
 function addBaseMap(slide: Slide, code: string, scene: MapScene, muted: boolean): void {
   const base = scene.base;
   if (!base) return;
-  const fade = muted ? BASE_MUTED_OPACITY : 1;
   const bg = { x: activeFrame.x, y: activeFrame.y, w: activeFrame.w, h: activeFrame.h, fill: { color: color(base.bg) }, line: { color: color(base.bg), width: 0, transparency: 100 }, objectName: tag(code, "bg", "바탕 · 바탕색", "rect") };
   if (activeMode === "cell") slide.addShape("roundRect", { ...bg, rectRadius: 0.08 });
   else slide.addShape("rect", bg);
   for (const bucket of base.buckets) {
     addCustom(slide, bucket.paths, {
       fill: bucket.fill ?? undefined,
-      fillOpacity: fade,
       line: bucket.stroke ?? undefined,
       lineWidth: bucket.strokeWidth,
-      lineOpacity: (bucket.opacity ?? 1) * fade,
+      lineOpacity: bucket.opacity ?? 1,
       dash: bucket.dash,
       closed: bucket.closed,
       simplify: BASE_SIMPLIFY_PX,
       objectName: tag(code, bucket.layer, `바탕 · ${BASE_LAYER_NAME[bucket.layer]}`, bucket.key),
     });
   }
+  // 흐린 장: 묶음을 각각 흐리면 겹침(도로 외곽선·건물 등)이 진해지므로, 보통 장처럼 그린 뒤 바탕색 한 장으로 덮는다(화면의 묶음 그룹 opacity와 같은 결과).
+  if (muted) slide.addShape(activeMode === "cell" ? "roundRect" : "rect", { ...bg, ...(activeMode === "cell" ? { rectRadius: 0.08 } : {}), fill: { color: color(base.bg), transparency: transparency(1 - BASE_MUTED_OPACITY) }, objectName: tag(code, "base-muted", "바탕 흐림", "0") });
 }
 
 /** 바탕 이름 라벨: 주제 면·선 위, 점·대지 표식·주제 라벨 아래(화면 MapFigure의 data-map-base="labels"와 같은 자리). */

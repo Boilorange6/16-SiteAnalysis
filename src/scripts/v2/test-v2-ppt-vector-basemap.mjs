@@ -413,6 +413,21 @@ const sheetPlanOf = (models, images = {}) => ({
   const normal = tilePlan("A04", vectorModel, "not-muted");
   const { xml: [normalXml] } = await slidesOf([normal], {}, { basemap: "vector" });
   assert.ok(normalXml.includes("|halo\""), "보통 장은 후광 있음");
+  // M-8: 묶음은 흐리지 않은 장과 똑같이 그리고(배율 없음), 묶음 뒤 바탕색 한 장(투명도 55)이 덮는다 — 교차부가 진해지지 않게
+  const bundleBlocks = (x) => spBlocks(x).filter((b) => /name="GRP\|map-base-(water|green|parcel|road|rail|building|station)\|/.test(b));
+  const mutedBundles = bundleBlocks(xml);
+  assert.ok(mutedBundles.length > 0, "바탕 묶음이 있다");
+  assert.deepEqual(mutedBundles, bundleBlocks(normalXml), "흐린 장 묶음 도형이 보통 장과 같다(흐림 배율 없음)");
+  const building = mutedBundles.find((b) => b.includes("|건물|") || b.includes("map-base-building"));
+  assert.ok(building && !building.includes("<a:alpha"), "건물 custGeom에 알파 없음");
+  const names = spBlocks(xml).map((b) => /name="([^"]*)"/.exec(b)?.[1] ?? "");
+  const coverIndex = names.findIndex((n) => n.includes("|바탕 흐림|"));
+  const coverBlock = spBlocks(xml)[coverIndex];
+  assert.ok(coverIndex >= 0 && count(xml, /\|바탕 흐림\|/g) === 1, "바탕 흐림 사각형 1개");
+  assert.ok(/<a:alpha val="45000"/.test(coverBlock), "채움 알파 45000");
+  assert.ok(names.slice(0, coverIndex).filter((n) => /map-base-(water|green|parcel|road|rail|building|station)\|/.test(n)).length === mutedBundles.length, "묶음 전부 다음에 덮개");
+  assert.ok(!names.slice(coverIndex + 1).some((n) => /map-base-(water|green|parcel|road|rail|building|station)\|/.test(n)), "덮개 뒤에 묶음 없음");
+  assert.ok(!normalXml.includes("바탕 흐림"), "보통 장에는 덮개 없음");
 }
 
 // ── fix1-7: 값 래스터 그림이 오지 못하면 조용히 빠지지 않고 자리표시 ──
