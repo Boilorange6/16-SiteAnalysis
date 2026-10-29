@@ -10,7 +10,7 @@ if (!id || !out || id.startsWith("-")) {
 }
 const browser = await chromium.launch();
 const ctx = await qaContext(browser);
-const r = await ctx.request.post(`${base}/api/v2/analyses/${id}/refresh`);
+const r = await ctx.request.post(`${base}/api/v2/analyses/${id}/refresh`, { timeout: 120000 }); // dev 첫 요청은 컴파일로 30 s를 넘는다
 console.log("refresh", r.status(), (await r.text()).slice(0, 300));
 if (!r.ok()) { await browser.close(); process.exit(1); }
 const t0 = Date.now();
