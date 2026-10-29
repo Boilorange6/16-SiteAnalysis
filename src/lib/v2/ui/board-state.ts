@@ -1044,6 +1044,8 @@ function reportFrame(value: unknown): MapFrameState {
       ...(typeof value.decorations.north === "boolean" ? { north: value.decorations.north } : {}),
       ...(typeof value.decorations.scaleBar === "boolean" ? { scaleBar: value.decorations.scaleBar } : {}),
       ...(typeof value.decorations.locator === "boolean" ? { locator: value.decorations.locator } : {}),
+      ...(typeof value.decorations.siteDims === "boolean" ? { siteDims: value.decorations.siteDims } : {}),
+      ...(typeof value.decorations.siteElevations === "boolean" ? { siteElevations: value.decorations.siteElevations } : {}),
     };
   }
   return frame;

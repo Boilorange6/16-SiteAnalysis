@@ -3,7 +3,7 @@ import { buildingStyleForRaster, isBuildingLayer, layerStyle, legendItems, legen
 import { isSiteParcelLayer } from "../ui/site-parcel";
 import { calloutLegendEntries, SLIDE, slideCalloutAvoidance, slideGeometry, slideLayout, slideLegend, slidePanelRects, slideReserved, slideSiteX, terrainSectionLayout, type SlideFormat } from "../ui/overlay-layout";
 import { SLIDE_OVERVIEW_FILL, slideCalloutFrame } from "../ui/callout-layout";
-import { buildMapScene, locatorBox, mapLabelEntries, nearestLineStroke, NORTH_GLYPH, NORTH_RADIUS, northArrowBox, northArrowPoints, RAIL_EXIT_COLOR, RAIL_EXIT_DOT_RADIUS, RAIL_EXIT_DOT_STROKE, SCALE_FONT_PX, SCALE_PANEL_ABOVE, SCALE_PANEL_BELOW, scaleBarBox, scaleChromeScaleForBox, scaleFontScaleForPt, type MapScene, type MapSceneBaseBucket, type MapSceneBox } from "../ui/map-scene";
+import { buildMapScene, locatorBox, mapLabelEntries, nearestLineStroke, NORTH_GLYPH, NORTH_RADIUS, northArrowBox, northArrowPoints, RAIL_EXIT_COLOR, RAIL_EXIT_DOT_RADIUS, RAIL_EXIT_DOT_STROKE, SCALE_FONT_PX, SCALE_PANEL_ABOVE, SCALE_PANEL_BELOW, SITE_MARK, scaleBarBox, scaleChromeScaleForBox, scaleFontScaleForPt, type MapScene, type MapSceneBaseBucket, type MapSceneBox } from "../ui/map-scene";
 import { baseTheme, type BaseThemeRef } from "../ui/map-theme";
 import { badgeTextColor } from "../ui/map-labels";
 import { terrainSectionMapStyle } from "../ui/terrain-section";
@@ -12,7 +12,7 @@ import type { PlannedSlide } from "./report-plan";
 import type { PageStyle } from "../ui/board-state";
 import { metersPerPixel, slideViewport, type BasemapChoice } from "../ui/map-projection";
 import { scaleOptionsForFrame, zoomForScale } from "../ui/report-scale";
-import { DEFAULT_REPORT_FONT_SIZES, type MapFrameState, type PagePanelRect, type ReportLayout } from "./report-doc";
+import { DEFAULT_REPORT_FONT_SIZES, frameSiteMarks, type MapFrameState, type PagePanelRect, type ReportLayout } from "./report-doc";
 import { mapLayoutUnitForFrame } from "./report-geometry";
 
 const VIEW_W = 960;
@@ -573,6 +573,7 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
       showAutomaticLabels: false,
       labelScale: fontSizeForStyle(style, "labels") / 10,
       scaleFontScale: scaleFontScaleForPt(fontSizeForStyle(style, "scale")),
+      siteMarks: frameSiteMarks(reportFrame),
       legendBox: cellLegend?.box ?? null,
       calloutTop: cellChipBottom + 8 * cellUnit,
       avoid: [],
@@ -669,6 +670,7 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
     showAutomaticLabels: reportFrame?.labelRule !== "off",
     labelScale: fontSizeForStyle(frameStyle, "labels") / 10,
     scaleFontScale: scaleFontScaleForPt(fontSizeForStyle(frameStyle, "scale")),
+    siteMarks: frameSiteMarks(reportFrame),
     northScale,
     scaleChromeScale,
     north: showNorth ? (savedNorthBox ? (savedNorthBox.y0 + savedNorthBox.y1) / 2 : northY) : false,
@@ -928,6 +930,42 @@ function addSite(slide: Slide, code: string, scene: MapScene, themeId?: BaseThem
   }
 }
 
+/** 글자 하나: 바탕 라벨처럼 흰 윤곽 글상자를 아래에 깔고 그 위에 글자를 얹는다(PPT 글자는 paint-order 후광이 없다). 글상자는 (x, y)를 세로 중심으로 anchor 쪽에 놓인다. */
+function addMarkText(slide: Slide, name: (part: string) => string, text: string, at: { x: number; y: number; anchor: "start" | "middle" | "end"; fontSize: number; angle?: number; ink: string }): void {
+  const pt = fontPt(at.fontSize, 6);
+  const w = textIn(text, pt) + 0.12;
+  const h = (pt / 72) * 1.5;
+  const x = at.anchor === "start" ? pxX(at.x) : at.anchor === "end" ? pxX(at.x) - w : pxX(at.x) - w / 2;
+  const common = { x, y: pxY(at.y) - h / 2, w, h, align: at.anchor === "start" ? "left" as const : at.anchor === "end" ? "right" as const : "center" as const, valign: "middle" as const, fontFace: FONT, fontSize: pt, margin: 0, wrap: false, ...(at.angle ? { rotate: at.angle } : {}) };
+  slide.addText(text, { ...common, color: "FFFFFF", outline: { size: Math.max(1.2, pxPt(at.fontSize * SITE_MARK.haloRatio)), color: "FFFFFF" }, objectName: name("halo") });
+  slide.addText(text, { ...common, color: color(at.ink), objectName: name("text") });
+}
+
+/** 보고서 장식 `대지 치수`(A형)·`대지 표고`(C형). 화면 MapFigure의 siteMarkNodes와 같은 scene.siteDims·siteElevations·SITE_MARK를 그린다. */
+function addSiteMarks(slide: Slide, code: string, scene: MapScene): void {
+  const k = SITE_MARK;
+  const u = scene.unit;
+  scene.siteDims.forEach((dim, i) => {
+    const name = (part: string) => tag(code, "site-dims", "대지 치수", `${i}-${part}`);
+    addCustom(slide, dim.ext, { line: k.dimInk, lineWidth: k.dimExtWidth * u, objectName: name("ext") });
+    addCustom(slide, [dim.line], { line: k.dimInk, lineWidth: k.dimParallelWidth * u, objectName: name("line") });
+    addCustom(slide, dim.ticks, { line: k.dimInk, lineWidth: k.dimTickWidth * u, objectName: name("tick") });
+    if (rectInsideFrame(dim.box.x0, dim.box.y0, dim.box.x1 - dim.box.x0, dim.box.y1 - dim.box.y0)) {
+      addMarkText(slide, name, dim.text, { x: dim.x, y: dim.y, anchor: "middle", fontSize: dim.fontSize, angle: dim.angle, ink: k.dimInk });
+    }
+  });
+  scene.siteElevations.forEach((el, i) => {
+    const name = (part: string) => tag(code, "site-elevations", "대지 표고", `${i}-${part}`);
+    const cross = k.elevCross * u;
+    const strokes: PixelPath[] = [[[el.x - cross, el.y - cross], [el.x + cross, el.y + cross]], [[el.x + cross, el.y - cross], [el.x - cross, el.y + cross]]];
+    addCustom(slide, strokes, { line: "#FFFFFF", lineWidth: k.elevHaloWidth * u, objectName: name("cross-halo") });
+    addCustom(slide, strokes, { line: k.elevInk, lineWidth: k.elevInkWidth * u, objectName: name("cross") });
+    if (rectInsideFrame(el.box.x0, el.box.y0, el.box.x1 - el.box.x0, el.box.y1 - el.box.y0)) {
+      addMarkText(slide, name, el.text, { x: el.tx, y: el.ty, anchor: el.anchor, fontSize: el.fontSize, ink: k.elevInk });
+    }
+  });
+}
+
 function addLabels(slide: Slide, code: string, scene: MapScene): void {
   for (const placement of scene.labelPlacements) {
     const entry = placement.entry;
@@ -1156,6 +1194,7 @@ export function addEditableMap(slide: Slide, plan: (PlannedSlide & { kind: "tile
     addRailOverlay(slide, code, scene);
     addRoute(slide, code, scene);
     addSite(slide, code, scene, visibleModel.baseTheme ?? options.baseTheme);
+    addSiteMarks(slide, code, scene);
     addLabels(slide, code, scene);
     addNorth(slide, code, scene);
     if (options.reportFrame?.decorations.scaleBar !== false) addScale(slide, code, scene);

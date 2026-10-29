@@ -101,8 +101,16 @@ export type MapFrameState = {
   deletedElementKeys: string[];
   labelBoxes: Record<string, MapLabelBox>;
   legend: { order: string[]; hidden: string[]; visibleOnly: boolean; placement: LegendPlacement };
-  decorations: { north: boolean; scaleBar: boolean; locator: boolean };
+  /** `siteDims`·`siteElevations`는 §9-12 대지 치수선·꼭짓점 표고. 옛 저장본에는 없고(= 꺼짐), 기본값도 꺼짐이다. */
+  decorations: { north: boolean; scaleBar: boolean; locator: boolean; siteDims: boolean; siteElevations: boolean };
 };
+
+/** 보고서 프레임의 대지 치수·표고 장식을 `buildMapScene`·`MapFigure`의 `siteMarks` 옵션으로 바꾼다. 둘 다 꺼져 있으면 undefined. */
+export function frameSiteMarks(frame: Pick<MapFrameState, "decorations"> | undefined): { dims: boolean; elevations: boolean } | undefined {
+  const dims = !!frame?.decorations.siteDims;
+  const elevations = !!frame?.decorations.siteElevations;
+  return dims || elevations ? { dims, elevations } : undefined;
+}
 
 export const TEXT_BOX_COLORS = ["#15171c", "#4a5160", "#2f6fdb", "#5b4fd6", "#d9480f", "#c92a2a", "#2e9e4a", "#fff"] as const;
 export type TextBoxColor = typeof TEXT_BOX_COLORS[number];
@@ -220,7 +228,7 @@ export function defaultFrame(): MapFrameState {
     deletedElementKeys: [],
     labelBoxes: {},
     legend: { order: [], hidden: [], visibleOnly: true, placement: "below" },
-    decorations: { north: true, scaleBar: true, locator: false },
+    decorations: { north: true, scaleBar: true, locator: false, siteDims: false, siteElevations: false },
   };
 }
 

@@ -46,7 +46,7 @@ assert.deepEqual(defaultFrame(), {
   deletedElementKeys: [],
   labelBoxes: {},
   legend: { order: [], hidden: [], visibleOnly: true, placement: "below" },
-  decorations: { north: true, scaleBar: true, locator: false },
+  decorations: { north: true, scaleBar: true, locator: false, siteDims: false, siteElevations: false },
 });
 
 let doc = { ...EMPTY_REPORT_DOC };

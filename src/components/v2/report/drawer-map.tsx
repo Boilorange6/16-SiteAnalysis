@@ -157,6 +157,7 @@ export default function DrawerMap({ page, frame, view, cell, scaleOptions, sameE
     ? zoomForScale(frame.scaleDenominator, model, scaleOptions)
     : frame.zoomDelta;
   const locatorAvailable = hasMapData(view);
+  const siteMarksAvailable = !!model?.siteOutline;
 
   useEffect(() => {
     if (!scaleEditing) setScaleText(formatScaleDenominator(scale));
@@ -182,6 +183,8 @@ export default function DrawerMap({ page, frame, view, cell, scaleOptions, sameE
     frame.decorations.north ? "방위표" : null,
     frame.decorations.scaleBar ? "축척 막대" : null,
     frame.decorations.locator ? "위치도" : null,
+    frame.decorations.siteDims ? "대지 치수" : null,
+    frame.decorations.siteElevations ? "대지 표고" : null,
   ].filter((item): item is string => item !== null).join(", ") || "없음";
   const movementSummary = `동 ${Math.round(frame.offsetM[0])} m, 북 ${Math.round(frame.offsetM[1])} m`;
 
@@ -335,8 +338,11 @@ export default function DrawerMap({ page, frame, view, cell, scaleOptions, sameE
               <label><input type="checkbox" checked={frame.decorations.north} onChange={() => toggleDecoration("north")} /><span>방위표</span></label>
               <label><input type="checkbox" checked={frame.decorations.scaleBar} onChange={() => toggleDecoration("scaleBar")} /><span>축척 막대</span></label>
               <label><input type="checkbox" checked={frame.decorations.locator} disabled={!locatorAvailable} onChange={() => toggleDecoration("locator")} /><span>위치도 (넓은 범위에 대지 표시)</span></label>
+              <label><input type="checkbox" checked={!!frame.decorations.siteDims} disabled={!siteMarksAvailable && !frame.decorations.siteDims} onChange={() => toggleDecoration("siteDims")} /><span>대지 치수</span></label>
+              <label><input type="checkbox" checked={!!frame.decorations.siteElevations} disabled={!siteMarksAvailable && !frame.decorations.siteElevations} onChange={() => toggleDecoration("siteElevations")} /><span>대지 표고</span></label>
             </div>
             {!locatorAvailable && <p className={styles.disabledReason}>위치도는 대지 중심과 분석 반경 데이터가 필요해 현재 사용할 수 없습니다.</p>}
+            {!siteMarksAvailable && <p className={styles.disabledReason}>대지 치수·표고는 대지 윤곽 자료가 있는 분석에서만 켤 수 있습니다.</p>}
           </div>
         </details>
 

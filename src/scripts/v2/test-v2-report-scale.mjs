@@ -196,7 +196,7 @@ function planFor(format, layout) {
     ...defaultFrame(),
     scaleDenominator: 2500,
     locked: true,
-    decorations: { north: true, scaleBar: true, locator: false },
+    decorations: { north: true, scaleBar: true, locator: false, siteDims: false, siteElevations: false },
   };
   const page = {
     id: `p-D04-${format}-${layout}`,

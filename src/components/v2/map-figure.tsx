@@ -8,7 +8,7 @@ import type { MapFeature, MapLine, MapPolygon, RasterRef } from "@/lib/v2/tile-r
 import { maxOf, minOf } from "@/lib/v2/extent";
 import { isSiteParcelLayer } from "@/lib/v2/ui/site-parcel";
 import { calloutFrame, layoutCallouts, PX, PX_NARROW, type Placed } from "@/lib/v2/ui/callout-layout";
-import { buildMapScene, mapCalloutTextLayout, mapElementKey, mapFeatureKey, mapLabelEntries, mapTextWidth, nearestLineStroke, NORTH_GLYPH, NORTH_INSET, NORTH_RADIUS, northArrowPoints, SCALE_FONT_PX, RAIL_EXIT_COLOR, RAIL_EXIT_DOT_RADIUS, RAIL_EXIT_DOT_STROKE, type MapCalloutTextLayout, type MapSceneLabel } from "@/lib/v2/ui/map-scene";
+import { buildMapScene, mapCalloutTextLayout, mapElementKey, mapFeatureKey, mapLabelEntries, mapTextWidth, nearestLineStroke, NORTH_GLYPH, NORTH_INSET, NORTH_RADIUS, northArrowPoints, SCALE_FONT_PX, SITE_MARK, RAIL_EXIT_COLOR, RAIL_EXIT_DOT_RADIUS, RAIL_EXIT_DOT_STROKE, type MapCalloutTextLayout, type MapScene, type MapSceneLabel } from "@/lib/v2/ui/map-scene";
 import { terrainSectionMapStyle } from "@/lib/v2/ui/terrain-section";
 import { resolveBasemap } from "@/lib/v2/ui/basemap";
 import { baseTheme, type BaseThemeRef } from "@/lib/v2/ui/map-theme";
@@ -97,6 +97,8 @@ export type MapFigureProps = {
   scaleChromeScale?: number;
   /** 보고서 축척 글자 크기 배율(기본 9pt). */
   scaleFontScale?: number;
+  /** 보고서 장식 `대지 치수`·`대지 표고`(§9-12). 생략하면 그리지 않는다. */
+  siteMarks?: { dims: boolean; elevations: boolean };
   /** 대지 중심의 세로 위치(0~1, 기본 0.5). 아래에서 올라오는 시트가 있으면 위로 옮긴다 */
   siteY?: number;
   /** 콜아웃 칸의 위쪽(px). 보고서 미리보기·PPT가 공용 회피 레이아웃을 전달할 때 쓴다. */
@@ -389,7 +391,39 @@ function backgroundTransform(from: Viewport, to: Viewport, width: number, height
   return `matrix(${scale},0,0,${scale},${e},${f})`;
 }
 
-function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseTheme: baseThemeProp, tileHref, rasterHref, rasterName, bare, backgroundOnly = false, transparent = false, fixed, layoutUnit, labelScale = 1, compact = false, label, legend, legendY, north: northOpt, northX, northScale, scale = true, showRadius = true, showSiteMarker = true, credit = true, bottomInset = 0, avoid = EMPTY_BOXES, siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, scaleY, scaleBoxOverride, scaleChromeScale, scaleFontScale, siteY = 0.5, calloutTop: calloutTopOpt, calloutLeftBottom, selectedFids = EMPTY_KEYS, terrainSection = "A", highlightLabel = null, legendFocus = null, highlightPinnedLabel = null, hoverKey = null, emphasisKey = null, pinnedKeys = EMPTY_KEYS, showAutomaticLabels = true, onFeatureClick, onFeatureHover, onFeatureSelect, onLabelSelect, onFeaturePin, onLegendHover, onLegendPin, path = EMPTY_PATH, onMapClick, view, viewport, dragging = false, previewInteraction = false, preserveShortCalloutLabels = false, hiddenKeys = EMPTY_KEYS, deletedElementKeys = EMPTY_KEYS, labelBoxes = EMPTY_LABEL_BOXES, onLabelBoxChange, onLabelBoxReset, selectedElementKey = null, selectedLabelKey = null }: MapFigureProps) {
+const segmentPath = (segments: ReadonlyArray<readonly [readonly [number, number], readonly [number, number]]>) => segments.map(([a, b]) => `M${a[0]} ${a[1]}L${b[0]} ${b[1]}`).join("");
+
+/** §9-12 대지 치수선(A형)·꼭짓점 표고(C형). 값은 모두 scene.siteDims·siteElevations와 SITE_MARK에서 온다(PPT addSiteMarks와 같다). */
+function siteMarkNodes(scene: MapScene) {
+  if (scene.siteDims.length === 0 && scene.siteElevations.length === 0) return null;
+  const k = SITE_MARK;
+  const u = scene.unit;
+  const cross = k.elevCross * u;
+  return (
+    <g data-site-marks="true" pointerEvents="none">
+      {scene.siteDims.map((dim, i) => (
+        <g key={`site-dim-${i}`} data-site-dim={dim.text}>
+          <path d={segmentPath(dim.ext)} fill="none" stroke={k.dimInk} strokeWidth={k.dimExtWidth * u} />
+          <path d={segmentPath([dim.line])} fill="none" stroke={k.dimInk} strokeWidth={k.dimParallelWidth * u} />
+          <path d={segmentPath(dim.ticks)} fill="none" stroke={k.dimInk} strokeWidth={k.dimTickWidth * u} />
+          <text x={dim.x} y={dim.y} fontSize={dim.fontSize} fontWeight={k.dimWeight} fill={k.dimInk} stroke="#fff" strokeWidth={dim.fontSize * k.haloRatio} strokeLinejoin="round" paintOrder="stroke" textAnchor="middle" dominantBaseline="central" transform={dim.angle ? `rotate(${dim.angle} ${dim.x} ${dim.y})` : undefined}>{dim.text}</text>
+        </g>
+      ))}
+      {scene.siteElevations.map((el, i) => {
+        const d = `M${el.x - cross} ${el.y - cross}L${el.x + cross} ${el.y + cross}M${el.x + cross} ${el.y - cross}L${el.x - cross} ${el.y + cross}`;
+        return (
+          <g key={`site-elevation-${i}`} data-site-elevation={el.text}>
+            <path d={d} fill="none" stroke="#fff" strokeWidth={k.elevHaloWidth * u} />
+            <path d={d} fill="none" stroke={k.elevInk} strokeWidth={k.elevInkWidth * u} />
+            <text x={el.tx} y={el.ty} fontSize={el.fontSize} fontWeight={k.elevWeight} fill={k.elevInk} stroke="#fff" strokeWidth={el.fontSize * k.haloRatio} strokeLinejoin="round" paintOrder="stroke" textAnchor={el.anchor} dominantBaseline="central">{el.text}</text>
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
+function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseTheme: baseThemeProp, tileHref, rasterHref, rasterName, bare, backgroundOnly = false, transparent = false, fixed, layoutUnit, labelScale = 1, compact = false, label, legend, legendY, north: northOpt, northX, northScale, scale = true, showRadius = true, showSiteMarker = true, credit = true, bottomInset = 0, avoid = EMPTY_BOXES, siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, scaleY, scaleBoxOverride, scaleChromeScale, scaleFontScale, siteMarks, siteY = 0.5, calloutTop: calloutTopOpt, calloutLeftBottom, selectedFids = EMPTY_KEYS, terrainSection = "A", highlightLabel = null, legendFocus = null, highlightPinnedLabel = null, hoverKey = null, emphasisKey = null, pinnedKeys = EMPTY_KEYS, showAutomaticLabels = true, onFeatureClick, onFeatureHover, onFeatureSelect, onLabelSelect, onFeaturePin, onLegendHover, onLegendPin, path = EMPTY_PATH, onMapClick, view, viewport, dragging = false, previewInteraction = false, preserveShortCalloutLabels = false, hiddenKeys = EMPTY_KEYS, deletedElementKeys = EMPTY_KEYS, labelBoxes = EMPTY_LABEL_BOXES, onLabelBoxChange, onLabelBoxReset, selectedElementKey = null, selectedLabelKey = null }: MapFigureProps) {
   if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
     const target = window as Window & { __V2_PREVIEW_METRICS__?: Record<string, number> };
     const metrics = target.__V2_PREVIEW_METRICS__ ?? (target.__V2_PREVIEW_METRICS__ = {});
@@ -588,6 +622,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseT
     scaleBoxOverride,
     scaleChromeScale,
     scaleFontScale,
+    siteMarks,
     scale,
     showRadius,
     showSiteMarker,
@@ -618,7 +653,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseT
     // 호출자가 준 값만 넘긴다(없으면 장면이 같은 식으로 계산). 바탕 라벨이 "표면이 단위를 정했는가"를 구분한다.
     layoutUnit,
     labelScale: safeLabelScale,
-  }), [activeLayer, themeId, avoid, bare, bottomInset, calloutLeftBottom, calloutTopOpt, compact, deletedElementKeys, effectiveLabelBoxes, emphasisKey, fill, fixed, H, hiddenKeys, highlightLabel, layoutUnit, legendFocus, mapCenterY, mapFill, mapSiteX, mapSiteY, muted, model, northOpt, northScale, northX, panelH, panelW, panelX, panelY, path, rightInset, safeLabelScale, scale, scaleChromeScale, scaleFontScale, scaleLeft, scaleX, scaleY, scaleBoxOverride, sceneDragging, sceneHoverKey, showAutomaticLabels, showLegend, showRadius, showSiteMarker, siteX, selectedFids, terrainSection, pinnedKeys, W, view, viewport]);
+  }), [activeLayer, themeId, avoid, bare, bottomInset, calloutLeftBottom, calloutTopOpt, compact, deletedElementKeys, effectiveLabelBoxes, emphasisKey, fill, fixed, H, hiddenKeys, highlightLabel, layoutUnit, legendFocus, mapCenterY, mapFill, mapSiteX, mapSiteY, muted, model, northOpt, northScale, northX, panelH, panelW, panelX, panelY, path, rightInset, safeLabelScale, scale, scaleChromeScale, scaleFontScale, scaleLeft, scaleX, scaleY, scaleBoxOverride, sceneDragging, siteMarks?.dims, siteMarks?.elevations, sceneHoverKey, showAutomaticLabels, showLegend, showRadius, showSiteMarker, siteX, selectedFids, terrainSection, pinnedKeys, W, view, viewport]);
   const vp = scene.viewport;
   const proj = makeProjector(vp);
   const mpp = scene.mpp;
@@ -1586,6 +1621,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseT
             )}
           </g>
         )}
+        {showNativeChrome && !muted && siteMarkNodes(scene)}
 
         {/* 범례·문구 */}
         {showNativeChrome && showLegend && (

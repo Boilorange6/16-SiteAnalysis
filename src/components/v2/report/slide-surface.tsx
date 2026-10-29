@@ -17,7 +17,7 @@ import { reportSummaryNotes, terrainCrossingLayer, terrainElevationLabel, terrai
 import MapFigure, { type MapFigureElementPick } from "../map-figure";
 import { locatorBox, NORTH_INSET, NORTH_RADIUS, northArrowBox, scaleBarBox, scaleChromeScaleForBox, scaleFontScaleForPt } from "@/lib/v2/ui/map-scene";
 import type { PageStyle } from "@/lib/v2/ui/board-state";
-import { clampTextBox, DEFAULT_REPORT_FONT_SIZES, TEXT_BOX_COLORS, TEXT_BOX_DEFAULTS, textBoxDefaults, type MapFrameState, type MapLabelBox, type PagePanelRect, type PagePanels, type TextBox, type TextBoxColor, type TextBoxKind } from "@/lib/v2/report/report-doc";
+import { clampTextBox, DEFAULT_REPORT_FONT_SIZES, frameSiteMarks, TEXT_BOX_COLORS, TEXT_BOX_DEFAULTS, textBoxDefaults, type MapFrameState, type MapLabelBox, type PagePanelRect, type PagePanels, type TextBox, type TextBoxColor, type TextBoxKind } from "@/lib/v2/report/report-doc";
 import type { PlannedSlide } from "@/lib/v2/report/report-plan";
 import type { TileView } from "@/lib/v2/ui/tile-view";
 import { sheetCells, type SheetGrid } from "@/lib/v2/ui/sheet";
@@ -851,6 +851,7 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
         scaleBoxOverride={savedScaleBox ?? undefined}
         scaleChromeScale={scaleChromeScale}
         scaleFontScale={scaleFontScaleForPt(fontSizeForStyle(style, "scale"))}
+        siteMarks={frameSiteMarks(reportFrame)}
         calloutTop={calloutTop}
         calloutLeftBottom={calloutLeftBottom ?? (terrainLayout?.calloutLeftBottom ? terrainLayout.calloutLeftBottom * unit : undefined)}
          showAutomaticLabels={reportFrame?.labelRule !== "off"}
