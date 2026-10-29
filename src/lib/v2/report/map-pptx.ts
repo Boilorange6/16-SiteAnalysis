@@ -774,11 +774,11 @@ function addPolygons(slide: Slide, code: string, scene: MapScene, model: MapMode
     const building = buildingStyleForRaster(polygon.polygon.layer, hasRaster);
     const fill = neutral ? building.fill : estimated ? (style.fill ?? style.color) : (style.fill ?? style.color);
     const dimmed = scene.isElementDimmed(polygon.polygon.layer, polygon.key);
-    const paint = polygonPaint(polygon.polygon.layer, style, scene.activeLayer === "Satellite");
+    const paint = polygonPaint(polygon.polygon.layer, style, scene.activeLayer === "Satellite", estimated);
     const fillOpacity = (neutral ? building.fillOpacity ?? paint.fillOpacity : paint.fillOpacity) * (dimmed ? 0.2 : 1);
     const stroke = neutral ? building.stroke : paint.stroke ?? undefined;
     // 톤 선 굵기는 u 단위(화면과 같다). 톤이 없는 레이어는 지금 값 그대로.
-    const lineWidth = neutral ? building.strokeWidth ?? 0.8 : polygonTone(polygon.polygon.layer) ? paint.strokeWidth * scene.unit : paint.strokeWidth;
+    const lineWidth = neutral ? building.strokeWidth ?? 0.8 : polygonTone(polygon.polygon.layer) && !estimated ? paint.strokeWidth * scene.unit : paint.strokeWidth;
     const lineOpacity = dimmed ? 0.2 : 1;
     const dash = estimated ? "dash" : undefined;
     const key = `${groupKey}-polygon-${safeKey(`${fill}-${fillOpacity}-${stroke}-${lineWidth}-${lineOpacity}-${dash ?? "solid"}`)}`;

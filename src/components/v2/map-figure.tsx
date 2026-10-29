@@ -1314,8 +1314,8 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseT
   const drawPolygon = (polygon: ScreenPolygon) => {
     if (isSiteParcelLayer(polygon.polygon.layer) || !shouldRasterizeLayer(polygon.polygon.layer)) return null;
     const st = modelLayerStyle(model, polygon.polygon.layer);
-    const paint = polygonPaint(polygon.polygon.layer, st, sat);
     const estimated = isEstimated(polygon);
+    const paint = polygonPaint(polygon.polygon.layer, st, sat, estimated);
     const neutralBuilding = rasterImages.length > 0 && isBuildingLayer(polygon.polygon.layer);
     const buildingStyle = buildingStyleForRaster(polygon.polygon.layer, rasterImages.length > 0);
     const polygonFid = polygon.polygon.fid;

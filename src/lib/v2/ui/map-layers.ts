@@ -811,10 +811,13 @@ export function polygonTone(layer: string): "separate" | "zone" | null {
 }
 
 /** 면의 채움 투명도·선. 화면과 PPT가 함께 쓴다. 위성 바탕은 채움만 0.45. 선택·강조·흐림·추정 빗금은 호출한 쪽이 이 값보다 먼저 적용한다. */
-export function polygonPaint(layer: string, style: LayerStyle, satellite: boolean): { fillOpacity: number; stroke: string | null; strokeWidth: number } {
+export function polygonPaint(layer: string, style: LayerStyle, satellite: boolean, estimated = false): { fillOpacity: number; stroke: string | null; strokeWidth: number } {
   const tone = polygonTone(layer);
   if (tone === null) return { fillOpacity: style.fillOpacity ?? (satellite ? 0.45 : 0.35), stroke: style.stroke ?? style.color, strokeWidth: style.strokeWidth ?? 1 };
-  return { ...POLYGON_TONES[tone], fillOpacity: satellite ? 0.45 : POLYGON_TONES[tone].fillOpacity };
+  const fillOpacity = satellite ? 0.45 : POLYGON_TONES[tone].fillOpacity;
+  // 추정 면은 PPT에 빗금이 없어 선(점선)이 유일한 표시다(§8-1). 선은 옛 값 그대로 두고 채움만 톤을 따른다.
+  if (estimated) return { fillOpacity, stroke: style.stroke ?? style.color, strokeWidth: style.strokeWidth ?? 1 };
+  return { ...POLYGON_TONES[tone], fillOpacity };
 }
 
 /** 반경 원으로 자르지 않고 원래 형태 그대로 그리는 구역 경계 레이어(사용자 결정 2026-10-28). PPT는 원래 반경으로 자르지 않는다. */

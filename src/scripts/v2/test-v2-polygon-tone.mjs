@@ -37,6 +37,12 @@ assert.deepEqual(polygonPaint("maint_area:모아타운", moa, true), { fillOpaci
 assert.deepEqual(polygonPaint("park", { label: "x", color: "#123456" }, false), { fillOpacity: 0.35, stroke: "#123456", strokeWidth: 1 });
 assert.deepEqual(polygonPaint("park", { label: "x", color: "#123456" }, true), { fillOpacity: 0.45, stroke: "#123456", strokeWidth: 1 });
 
+// 추정 면(estimated): 선은 옛 값(점선·색 유지), 채움 투명도만 톤
+const tallEst = layerStyle("tall_ge35_est");
+assert.deepEqual(polygonPaint("tall_ge35_est", tallEst, false, true), { fillOpacity: 0.25, stroke: tallEst.color, strokeWidth: 1 }, "추정 + 떨어진 면: 선 옛 값, 채움 0.25");
+assert.deepEqual(polygonPaint("tall_ge35_est", tallEst, true, true), { fillOpacity: 0.45, stroke: tallEst.color, strokeWidth: 1 }, "추정 위성: 채움 0.45");
+assert.deepEqual(polygonPaint("tall_ge35_est", tallEst, false), { fillOpacity: 0.25, stroke: null, strokeWidth: 0 }, "추정이 아니면 톤 그대로");
+
 // svg
 const CENTER = [127.1505, 37.6205];
 const ring = (dx) => [[127.15 + dx, 37.62], [127.151 + dx, 37.62], [127.151 + dx, 37.621], [127.15 + dx, 37.621], [127.15 + dx, 37.62]];
@@ -64,6 +70,8 @@ const poly = (svg, layer) => (svg.match(/<path[^>]*data-poly[^>]*>/g) ?? []).fin
   // 추정 면: 빗금 채움이 톤보다 먼저, 빗금 칸 바탕은 톤 투명도
   const est = poly(svg, "floors_assumed_1f_est");
   assert.match(est, /fill="url\(#hatch[^)]*\)"/);
+  assert.doesNotMatch(est, /stroke="none"/, "추정 면은 선을 유지(§8-1)");
+  assert.match(est, /stroke="#B9BDC6"/i);
   assert.match(svg, /<pattern[^>]*>\s*<rect[^>]*fill-opacity="0\.25"/, "빗금 칸 바탕은 떨어진 면 25 %");
 }
 // states: 범례 강조 중인 zone 면 → INK 선, 선택 → 파랑 띠는 유지(고르기는 별도), 흐림
@@ -99,7 +107,7 @@ const poly = (svg, layer) => (svg.match(/<path[^>]*data-poly[^>]*>/g) ?? []).fin
   assert.ok(plan, "PPT 검증용 지도 장");
   const [lng, lat] = plan.map.center;
   const sq = (dx) => [[lng + dx, lat], [lng + dx + 0.001, lat], [lng + dx + 0.001, lat + 0.001], [lng + dx, lat + 0.001], [lng + dx, lat]];
-  const map = { ...plan.map, polygons: [{ layer: "use:주거", rings: [sq(-0.002)], label: null }, { layer: "zone:주거", rings: [sq(0.0005)], label: null }] };
+  const map = { ...plan.map, polygons: [{ layer: "use:주거", rings: [sq(-0.002)], label: null }, { layer: "zone:주거", rings: [sq(0.0005)], label: null }, { layer: "tall_ge35_est", rings: [sq(0.003)], label: null }] };
   addEditableMap(slide, plan, map, { style: plan.style, format: "wide", reportFrame: defaultFrame() });
   const shapes = calls.filter((c) => c.method === "addShape" && c.args[0] === "custGeom");
   const named = (display) => shapes.find((c) => String(c.args[1].objectName).split("|")[2] === `범례 ${display}`)?.args[1];
@@ -112,6 +120,12 @@ const poly = (svg, layer) => (svg.match(/<path[^>]*data-poly[^>]*>/g) ?? []).fin
   assert.equal(zone.line.transparency, 0);
   assert.ok(zone.line.width > 0.1, "선 굵기");
   assert.equal(zone.fill.transparency, 70, "채움 30 % → 투명도 70");
+  const est = shapes.map((c) => c.args[1]).find((o) => String(o.objectName).split("|")[2] === `범례 ${layerStyle("tall_ge35_est").label}`);
+  assert.ok(est, "추정 면 도형");
+  assert.ok(est.line.transparency < 100, "추정 면은 선이 보인다(PPT에는 빗금이 없다)");
+  assert.equal(est.line.dashType, "dash", "점선");
+  assert.equal(String(est.line.color).toUpperCase(), "AA4465");
+  assert.equal(est.fill.transparency, 75, "추정 면도 채움은 떨어진 면 25 %");
 }
 
 console.log("test-v2-polygon-tone: ok");
