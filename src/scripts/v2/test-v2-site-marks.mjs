@@ -143,7 +143,7 @@ const BOTH = { dims: true, elevations: true };
     counts: { buildingsTotal: 0, buildingsIncluded: 0, parcelsTotal: 0, parcelsIncluded: 0 },
     sources: [], limitations: [],
   };
-  const vector = { ...modelOf(outlineOf(rect(140, 100), [18.9, 17.5, 18.2, 18.0]), { radiusM: 500, tileCode: "A04", base: mapBaseFromScene(baseScene) }) };
+  const vector = { ...modelOf(outlineOf(rect(240, 170), [18.9, 17.5, 18.2, 18.0]), { radiusM: 500, tileCode: "A04", base: mapBaseFromScene(baseScene) }) };
   const withBase = (siteMarks) => buildMapScene({ model: vector, width: 800, height: 600, activeLayer: "vector", north: false, scale: false, avoid: [], ...(siteMarks ? { siteMarks } : {}) });
   const plain = withBase(null);
   const marked = withBase(BOTH);
@@ -151,6 +151,57 @@ const BOTH = { dims: true, elevations: true };
   assert.ok(marks.length >= 6, `표식 상자 ${marks.length}개`);
   assert.ok(plain.base.labels.some((l) => marks.some((m) => overlaps(l.box, m))), "표식이 없을 때는 겹치는 바탕 라벨이 있다(시험 자료 점검)");
   for (const l of marked.base.labels) for (const m of marks) assert.ok(!overlaps(l.box, m), `${l.text} 라벨이 표식 상자와 겹침`);
+}
+
+// crowded: 작은 축척(대지가 작게 보임) — 변이 글자보다 짧으면 생략, 치수 글자끼리·표고와 치수 글자·대지 표식이 겹치지 않음
+{
+  const fit = 0.6;
+  const textWidth = (dim) => [...dim.text].reduce((w, ch) => w + (ch.charCodeAt(0) > 0x2e80 ? dim.fontSize : dim.fontSize * 0.58), 0) + dim.fontSize * 0.36;
+  const edgePx = (dim) => Math.hypot(dim.line[1][0] - dim.line[0][0], dim.line[1][1] - dim.line[0][1]);
+  const notch = [[-100, -60], [100, -60], [100, 60], [-60, 60], [-60, 0], [-100, 0]];
+  for (const [name, locals] of [["ㄱ자 윤곽", notch], ["100×60 직사각형", rect(100, 60)], ["300×200 직사각형", rect(300, 200)]]) {
+    for (const radiusM of [500, 1000]) {
+      const outline = outlineOf(locals, locals.map((_, i) => 17.5 + i * 0.4));
+      const scene = build(modelOf(outline, { radiusM }), BOTH, { height: 600 });
+      const label = `${name} 반경 ${radiusM} m (mpp ${scene.mpp.toFixed(1)})`;
+      for (const dim of scene.siteDims) assert.ok(edgePx(dim) >= fit * textWidth(dim), `${label}: ${dim.text} 변 ${edgePx(dim).toFixed(1)} px < 글자 ${textWidth(dim).toFixed(1)} px × ${fit}`);
+      for (const [i, a] of scene.siteDims.entries()) for (const b of scene.siteDims.slice(i + 1)) assert.ok(!overlaps(a.box, b.box), `${label}: 치수 ${a.text}·${b.text} 글자 겹침`);
+      const [marker] = [scene.siteBounds]; // 링 모드(필지 없음)의 대지 표식 상자
+      for (const el of scene.siteElevations) {
+        for (const dim of scene.siteDims) assert.ok(!overlaps(el.box, dim.box), `${label}: 표고 ${el.text}가 치수 ${dim.text}와 겹침`);
+        assert.ok(!overlaps(el.box, marker), `${label}: 표고 ${el.text}가 대지 표식과 겹침`);
+      }
+    }
+  }
+  // 긴 변은 남는다(300×200 m는 반경 500 m에서 변이 글자보다 충분히 길다)
+  assert.equal(build(modelOf(outlineOf(rect(300, 200))), BOTH, { height: 600 }).siteDims.length, 4, "충분히 긴 변은 그대로");
+  // 필지(◇) 모드: 표고 글자 상자가 ◇ 상자(중심 ± (1.1·siteR + 선 반폭), siteR 7)와 겹치지 않는다
+  const parcel = outlineOf(rect(100, 60), [18.9, 17.5, 18.2, 18.0]);
+  const ring = parcel.rings[0].points;
+  const parcelModel = modelOf(parcel, { radiusM: 500, siteParcel: [{ layer: "parcel_site", fid: "p", rings: [[...ring, ring[0]]] }] });
+  const parcelScene = build(parcelModel, BOTH, { height: 600 });
+  assert.equal(parcelScene.siteMode, "parcel");
+  const [pcx, pcy] = parcelScene.center;
+  const diamond = { x0: pcx - 9.45, y0: pcy - 9.45, x1: pcx + 9.45, y1: pcy + 9.45 };
+  for (const el of parcelScene.siteElevations) assert.ok(!overlaps(el.box, diamond), `필지 모드: 표고 ${el.text}가 ◇와 겹침`);
+}
+
+// real-outline: 대치동 503 실제 윤곽(변 188.5/140.6/37.3/124.0/151.6/7.5/303.2/15.0 m). 대지 확대 시안(zoomDelta 2.5, 460×330)은 치수 6개·표고 6개 그대로,
+// 반경 1 km 전체 보기에서는 짧은 변이 글자보다 짧아 빠지고 남은 글자는 서로·표고와 겹치지 않는다
+{
+  const local = [[138.3, -117.5], [-45, -161.5], [-114.4, -39.1], [-82, -20.4], [-144.4, 86.8], [-12.7, 161.8], [-5.4, 159.8], [144.3, -103.8]];
+  const outline = outlineOf(local, [19.1, 19.1, 18.9, 17.8, 18.9, 17.5, 17.4, 18]);
+  const model = modelOf(outline, { radiusM: 1000 });
+  const zoomed = buildMapScene({ model, width: 460, height: 330, activeLayer: "white", north: false, scale: false, avoid: [], view: { zoomDelta: 2.5, offsetM: [0, 0] }, siteMarks: BOTH });
+  // 좌표를 소수 1자리로 줄여 담았으므로 길이는 ±0.2 m 안에서 같다
+  const lengths = zoomed.siteDims.map((d) => Number.parseFloat(d.text));
+  [188.5, 140.6, 37.3, 124.0, 151.6, 303.2].forEach((m, i) => assert.ok(Math.abs(lengths[i] - m) < 0.2, `대지 확대: ${m} m 변 치수 (${lengths[i]})`));
+  assert.equal(lengths.length, 6, "대지 확대: 치수 6개(회귀 금지)");
+  assert.equal(zoomed.siteElevations.length, 6, "대지 확대: 표고 6개(회귀 금지)");
+  const full = buildMapScene({ model, width: 960, height: 540, activeLayer: "white", north: false, scale: false, avoid: [], siteMarks: BOTH });
+  assert.ok(full.siteDims.length < 6, `전체 보기: 짧은 변은 생략(${full.siteDims.length}개)`);
+  for (const [i, a] of full.siteDims.entries()) for (const b of full.siteDims.slice(i + 1)) assert.ok(!overlaps(a.box, b.box), `전체 보기: 치수 ${a.text}·${b.text} 겹침`);
+  for (const el of full.siteElevations) for (const dim of full.siteDims) assert.ok(!overlaps(el.box, dim.box), `전체 보기: 표고 ${el.text}·치수 ${dim.text} 겹침`);
 }
 
 // svg: MapFigure siteMarks on → 글자·회전·× 경로, off면 없음
@@ -192,7 +243,7 @@ const BOTH = { dims: true, elevations: true };
   }).find((slide) => slide.kind === "tile" && slide.map);
   assert.ok(plan, "PPT 검증용 지도 장");
   const [px, py] = toUtmk(plan.map.center);
-  const map = { ...plan.map, siteOutline: { rings: [{ points: rect(200, 120).map(([x, y]) => toLngLat([px + x, py + y])), elevations: [18.9, 17.5, 18.2, 18.0] }] } };
+  const map = { ...plan.map, siteOutline: { rings: [{ points: rect(700, 420).map(([x, y]) => toLngLat([px + x, py + y])), elevations: [18.9, 17.5, 18.2, 18.0] }] } };
   const names = (decorations) => {
     const { slide, calls } = stub();
     addEditableMap(slide, plan, map, { style: plan.style, format: "wide", reportFrame: { ...defaultFrame(), decorations: { north: true, scaleBar: true, locator: false, ...decorations } } });

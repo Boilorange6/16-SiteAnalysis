@@ -85,10 +85,14 @@ export function scaleFontScaleForPt(pt: number): number {
 /**
  * §9-12 대지 치수선(A형)·꼭짓점 표고(C형). 길이·굵기·글자 크기 모두 지도 단위 u 배율이고, 화면과 PPT가 이 값을 그대로 읽는다.
  * 치수: 35 m 미만 변 생략 · 평행선 8 띄움 · 연장선 2 → 8+4 · 사선 (d+n)·3.2 · 글자는 평행선에서 글자 × 0.8.
+ *   화면에서 변이 글자보다 짧거나 글자 상자가 이미 놓은 치수 글자와 겹치면 생략(긴 변 먼저).
  * 표고: × 반폭 3(흰 3 밑선 + 검정 1.2) · 숫자는 꼭짓점에서 대지 중심 쪽으로 글자 × 1.1 · 글자 × 3.2 안의 꼭짓점은 생략.
+ *   표고 상자가 치수 글자 또는 대지 표식과 겹쳐도 생략.
  */
 export const SITE_MARK = {
   dimMinM: 35, dimOffset: 8, dimFont: 10.5, dimExtStart: 2, dimExtOver: 4, dimTick: 3.2, dimTextGap: 0.8, dimProbe: 4,
+  /** 화면에서 변(두 연장선 사이)이 글자 상자 폭의 이 비율보다 짧으면 그 치수는 생략한다(0.6: 대지 확대 시안의 37.3 m 변은 남는다). */
+  dimFitRatio: 0.6,
   dimInk: "#2b2b2b", dimParallelWidth: 0.8, dimExtWidth: 0.7, dimTickWidth: 1.1, dimWeight: 500,
   elevFont: 8.5, elevCross: 3, elevTextGap: 1.1, elevMinGap: 3.2, elevHaloWidth: 3, elevInkWidth: 1.2, elevInk: "#16181d", elevWeight: 400,
   /** 흰 halo 굵기 = 글자 크기 × 0.36 (치수·표고 공통). */
@@ -134,7 +138,7 @@ function pointInRing(x: number, y: number, ring: ReadonlyArray<readonly [number,
 function siteDimScene(outline: SiteOutline, project: (lng: number, lat: number) => [number, number], u: number): MapSceneSiteDim[] {
   const k = SITE_MARK;
   const fs = k.dimFont * u;
-  const dims: MapSceneSiteDim[] = [];
+  const candidates: Array<{ length: number; dim: MapSceneSiteDim }> = [];
   for (const ring of outline.rings) {
     const px = ring.points.map(([lng, lat]) => project(lng, lat));
     const utm = ring.points.map((point) => toUtmk(point));
@@ -161,9 +165,10 @@ function siteDimScene(outline: SiteOutline, project: (lng: number, lat: number) 
       const rad = (angle * Math.PI) / 180;
       const halfW = mapTextWidth(text, fs) / 2 + fs * k.haloRatio / 2;
       const halfH = fs / 2 + fs * k.haloRatio / 2;
+      if (length < 2 * halfW * k.dimFitRatio) return;
       const ex = Math.abs(Math.cos(rad)) * halfW + Math.abs(Math.sin(rad)) * halfH;
       const ey = Math.abs(Math.sin(rad)) * halfW + Math.abs(Math.cos(rad)) * halfH;
-      dims.push({
+      candidates.push({ length, dim: {
         ext: [[at(a, k.dimExtStart), at(a, k.dimOffset + k.dimExtOver)], [at(b, k.dimExtStart), at(b, k.dimOffset + k.dimExtOver)]],
         line: [a1, b1],
         ticks,
@@ -173,14 +178,32 @@ function siteDimScene(outline: SiteOutline, project: (lng: number, lat: number) 
         angle,
         fontSize: fs,
         box: { x0: x - ex, y0: y - ey, x1: x + ex, y1: y + ey },
-      });
+      } });
     });
   }
-  return dims;
+  // 화면 길이가 긴 변부터 놓고, 글자가 이미 놓은 치수 글자와 겹치면 뺀다. 결과는 윤곽 순서로 되돌린다.
+  // 비스듬한 글자의 축 정렬 `box`는 실제보다 넓어 서로 가까운 두 글자를 거짓으로 겹친다고 보므로, 겹침은 돌린 글자 사각형으로 가른다.
+  const placed = new Set<MapSceneSiteDim>();
+  for (const { dim } of [...candidates].sort((a, b) => b.length - a.length)) {
+    if (![...placed].some((other) => rotatedRectsOverlap(dimTextRect(other), dimTextRect(dim)))) placed.add(dim);
+  }
+  return candidates.map(({ dim }) => dim).filter((dim) => placed.has(dim));
 }
 
-/** 꼭짓점 표고를 대지 중심 쪽 글자로 만든다. 표고가 null이거나 먼저 표시한 꼭짓점과 글자 × 3.2 안이면 생략한다. */
-function siteElevationScene(outline: SiteOutline, project: (lng: number, lat: number) => [number, number], u: number): MapSceneSiteElevation[] {
+type RotatedRect = { x: number; y: number; hw: number; hh: number; rad: number };
+
+/** 치수 글자 자체의 돌린 사각형(halo 제외). */
+const dimTextRect = (dim: MapSceneSiteDim): RotatedRect => ({ x: dim.x, y: dim.y, hw: mapTextWidth(dim.text, dim.fontSize) / 2, hh: dim.fontSize / 2, rad: (dim.angle * Math.PI) / 180 });
+
+/** 돌린 두 사각형이 겹치는지(분리축 판정). */
+function rotatedRectsOverlap(a: RotatedRect, b: RotatedRect): boolean {
+  const axes = [a, b].flatMap((r) => [[Math.cos(r.rad), Math.sin(r.rad)], [-Math.sin(r.rad), Math.cos(r.rad)]] as const);
+  const radius = (r: RotatedRect, [ax, ay]: readonly [number, number]) => r.hw * Math.abs(Math.cos(r.rad) * ax + Math.sin(r.rad) * ay) + r.hh * Math.abs(-Math.sin(r.rad) * ax + Math.cos(r.rad) * ay);
+  return axes.every((axis) => Math.abs((b.x - a.x) * axis[0] + (b.y - a.y) * axis[1]) < radius(a, axis) + radius(b, axis));
+}
+
+/** 꼭짓점 표고를 대지 중심 쪽 글자로 만든다. 표고가 null이거나 먼저 표시한 꼭짓점과 글자 × 3.2 안이거나 글자가 치수 글자(`dims`)·대지 표식 상자(`marker`)와 겹치면 생략한다. */
+function siteElevationScene(outline: SiteOutline, project: (lng: number, lat: number) => [number, number], u: number, dims: readonly MapSceneSiteDim[], marker: MapSceneBox | null): MapSceneSiteElevation[] {
   const k = SITE_MARK;
   const fs = k.elevFont * u;
   const shown: Array<[number, number]> = [];
@@ -192,7 +215,6 @@ function siteElevationScene(outline: SiteOutline, project: (lng: number, lat: nu
       const value = ring.elevations[i];
       if (value === null || value === undefined) return;
       if (shown.some((q) => Math.hypot(q[0] - p[0], q[1] - p[1]) < fs * k.elevMinGap)) return;
-      shown.push(p);
       const dist = Math.hypot(center[0] - p[0], center[1] - p[1]) || 1;
       const n: [number, number] = [(center[0] - p[0]) / dist, (center[1] - p[1]) / dist];
       const anchor = Math.abs(n[0]) < 0.35 ? "middle" : n[0] > 0 ? "start" : "end";
@@ -203,16 +225,12 @@ function siteElevationScene(outline: SiteOutline, project: (lng: number, lat: nu
       const tw = mapTextWidth(text, fs);
       const left = anchor === "start" ? tx : anchor === "end" ? tx - tw : tx - tw / 2;
       const cross = k.elevCross * u;
-      elevations.push({
-        x: p[0],
-        y: p[1],
-        text,
-        tx,
-        ty,
-        anchor,
-        fontSize: fs,
-        box: { x0: Math.min(left - half, p[0] - cross), y0: Math.min(ty - fs / 2 - half, p[1] - cross), x1: Math.max(left + tw + half, p[0] + cross), y1: Math.max(ty + fs / 2 + half, p[1] + cross) },
-      });
+      const box: MapSceneBox = { x0: Math.min(left - half, p[0] - cross), y0: Math.min(ty - fs / 2 - half, p[1] - cross), x1: Math.max(left + tw + half, p[0] + cross), y1: Math.max(ty + fs / 2 + half, p[1] + cross) };
+      if (marker && boxesOverlap(marker, box)) return;
+      const textRect: RotatedRect = { x: left + tw / 2, y: ty, hw: tw / 2, hh: fs / 2, rad: 0 };
+      if (dims.some((dim) => rotatedRectsOverlap(dimTextRect(dim), textRect))) return;
+      shown.push(p);
+      elevations.push({ x: p[0], y: p[1], text, tx, ty, anchor, fontSize: fs, box });
     });
   }
   return elevations;
@@ -1657,7 +1675,11 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
   }
   const siteOutline = model.siteOutline;
   const siteDims = siteMarks?.dims && siteOutline ? siteDimScene(siteOutline, project, u) : [];
-  const siteElevations = siteMarks?.elevations && siteOutline ? siteElevationScene(siteOutline, project, u) : [];
+  // 대지 표식: 필지는 ◇ 중심 표식(중심 ± (1.1·siteR + 선 반폭)), 링은 십자·원 전체. 표고 글자는 치수 글자·이 상자를 피한다.
+  const siteMarkerBox: MapSceneBox | null = !showSiteMarker || muted ? null
+    : siteMode === "parcel" ? { x0: cx - diamondExtent - markerHalfStroke, y0: cy - diamondExtent - markerHalfStroke, x1: cx + diamondExtent + markerHalfStroke, y1: cy + diamondExtent + markerHalfStroke }
+    : siteBounds;
+  const siteElevations = siteMarks?.elevations && siteOutline ? siteElevationScene(siteOutline, project, u, siteDims, siteMarkerBox) : [];
   const siteMarkBoxes = [...siteDims.map((dim) => dim.box), ...siteElevations.map((elevation) => elevation.box)];
   const occupiedBoxes: MapSceneBox[] = [
     ...(legendBox ? [legendBox] : []),
