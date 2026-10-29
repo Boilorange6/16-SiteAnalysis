@@ -1,6 +1,7 @@
 import React from "react";
 import { memo } from "react";
-import { EXPLODED_LABEL_CHIP_WIDTH, EXPLODED_LAYERS, MASS_USE_COLORS, type MassCamera, type MassColorScheme, projectExploded, projectMass, type MassLayer, type MassQuality } from "@/lib/v2/ui/mass-projection";
+import { EXPLODED_LABEL_CHIP_WIDTH, EXPLODED_LAYERS, massUseColors, type MassCamera, type MassColorScheme, projectExploded, projectMass, type MassLayer, type MassQuality } from "@/lib/v2/ui/mass-projection";
+import type { DiagramPaletteRef } from "@/lib/v2/ui/map-palette";
 import type { Scene } from "@/lib/v2/scene";
 
 export type MassFigureProps = {
@@ -12,6 +13,7 @@ export type MassFigureProps = {
   label?: string;
   exploded?: { spreadPct: number; scheme?: MassColorScheme };
   quality?: MassQuality;
+  palette?: DiagramPaletteRef | null;
 };
 
 const INK = "#15171c";
@@ -64,10 +66,10 @@ function northVector(camera: MassCamera): { dx: number; dy: number } {
   return { dx: (dx / length) * 28, dy: (dy / length) * 28 };
 }
 
-function MassFigure({ scene, camera, width, height, fixed = false, label = "S01 3D 매스", exploded, quality = "detail" }: MassFigureProps) {
+function MassFigure({ scene, camera, width, height, fixed = false, label = "S01 3D 매스", exploded, quality = "detail", palette }: MassFigureProps) {
   const projection = scene
     ? exploded
-      ? projectExploded(scene, camera, width, height, exploded.spreadPct, exploded.scheme ?? "use")
+      ? projectExploded(scene, camera, width, height, exploded.spreadPct, exploded.scheme ?? "use", palette)
       : projectMass(scene, camera, width, height, quality)
     : null;
   const isExploded = Boolean(exploded);
@@ -195,7 +197,7 @@ function MassFigure({ scene, camera, width, height, fixed = false, label = "S01 
 
       {isExploded && (exploded?.scheme ?? "use") === "use" && (
         <g aria-label="건물 용도 색 범례" transform={`translate(${Math.max(16, width - 140)} 116)`}>
-          {MASS_USE_COLORS.map(({ label: colorLabel, color }, index) => (
+          {Object.entries(massUseColors(palette)).map(([colorLabel, color], index) => (
             <g key={colorLabel} transform={`translate(${(index % 2) * 68} ${Math.floor(index / 2) * 12})`}>
               <rect width="8" height="8" rx="2" fill={color} />
               <text x="11" y="8" fontSize="7" fill={INK}>{colorLabel}</text>

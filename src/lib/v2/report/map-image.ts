@@ -169,7 +169,7 @@ export function svgOfMass(mass: MassModel, width: number, height: number, explod
   const host = document.createElement("div");
   const root = createRoot(host);
   try {
-    flushSync(() => root.render(createElement(MassFigure, { scene: mass.scene, camera: mass.camera, width, height, fixed: true, exploded: exploded ?? mass.exploded })));
+    flushSync(() => root.render(createElement(MassFigure, { scene: mass.scene, camera: mass.camera, width, height, fixed: true, exploded: exploded ?? mass.exploded, palette: mass.palette })));
     return host.innerHTML;
   } finally {
     root.unmount();
@@ -280,6 +280,7 @@ export async function rasterizeMass(
       width,
       height,
       exploded: mass.exploded,
+      palette: mass.palette,
       quality: "detail",
       label: S01_MASS_LABEL,
     });

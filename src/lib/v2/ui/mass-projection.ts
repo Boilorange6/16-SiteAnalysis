@@ -1,5 +1,7 @@
 import { groundZAt, type Ring, type Scene } from "../scene";
 import { maxOf, minOf } from "../extent";
+import { layerStyle } from "./map-layers";
+import { paletteLayerStyle, type DiagramPaletteRef } from "./map-palette";
 
 export const EXPLODED_LAYERS = ["terrain", "water", "green", "roads", "buildings", "complete"] as const;
 export type ExplodedLayer = (typeof EXPLODED_LAYERS)[number];
@@ -30,6 +32,8 @@ export type MassModel = {
   scene: Scene | null;
   camera: MassCamera;
   exploded?: { spreadPct: number; scheme?: MassColorScheme };
+  /** 보드·보고서가 고른 다이어그램 팔레트. 있으면 용도색이 2D 지도와 같이 따른다. */
+  palette?: DiagramPaletteRef | null;
 };
 
 export type MassFace = {
@@ -404,21 +408,13 @@ const EXPLODED_LABEL_TEXT: Record<ExplodedLayer, string> = {
   complete: "완성",
 };
 
-/** 용도 선택의 지붕 색. sitedia S01 범례와 같은 밝기 계열을 쓴다. */
-export const MASS_USE_COLORS = [
-  { label: "주거", color: "#F2D46E" },
-  { label: "근린생활", color: "#F2B071" },
-  { label: "업무", color: "#74A7CA" },
-  { label: "판매", color: "#E17B93" },
-  { label: "숙박", color: "#A27FC3" },
-  { label: "문화집회", color: "#5BB5A4" },
-  { label: "교육복지", color: "#82C46B" },
-  { label: "공업", color: "#A28775" },
-  { label: "기타", color: "#B7BBC0" },
-  { label: "미상", color: "#D0D3D6" },
-] as const;
+const MASS_USE_NAMES = ["주거", "근린생활", "업무", "판매", "숙박", "문화집회", "교육복지", "공업", "기타", "미상"] as const;
 
-const USE_FILL: Record<string, string> = Object.fromEntries(MASS_USE_COLORS.map(({ label, color }) => [label, color]));
+/** 용도 선택의 지붕 색. 2D 지도의 `use:` 레이어 색(고른 팔레트 포함)을 그대로 쓴다(범례 순서 = 키 순서). */
+export function massUseColors(palette?: DiagramPaletteRef | null): Record<string, string> {
+  return Object.fromEntries(MASS_USE_NAMES.map((name) => [name, paletteLayerStyle(`use:${name}`, layerStyle(`use:${name}`), palette).color]));
+}
+
 const AGE_FILL = ["#5B2A12", "#8F4A1F", "#C26A26", "#E08F2E", "#F0B73A", "#F7D76A", "#A9ADB6"];
 const HEIGHT_FILL = ["#B8D8BA", "#86BBD8", "#5C80BC", "#775DA6", "#4A2545", "#B9BDC6"];
 const SINGLE_FILL = "#5E83B3";
@@ -446,9 +442,9 @@ function approvalYear(value: string | null): number | null {
   return Number.isFinite(year) && year >= 1900 && year <= 2200 ? year : null;
 }
 
-function buildingFill(building: Scene["buildings"][number], scheme: MassColorScheme): string {
+function buildingFill(building: Scene["buildings"][number], scheme: MassColorScheme, useColors: Record<string, string>): string {
   if (scheme === "single") return SINGLE_FILL;
-  if (scheme === "use") return USE_FILL[useClassOf(building.useCode)] ?? USE_FILL.미상;
+  if (scheme === "use") return useColors[useClassOf(building.useCode)] ?? useColors.미상;
   if (scheme === "age") {
     const year = approvalYear(building.approvalDate);
     if (year === null) return AGE_FILL[AGE_FILL.length - 1];
@@ -605,9 +601,10 @@ function addExplodedBuildings(
   project: (point: [number, number], z: number) => RawPoint,
   cameraDirection: [number, number],
   scheme: MassColorScheme,
+  useColors: Record<string, string>,
 ): void {
   for (const building of scene.buildings) {
-    addBuildingFaces(raw, building, project, cameraDirection, layer, buildingFill(building, scheme), EXPLODED_LAYERS.indexOf(layer));
+    addBuildingFaces(raw, building, project, cameraDirection, layer, buildingFill(building, scheme, useColors), EXPLODED_LAYERS.indexOf(layer));
   }
 }
 
@@ -637,7 +634,9 @@ export function projectExploded(
   height: number,
   spreadPct = 100,
   scheme: MassColorScheme = "use",
+  palette?: DiagramPaletteRef | null,
 ): MassProjection & { labels: MassLabel[] } {
+  const useColors = massUseColors(palette);
   const azimuth = radians(finiteOr(camera.azimuthDeg, 225));
   const elevation = radians(EXPLODED_PRESENTATION_ELEVATION_DEG);
   const cosA = Math.cos(azimuth);
@@ -670,14 +669,14 @@ export function projectExploded(
   if (present.water) contextPolygonFaces(raw, context?.water ?? [], "water", 1, scene.ground, projectFor("water"), EXPLODED_FILL.water);
   if (present.green) contextPolygonFaces(raw, context?.green ?? [], "green", 2, scene.ground, projectFor("green"), EXPLODED_FILL.green);
   if (present.roads) contextRoadFaces(raw, context?.roads ?? [], "roads", 3, scene.ground, projectFor("roads"), EXPLODED_FILL.roads);
-  if (present.buildings) addExplodedBuildings(raw, scene, "buildings", projectFor("buildings"), cameraDirection, scheme);
+  if (present.buildings) addExplodedBuildings(raw, scene, "buildings", projectFor("buildings"), cameraDirection, scheme, useColors);
 
   // 완성층은 각 원래 층의 색을 보존한 단일 층으로 다시 합성한다.
   explodedTerrainFaces(raw, scene, "complete", 5, projectFor("complete"), EXPLODED_FILL.terrain);
   if (present.water) contextPolygonFaces(raw, context?.water ?? [], "complete", 5, scene.ground, projectFor("complete"), EXPLODED_FILL.water);
   if (present.green) contextPolygonFaces(raw, context?.green ?? [], "complete", 5, scene.ground, projectFor("complete"), EXPLODED_FILL.green);
   if (present.roads) contextRoadFaces(raw, context?.roads ?? [], "complete", 5, scene.ground, projectFor("complete"), EXPLODED_FILL.roads);
-  if (present.buildings) addExplodedBuildings(raw, scene, "complete", projectFor("complete"), cameraDirection, scheme);
+  if (present.buildings) addExplodedBuildings(raw, scene, "complete", projectFor("complete"), cameraDirection, scheme, useColors);
 
   const plateRings = EXPLODED_LAYERS.map((layer) => groundRing(radius).map((point) => projectFor(layer)(point, 0)));
   const plateRawPoints = plateRings.flat();

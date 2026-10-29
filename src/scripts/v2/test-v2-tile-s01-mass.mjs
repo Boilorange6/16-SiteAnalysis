@@ -2,12 +2,14 @@ import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-const { CAMERA_PRESETS, EXPLODED_LAYERS, MASS_USE_COLORS, projectExploded, projectExplodedPoint, projectMass } = await import("../../lib/v2/ui/mass-projection.ts");
+const { CAMERA_PRESETS, EXPLODED_LAYERS, massUseColors, projectExploded, projectExplodedPoint, projectMass } = await import("../../lib/v2/ui/mass-projection.ts");
+const { layerStyle } = await import("../../lib/v2/ui/map-layers.ts");
+const { paletteLayerStyle } = await import("../../lib/v2/ui/map-palette.ts");
 const { default: MassFigure } = await import("../../components/v2/mass-figure.tsx");
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
 const { s01CutModule } = await import("../../lib/v2/tile/s01/cut.ts");
 const { boardReducer, initBoard } = await import("../../lib/v2/ui/board-state.ts");
-const { toSummaryView, toTileView } = await import("../../lib/v2/ui/tile-view.ts");
+const { toSummaryView, toTileView, withPalette } = await import("../../lib/v2/ui/tile-view.ts");
 const { buildReportPlan, mapKeyOf } = await import("../../lib/v2/report/report-plan.ts");
 const { renderReportPptx } = await import("../../lib/v2/report/render-pptx.ts");
 const JSZip = (await import("jszip")).default;
@@ -179,7 +181,16 @@ const renderedWallFills = new Set([...explodedMarkup.matchAll(/data-face-kind="w
 assert.ok(renderedWallFills.size >= 3, "벽면은 지붕 색별로 어두워지며 단일 갈색으로 고정되지 않는다");
 assert.match(explodedMarkup, /건물 용도 색 범례/);
 assert.match(explodedMarkup, />주거</);
-assert.equal(MASS_USE_COLORS.find(({ label }) => label === "주거")?.color, "#F2D46E");
+assert.equal(massUseColors(null)["주거"], "#D69E2E");
+assert.equal(massUseColors(null)["공업"], "#718096");
+for (const name of Object.keys(massUseColors(null))) {
+  assert.equal(massUseColors(null)[name], layerStyle(`use:${name}`).color, `3D 용도색은 2D use:${name} 색과 같다`);
+  assert.equal(massUseColors("vivid")[name], paletteLayerStyle(`use:${name}`, layerStyle(`use:${name}`), "vivid").color, `vivid 팔레트도 2D와 같다(${name})`);
+}
+assert.notEqual(massUseColors("vivid")["주거"], massUseColors(null)["주거"], "vivid 팔레트는 주거색을 바꾼다");
+assert.equal(Object.keys(massUseColors(null)).length, 10);
+const vividMarkup = renderToStaticMarkup(createElement(MassFigure, { scene, camera, width: 800, height: 700, fixed: true, exploded: { spreadPct: 60 }, palette: "vivid" }));
+assert.ok(vividMarkup.includes(`fill="${massUseColors("vivid")["주거"]}"`), "분해 범례 견본이 팔레트 색을 따른다");
 const emptyMarkup = renderToStaticMarkup(createElement(MassFigure, { scene, camera, width: 800, height: 700, fixed: true, exploded: { spreadPct: 60 } }));
 assert.match(emptyMarkup, />자료 없음</);
 assert.match(emptyMarkup, /published reference 재구축 전/);
@@ -240,6 +251,8 @@ const tile = parseTileResult({
 });
 const view = toTileView(tile, scene);
 assert.equal(view.mass?.scene?.analysisId, "mass-test");
+assert.equal(withPalette(view, { palette: "vivid" }).mass?.palette, "vivid", "보드·보고서가 고른 팔레트가 매스 모델에도 실린다");
+assert.equal(withPalette(view, {}), view, "고른 것이 없으면 같은 view");
 assert.deepEqual(s01CutModule.view(view, { tile: "S01", mode: "exploded" }).mass?.exploded, { spreadPct: 100, scheme: "use" }, "S01 화면 분해 매스는 100% spread를 쓴다");
 const board = initBoard([tile]);
 const plan = buildReportPlan({ summary: toSummaryView({ address: "테스트", areaM2: null, zoning: null, radiusM: 100, facts: [] }, [tile]), views: new Map([[tile.tileId, view]]), board, analysisDate: "2026-09-30" });

@@ -503,8 +503,9 @@ export function withPalette(view: TileView, colors: MapColorChoice): TileView {
   const backdrop = withMapColors(view.backdrop, colors);
   const layerSourceMap = withMapColors(view.layerSourceMap, colors);
   const callout = view.callout ? withCalloutColors(view.callout, colors) : view.callout;
-  if (map === view.map && backdrop === view.backdrop && layerSourceMap === view.layerSourceMap && callout === view.callout) return view;
-  return { ...view, map, backdrop, ...(view.layerSourceMap !== undefined ? { layerSourceMap } : {}), ...(view.callout ? { callout } : {}) };
+  const mass = view.mass && colors.palette !== undefined ? { ...view.mass, palette: colors.palette } : view.mass;
+  if (map === view.map && backdrop === view.backdrop && layerSourceMap === view.layerSourceMap && callout === view.callout && mass === view.mass) return view;
+  return { ...view, map, backdrop, ...(view.layerSourceMap !== undefined ? { layerSourceMap } : {}), ...(view.callout ? { callout } : {}), mass };
 }
 
 /** 카드·펼침 창·보고서가 같은 레이어 선택 결과를 사용하도록 지도 입력만 파생한다. */

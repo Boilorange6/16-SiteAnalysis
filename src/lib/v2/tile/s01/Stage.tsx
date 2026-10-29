@@ -17,6 +17,7 @@ export function MassStage({ displayView, frame, label }: TileStageProps) {
       quality={card ? "card" : "detail"}
       mode={card ? "image" : "live"}
       exploded={mass.exploded}
+      palette={mass.palette}
     />
   );
 }

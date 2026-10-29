@@ -154,6 +154,7 @@ function staticMass(mass: MassModel, layout: TileLayout): string {
     height: layout.visualHeight,
     fixed: true,
     exploded: mass.exploded,
+    palette: mass.palette,
     quality: "detail",
     label: "S01 3D 매스",
   }));

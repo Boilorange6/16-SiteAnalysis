@@ -1,10 +1,11 @@
 import { groundZAt, type Ring, type Scene } from "../scene";
+import type { DiagramPaletteRef } from "./map-palette";
 import {
   CAMERA_PRESETS,
   EXPLODED_LAYERS,
   EXPLODED_LABEL_CHIP_WIDTH,
   EXPLODED_PRESENTATION_ELEVATION_DEG,
-  MASS_USE_COLORS,
+  massUseColors,
   explodedLayerGap,
   type ExplodedLayer,
   type MassCamera,
@@ -30,6 +31,7 @@ export type Mass3dRenderInput = {
   exploded?: { spreadPct: number; scheme?: MassColorScheme };
   quality?: "card" | "detail";
   label?: string;
+  palette?: DiagramPaletteRef | null;
 };
 
 export type Mass3dMount = {
@@ -76,10 +78,10 @@ export function mass3dCameraResetPreset(camera: MassCamera | null | undefined): 
   };
 }
 
-export function mass3dCacheKey(input: Pick<Mass3dRenderInput, "scene" | "camera" | "width" | "height" | "exploded" | "quality">): string {
+export function mass3dCacheKey(input: Pick<Mass3dRenderInput, "scene" | "camera" | "width" | "height" | "exploded" | "quality" | "palette">): string {
   const sceneKey = input.scene ? `${input.scene.analysisId}:${input.scene.manifestHash}` : "empty";
   const camera = input.camera ?? DEFAULT_CAMERA;
-  const exploded = input.exploded ? `${input.exploded.spreadPct}:${input.exploded.scheme ?? "use"}` : "basic";
+  const exploded = input.exploded ? `${input.exploded.spreadPct}:${input.exploded.scheme ?? "use"}:${Object.values(massUseColors(input.palette)).join("")}` : "basic";
   return [
     sceneKey,
     camera.azimuthDeg,
@@ -174,7 +176,6 @@ function useClassOf(code: string | null): string {
   return "미상";
 }
 
-const useColors = new Map<string, string>(MASS_USE_COLORS.map(({ label, color }) => [label, color]));
 const ageColors = ["#B98977", "#C6A28A", "#D5B99A", "#E2CCAC", "#EBDDBE", "#F1E8D5", "#D0D3D6"];
 const heightColors = ["#D9E6E0", "#C7DBD9", "#B2CDD2", "#A4BDD0", "#B8B9CD", "#D0D3D6"];
 const explodedPlateColors: Record<string, string> = {
@@ -194,11 +195,11 @@ function approvalYear(value: string | null): number | null {
   return Number.isFinite(year) && year >= 1900 && year <= 2200 ? year : null;
 }
 
-function buildingColor(building: Scene["buildings"][number], category: Mass3dHeightCategory, input: Mass3dRenderInput): string {
+function buildingColor(building: Scene["buildings"][number], category: Mass3dHeightCategory, input: Mass3dRenderInput, useColors: Record<string, string>): string {
   if (!input.exploded) return MASS_3D_COLORS[category];
   const scheme = safeScheme(input);
   if (scheme === "single") return category === "unknown" ? MASS_3D_COLORS.unknown : "#D2DCE5";
-  if (scheme === "use") return useColors.get(useClassOf(building.useCode)) ?? useColors.get("미상")!;
+  if (scheme === "use") return useColors[useClassOf(building.useCode)] ?? useColors.미상;
   if (scheme === "age") {
     const year = approvalYear(building.approvalDate);
     if (year === null) return ageColors[ageColors.length - 1]!;
@@ -422,9 +423,10 @@ function addBuildingMeshes(
   input: Mass3dRenderInput,
   zOffset: number,
 ): void {
+  const useColors = massUseColors(input.palette);
   for (const [buildingIndex, building] of scene.buildings.entries()) {
     const category = mass3dHeightCategory(building);
-    const color = buildingColor(building, category, input);
+    const color = buildingColor(building, category, input, useColors);
     const specs = mass3dExtrusionSpecs(building, scene.ground);
     for (const [polygonIndex, spec] of specs.entries()) {
       const shape = createShape(THREE, spec);
@@ -977,7 +979,7 @@ export async function mountMass3d(container: HTMLElement, input: Mass3dRenderInp
   const sceneKey = (value: Mass3dRenderInput): string => [
     value.scene?.analysisId ?? "empty",
     value.scene?.manifestHash ?? "",
-    value.exploded ? `${value.exploded.spreadPct}:${value.exploded.scheme ?? "use"}` : "basic",
+    value.exploded ? `${value.exploded.spreadPct}:${value.exploded.scheme ?? "use"}:${Object.values(massUseColors(value.palette)).join("")}` : "basic",
     value.quality ?? "detail",
   ].join("|");
   const cameraKey = (value: Mass3dRenderInput): string => [

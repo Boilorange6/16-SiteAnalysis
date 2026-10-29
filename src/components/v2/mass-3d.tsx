@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { MassCamera, MassColorScheme, MassLabel, MassQuality } from "@/lib/v2/ui/mass-projection";
+import { massUseColors, type MassCamera, type MassColorScheme, type MassLabel, type MassQuality } from "@/lib/v2/ui/mass-projection";
+import type { DiagramPaletteRef } from "@/lib/v2/ui/map-palette";
 import type { Scene } from "@/lib/v2/scene";
 import FallbackMassFigure from "./mass-figure";
 import styles from "./board.module.css";
@@ -22,6 +23,7 @@ export type Mass3dProps = {
   exploded?: { spreadPct: number; scheme?: MassColorScheme };
   quality?: MassQuality;
   mode?: RenderMode;
+  palette?: DiagramPaletteRef | null;
 };
 
 function buildingAccessibilityLabel(building: Scene["buildings"][number]): string | null {
@@ -46,7 +48,7 @@ export function formatMass3dAccessibilityLabel({ scene, label }: Pick<Mass3dProp
 
 const loadRuntime = () => import("@/lib/v2/ui/mass-3d-runtime");
 
-function inputKey({ scene, camera, width, height, exploded, quality, label, mode }: Mass3dProps): string {
+function inputKey({ scene, camera, width, height, exploded, quality, label, mode, palette }: Mass3dProps): string {
   return [
     scene?.analysisId ?? "empty",
     scene?.manifestHash ?? "",
@@ -55,7 +57,7 @@ function inputKey({ scene, camera, width, height, exploded, quality, label, mode
     camera.radiusM,
     width,
     height,
-    exploded ? `${exploded.spreadPct}:${exploded.scheme ?? "use"}` : "basic",
+    exploded ? `${exploded.spreadPct}:${exploded.scheme ?? "use"}:${Object.values(massUseColors(palette)).join("")}` : "basic",
     quality ?? "detail",
     label ?? "",
     mode ?? "image",
@@ -161,6 +163,7 @@ function Fallback({ props, note }: { props: Mass3dProps; note: string }) {
         label={accessibilityLabel}
         exploded={props.exploded}
         quality={props.quality}
+        palette={props.palette}
       />
       <span className={tileStyles.mass3dFallbackNote} role="status">{note}</span>
     </div>
@@ -184,7 +187,7 @@ function Mass3D({ mode = "image", ...props }: Mass3dProps) {
   const renderProps = mode === "image"
     ? { ...props, label: accessibilityLabel, width: imageSize.width, height: imageSize.height }
     : { ...props, label: accessibilityLabel };
-  const key = useMemo(() => inputKey({ ...renderProps, mode }), [renderProps.scene, renderProps.camera, renderProps.width, renderProps.height, renderProps.exploded, renderProps.quality, renderProps.label, mode]);
+  const key = useMemo(() => inputKey({ ...renderProps, mode }), [renderProps.scene, renderProps.camera, renderProps.width, renderProps.height, renderProps.exploded, renderProps.quality, renderProps.label, renderProps.palette, mode]);
 
   useEffect(() => {
     if (mode !== "image" || !imageRef.current) return;
