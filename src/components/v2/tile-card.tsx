@@ -291,7 +291,6 @@ export function Stage({ view, state, chart, frame, siteX, rightInset, legendY, p
       legend={false}
       showAutomaticLabels={showLabels}
       legendY={legendY}
-      north={22}
       credit={false}
       bottomInset={card ? 0 : OV.stripH}
       pad={card ? 7 : undefined}

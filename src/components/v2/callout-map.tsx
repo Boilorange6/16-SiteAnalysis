@@ -337,7 +337,6 @@ function CalloutMap({ model, kind, page = 0, onPage, label, mapInteractive = tru
               compact
               label={label}
               legend={false}
-              north={22}
               credit={false}
               bottomInset={0}
               tileHref={sat ? satelliteTileHref : undefined}

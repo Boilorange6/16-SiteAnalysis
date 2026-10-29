@@ -124,7 +124,7 @@ function SummaryCard({ view, face, onFace, rovingTabIndex, onRovingFocus, onRovi
               </header>
               <div className={styles.mfMap}>
                 <div className={styles.stage} aria-hidden>
-                  <MapBox model={view.map} bare legend={false} north={22} credit={false} pad={7} />
+                  <MapBox model={view.map} bare legend={false} credit={false} pad={7} />
                 </div>
               </div>
               <footer className={styles.mfFoot} title={`${view.asOfLine} · 배경지도 ${credit}`}>
