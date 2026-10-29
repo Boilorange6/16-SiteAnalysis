@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, memo, useCallback, useEffect, useId, useMemo, useReducer, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { Fragment, memo, useCallback, useDeferredValue, useEffect, useId, useMemo, useReducer, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import SummaryCard from "@/components/v2/summary-card";
 import TileCard, { type TileCardAction } from "@/components/v2/tile-card";
 import TileDialog from "@/components/v2/tile-dialog";
@@ -15,7 +15,7 @@ import type { MapColorChoice } from "@/lib/v2/report/report-doc";
 import { baseUsable, mapBaseFromScene } from "@/lib/v2/ui/basemap";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import styles from "@/components/v2/board.module.css";
-import { SUMMARY_ID, boardReducer, boardStorageKey, initBoard, nextCopyId, rebaseSnapshotAnalysisId, selectBoardSnapshotForLoad, serializeBoardState, sourceTileId, viewOf, type CardFace, type CutSpec, type GridColumns, type PinnedLabel } from "@/lib/v2/ui/board-state";
+import { SUMMARY_ID, boardReducer, boardStorageKey, initBoard, nextCopyId, rebaseSnapshotAnalysisId, selectBoardSnapshotForLoad, serializeBoardState, sourceTileId, viewOf, type CardFace, type CutSpec, type GridColumns, type PinnedLabel, type TerrainSectionId } from "@/lib/v2/ui/board-state";
 import type { PlannedSlide } from "@/lib/v2/report/report-plan";
 import { planReportDoc, printedPageCount } from "@/lib/v2/report/report-doc-plan";
 import { downloadBytes, exportFileName, EXPORT_MIME, DAE_MIME } from "@/lib/v2/export/download";
@@ -697,6 +697,11 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
     }
     return next;
   }, [analysisSiteParcel, board.a05Filter, board.instances, board.layers, results, scene, sourceViews]);
+  // 지도 색을 바꾸면 카드 지도를 모두 다시 그려야 해서 0.6 s쯤 걸린다. 지도에 가는 색만 늦춰 그리면 누른 반응은 바로 보이고,
+  // 색을 이어서 바꾸면 그리던 것을 버리고 새 색부터 그린다.
+  const shownPalette = useDeferredValue(previewColors?.palette ?? board.palette);
+  const shownBaseHide = useDeferredValue(board.baseHide);
+  const shownBaseTheme = useDeferredValue(previewColors?.base ?? board.baseTheme);
   const views = useMemo(() => {
     const next = new Map(
       [...baseViews].map(([id, view]) => {
@@ -715,11 +720,10 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
     }
     // 보드가 고른 팔레트·끈 바탕 레이어를 모든 view의 지도 모델과 설명선에 붙인다(바탕 테마는 BaseThemeContext).
     // 지도 색 팝오버에서 줄 위에 올려 둔 팔레트는 저장하지 않고 잠시 덮는다.
-    const palette = previewColors?.palette ?? board.palette;
-    if (!palette && !board.baseHide) return next;
-    const colors = { palette, hide: board.baseHide };
+    if (!shownPalette && !shownBaseHide) return next;
+    const colors = { palette: shownPalette, hide: shownBaseHide };
     return new Map([...next].map(([id, view]) => [id, withPalette(view, colors)] as const));
-  }, [baseViews, board.baseHide, board.cameras, board.palette, board.sheets, board.stacks, previewColors?.palette]);
+  }, [baseViews, board.cameras, board.sheets, board.stacks, shownBaseHide, shownPalette]);
   const addTileItems = useMemo<AddTileItem[]>(() => {
     const resultIds = new Set(results.map((result) => result.tileId));
     const boardCounts = new Map<string, number>();
@@ -746,14 +750,24 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
   // 요약 카드·보고서 표지·출처 장의 대지 지도도 보드가 끈 바탕 레이어를 따른다(바탕 테마는 BaseThemeContext).
   const summary = useMemo(() => {
     const base = toSummaryView(siteSummary, results, scene);
-    return board.baseHide ? { ...base, map: withMapColors(base.map, { hide: board.baseHide }) ?? null } : base;
-  }, [siteSummary, results, scene, board.baseHide]);
+    return shownBaseHide ? { ...base, map: withMapColors(base.map, { hide: shownBaseHide }) ?? null } : base;
+  }, [siteSummary, results, scene, shownBaseHide]);
   const analysisDate = results[0]?.conditions.analysisDate ?? "기준일 미확인";
   const reportPlanContext = useMemo(() => ({ summary, analysisDate, views, results: reportResults, scene, analysisSiteParcel, resultFor: reportResultFor }), [analysisDate, analysisSiteParcel, reportResultFor, reportResults, scene, summary, views]);
   const reportDocPageCount = useMemo(() => printedPageCount(board.reportDoc, views, reportPlanContext), [board.reportDoc, reportPlanContext, views]);
   const total = board.order.length;
   const notProvidedIds = shown.filter((id) => views.get(id)?.status === "not_provided");
-  const visibleShown = shown.filter((id) => views.get(id)?.status !== "not_provided");
+  const visibleShown = useMemo(() => shown.filter((id) => views.get(id)?.status !== "not_provided"), [shown, views]);
+  // TileCard는 memo다. 카드마다 늘 같은 함수·객체를 넘겨야 지도 색과 상관없는 보드 렌더에서 카드 지도를 다시 그리지 않는다.
+  const cardHandlers = useRef(new Map<string, { onLayer: (layer: string) => void; onTerrainSection: (section: TerrainSectionId) => void }>());
+  const cardHandlersFor = (id: string) => {
+    let handlers = cardHandlers.current.get(id);
+    if (!handlers) {
+      handlers = { onLayer: (layer) => dispatch({ type: "layer", id, layer }), onTerrainSection: (section) => dispatch({ type: "terrainSection", id, section }) };
+      cardHandlers.current.set(id, handlers);
+    }
+    return handlers;
+  };
   const rovingItems = useMemo<RovingGridItem[]>(() => [{ id: SUMMARY_ID }, ...visibleShown.map((id) => ({ id }))], [visibleShown]);
   const [rovingId, setRovingId] = useState<string>(SUMMARY_ID);
   const activeRovingId = rovingItems.some((item) => item.id === rovingId) ? rovingId : (rovingItems[0]?.id ?? SUMMARY_ID);
@@ -787,6 +801,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
   const d17ReliefMin = d17?.metrics.find((metric) => metric.id === "relief_min_m")?.value;
   const d17ReliefMax = d17?.metrics.find((metric) => metric.id === "relief_max_m")?.value;
   const showTopoNudge = topoState.s !== "ready" && !hasTopo && topoState.s !== "preparing" && topoState.s !== "uploading" && d17ReliefMin !== null && d17ReliefMin !== undefined && d17ReliefMax !== null && d17ReliefMax !== undefined && d17ReliefMax - d17ReliefMin >= TOPO_NUDGE_RELIEF_M;
+  const topoNudge = useMemo(() => (showTopoNudge ? { onClick: onTopoNudge, disabled: actionBusy } : undefined), [actionBusy, onTopoNudge, showTopoNudge]);
   const closeTopoDialog = useCallback(() => setTopoDialogOpen(false), []);
   useFocusTrap({ ref: topoDialogRef, active: topoDialogOpen, onClose: closeTopoDialog, restoreFocusRef: topoTriggerRef });
   const jobState = useMemo(() => jobProgress(jobs), [jobs]);
@@ -1049,7 +1064,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
   return (
     <BasemapContext.Provider value={basemap}>
     <SetBasemapContext.Provider value={setBasemap}>
-    <BaseThemeContext.Provider value={previewColors?.base ?? board.baseTheme}>
+    <BaseThemeContext.Provider value={shownBaseTheme}>
     <main className={styles.root}>
       <div
         className={`${styles.page} ${boardMode === "report" ? styles.reportPage : ""}`}
@@ -1288,10 +1303,10 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
                   view={view}
                   analysisId={analysisId}
                   layer={view.defaultLayer}
-                  onLayer={(layer) => dispatch({ type: "layer", id, layer })}
+                  onLayer={cardHandlersFor(id).onLayer}
                   phase={jobState.byCode.get(view.code)?.phase ?? null}
                   waitingNote={jobState.byCode.get(view.code)?.note ?? null}
-                  topoNudge={view.code === "D17" && showTopoNudge ? { onClick: onTopoNudge, disabled: actionBusy } : undefined}
+                  topoNudge={view.code === "D17" ? topoNudge : undefined}
                   canUp={oi > 0}
                   canDown={oi < total - 1}
                   size={size}
@@ -1305,7 +1320,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
                   pinnedLabels={board.labels[id] ?? EMPTY_PINNED_LABELS}
                   showMapLabels={!!board.mapLabels[id]}
                   terrainSection={board.terrainSection[id] ?? "A"}
-                  onTerrainSection={(section) => dispatch({ type: "terrainSection", id, section })}
+                  onTerrainSection={cardHandlersFor(id).onTerrainSection}
                   cardFace={viewOf(board, id)}
                   highlighted={highlightedTileId === id}
                   onWindUploaded={onWindUploaded}

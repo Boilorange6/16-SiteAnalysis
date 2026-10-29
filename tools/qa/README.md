@@ -7,6 +7,7 @@
 - `capture-pages.mjs` — 보고서 쪽을 폭별로 캡처하고 DOM을 잰다. `node tools/qa/capture-pages.mjs <analysisId> <outDir> [--widths 1440,1280,1024] [--pages 10,19,20] [--layout keep|charts]` (`keep`은 있는 그대로, `charts`는 「지도 + 그래프」로 전환)
 - `export-pptx.mjs` — PPT 실제 내보내기. `node tools/qa/export-pptx.mjs <analysisId> <outDir> [width] [editable|image]`
 - `render-pptx.ps1` — PowerPoint SaveAs PNG로 장별 렌더. `powershell -NoProfile -ExecutionPolicy Bypass -File tools/qa/render-pptx.ps1 -Pptx <file.pptx> -Out <dir>`
+- `perf-map-colors.mjs` — 보드에서 다이어그램 색을 연달아 바꿀 때 걸리는 시간. `node tools/qa/perf-map-colors.mjs <analysisId> [횟수]` (`paint` 누른 반응이 보이기까지, `settle` 지도 색이 다 바뀌기까지. 개발 서버 대치동 503 기준 2026-10-29: paint 중앙값 21 ms·settle 309 ms, 고치기 전 600·603 ms)
 - `probe-charts.mts` — 엔진을 직접 돌려(DB 쓰기 없음) 타일별 `countedCapped`·payload 수·그래프 한 줄 통계·문장 머리를 출력. `npx tsx tools/qa/probe-charts.mts <analysisId> D03,A07,A09` (`V2_DATA_DIR`, `V2_APP_DB_PATH`로 경로 변경)
 
 ## 전체 UI 검수 순서
