@@ -2169,12 +2169,6 @@ button.badge:focus-visible {
   opacity: 1;
   cursor: default;
 }
-/* 비활성 이유를 버튼 옆에 보이는 글로 알린다(aria-describedby로 연결). */
-.segHint {
-  color: var(--muted, #5b616c);
-  font-size: 12px;
-  white-space: nowrap;
-}
 .seg button[aria-pressed="true"] {
   /* 상세 창은 body 포털이라 .root의 --black 상속 범위 밖에서도 같은 선택 대비를 유지한다. */
   background: var(--black, #16181d);

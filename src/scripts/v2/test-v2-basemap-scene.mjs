@@ -120,7 +120,9 @@ const build = (model, options = {}) => buildMapScene({ model, width: 800, height
   assert.equal(resolveBasemap({ base: oldBase }), "white");
   assert.equal(resolveBasemap({ base: oldBase }, "vector"), "white");
   assert.equal(resolveBasemap({ base: oldBase }, "Base"), "Base");
-  assert.equal(basemapUnavailableText(oldBase), "새로고침하면 기본 지도를 쓸 수 있습니다");
+  // 새로고침을 권하는 건 지금 새로고침할 수 있을 때만(낡은 타일이 없으면 장면을 다시 만들지 않는다)
+  assert.equal(basemapUnavailableText(oldBase), "예전 분석이라 기본 지도 자료가 없습니다");
+  assert.equal(basemapUnavailableText(oldBase, true), "새로고침하면 기본 지도를 쓸 수 있습니다");
   // 일부 도로만 이름 키가 없으면 새 장면이다(이름 없는 도로는 null)
   const mixed = makeScene(); delete mixed.context.roads[0].name;
   assert.equal(isPreBasemapScene(mixed), false);

@@ -69,7 +69,7 @@ const DETAIL_WINDOW_CSS = `
 .detail-card-divider { height: 1px; margin: 10px 0 12px; background: #e0e3e8; }
 .detail-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; margin: 0; }
 .detail-field { min-width: 0; }
-.detail-field dt { margin-bottom: 2px; color: #737c89; font-size: 12px; }
+.detail-field dt { margin-bottom: 2px; color: #676c76; font-size: 12px; }
 .detail-field dd { margin: 0; overflow-wrap: anywhere; color: #20242c; font-size: 15px; font-variant-numeric: tabular-nums; font-weight: 700; }
 .detail-field dd.detail-type-value { display: flex; flex-wrap: wrap; gap: 2px 4px; overflow-wrap: normal; }
 .detail-missing { margin: 13px 0 0; padding: 9px 10px; border-left: 3px solid #d99820; background: #fff8e7; color: #634b1b; font-size: 12px; }
@@ -112,7 +112,7 @@ const DETAIL_WINDOW_CSS = `
 .detail-row:focus-visible { position: relative; z-index: 1; outline: 2px solid #1d4ed8; outline-offset: -2px; }
 .detail-table-mobile { display: none; }
 .detail-table-empty { margin: 0; padding: 34px 16px; color: #687382; text-align: center; }
-.detail-table-footer { padding: 8px 12px 10px; color: #737c89; font-size: 11px; }
+.detail-table-footer { padding: 8px 12px 10px; color: #676c76; font-size: 11px; }
 .detail-state { display: grid; min-height: 180px; place-items: center; padding: 24px; border: 1px dashed #cbd1da; border-radius: 12px; background: #fff; color: #66707e; text-align: center; }
 .detail-state strong { display: block; margin-bottom: 5px; color: #252a33; }
 .detail-state button { min-height: 44px; margin-top: 12px; border: 1px solid #bcc4d0; border-radius: 8px; background: #fff; padding: 0 14px; font-size: 12px; font-weight: 700; }

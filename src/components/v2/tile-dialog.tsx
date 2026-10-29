@@ -176,12 +176,12 @@ export default function TileDialog({ view, layer, onLayer, onRetry, cut, onCut, 
             {BASEMAPS.map((b) => {
               const blocked = basemapPinned || (b.id === "vector" && !vectorAvailable);
               return (
-                <button key={b.id} type="button" aria-pressed={shownBasemap === b.id} aria-disabled={blocked || undefined} aria-describedby={blocked ? basemapNoteId : undefined} onClick={() => !blocked && setBasemap(b.id)}>
+                <button key={b.id} type="button" aria-pressed={shownBasemap === b.id} aria-disabled={blocked || undefined} title={blocked ? basemapNote ?? undefined : undefined} aria-describedby={blocked ? basemapNoteId : undefined} onClick={() => !blocked && setBasemap(b.id)}>
                   {b.label}
                 </button>
               );
             })}
-            {basemapNote && <span id={basemapNoteId} className={styles.segHint}>{basemapNote}</span>}
+            {basemapNote && <span id={basemapNoteId} className={styles.srOnly}>{basemapNote}</span>}
           </span>
           <button type="button" className={`${styles.plate} ${styles.closeBtn}`} onClick={onClose} aria-label="닫기">
             닫기 ×

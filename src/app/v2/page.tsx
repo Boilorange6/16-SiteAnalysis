@@ -595,7 +595,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
   const vectorBase = useMemo(() => (scene?.origin ? mapBaseFromScene(scene) : null), [scene]);
   const vectorAvailable = baseUsable(vectorBase);
   // 장면이 아직 오지 않았을 때는 이유를 보이지 않는다(불러오는 중에 깜박이지 않게).
-  const vectorUnavailableText = vectorBase ? basemapUnavailableText(vectorBase) : null;
+  const vectorUnavailableText = vectorBase ? basemapUnavailableText(vectorBase, (refreshSummary?.staleTiles ?? 0) > 0 && refreshSummary?.canRefresh === true) : null;
   const [basemap, setBasemap] = useState<BasemapChoice>("vector");
   // 지도 색 팝오버: 열림 여부, 줄 위에 올려 둔 미리 보기(저장하지 않음), 연 버튼.
   // 같은 기본 지도 버튼이 머리 줄(bar)과 접힌 「더 보기」 메뉴(menu) 두 곳에 있어서, 어느 쪽에서 열었는지 기억해 그 버튼에 붙인다.
@@ -621,7 +621,8 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
   // 이미 눌린 기본 지도를 다시 누르면 지도 색 팝오버를 연다(`기본 지도 ▾`). 눌리지 않았으면 지금처럼 바탕만 바꾼다.
   const basemapButton = (b: (typeof BASEMAPS)[number], from: "bar" | "menu") => {
     const mapColorTrigger = b.id === "vector" && shownBasemap === "vector";
-    // 쓸 수 없는 「기본 지도」는 disabled가 아니라 aria-disabled: 키보드 초점이 가고, 이유는 바로 옆에 보이는 글로 알린다.
+    // 쓸 수 없는 「기본 지도」는 disabled가 아니라 aria-disabled: 키보드 초점이 가고, 이유는 툴팁(정본 §보고서 「이 쪽만」과 같은 방식)과 숨은 설명으로 알린다.
+    // 막대 옆에 글로 두면 1440에서도 머리 줄을 밀어 「파일」 버튼이 잘린다.
     const blocked = b.id === "vector" && !vectorAvailable;
     return (
       <button
@@ -630,6 +631,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
         type="button"
         aria-pressed={shownBasemap === b.id}
         aria-disabled={blocked || undefined}
+        title={blocked ? vectorUnavailableText ?? undefined : undefined}
         aria-describedby={blocked && vectorUnavailableText ? `board-basemap-hint-${from}` : undefined}
         aria-label={mapColorTrigger ? b.label : undefined}
         aria-haspopup={mapColorTrigger ? "dialog" : undefined}
@@ -1161,7 +1163,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
                   <span className={styles.seg} role="group" aria-label="배경지도">
                     {BASEMAPS.map((b) => basemapButton(b, "bar"))}
                   </span>
-                  {vectorUnavailableText && <span id="board-basemap-hint-bar" className={styles.segHint}>{vectorUnavailableText}</span>}
+                  {vectorUnavailableText && <span id="board-basemap-hint-bar" className={styles.srOnly}>{vectorUnavailableText}</span>}
                   {mapColorFrom !== null && shownBasemap === "vector" && (
                     <MapColorBoardPopover
                       key={mapColorFrom}
@@ -1235,7 +1237,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
                     <span className={styles.seg} role="group" aria-label="배경지도">
                       {BASEMAPS.map((b) => basemapButton(b, "menu"))}
                     </span>
-                    {vectorUnavailableText && <span id="board-basemap-hint-menu" className={styles.segHint}>{vectorUnavailableText}</span>}
+                    {vectorUnavailableText && <span id="board-basemap-hint-menu" className={styles.srOnly}>{vectorUnavailableText}</span>}
                   </span>
                   <div className={styles.mobileRail}>
                     <BoardRail

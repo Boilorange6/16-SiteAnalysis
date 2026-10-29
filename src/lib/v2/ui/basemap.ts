@@ -70,10 +70,13 @@ export function mapBaseFromScene(scene: Scene): MapBase {
  */
 export const baseUsable = (base: MapBase | null | undefined): base is MapBase => !!base && base.roads.length > 0 && !base.flaw;
 
-/** 「기본 지도」를 쓸 수 없는 이유를 사용자 말로. 쓸 수 있으면 null. */
-export function basemapUnavailableText(base: MapBase | null | undefined): string | null {
+/**
+ * 「기본 지도」를 쓸 수 없는 이유를 사용자 말로. 쓸 수 있으면 null.
+ * refreshable: 지금 새로고침 띠가 보일 때만 새로고침을 권한다(낡은 타일이 없으면 새로고침이 장면을 다시 만들지 않는다).
+ */
+export function basemapUnavailableText(base: MapBase | null | undefined, refreshable = false): string | null {
   const flaw = base?.flaw;
-  if (flaw === "legacy") return "새로고침하면 기본 지도를 쓸 수 있습니다";
+  if (flaw === "legacy") return refreshable ? "새로고침하면 기본 지도를 쓸 수 있습니다" : "예전 분석이라 기본 지도 자료가 없습니다";
   if (flaw === "truncated") return "반경이 넓어 기본 지도를 그리지 않습니다";
   return baseUsable(base) ? null : "이 분석에는 기본 지도 자료가 없습니다";
 }
