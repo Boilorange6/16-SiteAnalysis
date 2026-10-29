@@ -62,6 +62,8 @@ export const SCALE_FONT_PX = 12;
 /** 축척 판이 막대 기준선 위로 올라가는 높이(글자 + 5)·아래로 내려가는 높이(u 단위). */
 export const SCALE_PANEL_ABOVE = SCALE_FONT_PX + 5;
 export const SCALE_PANEL_BELOW = 8;
+/** 축척 판의 막대 좌우 여백(u 단위). */
+export const SCALE_PANEL_SIDE = 6;
 /** 방위표 그림(중심 기준, u 단위): 화살촉 끝·날개·파인 곳, N 글자 중심·크기, 그림자(아래 1·번짐 1.4·검정 28 %). */
 export const NORTH_GLYPH = { tipY: -15.6, wingX: 7.8, wingY: 2.8, notchY: -0.9, letterY: 12.4, letterPx: 11, shadowDy: 1, shadowBlur: 1.4, shadowOpacity: 0.28 } as const;
 
@@ -131,9 +133,9 @@ function scaleBarLayout(width: number, height: number, mpp: number, bottomInset 
 
 function scaleBarBoxFromLayout(width: number, height: number, layout: ScaleBarLayout): MapSceneBox {
   const { x0, x1, y, unit } = layout;
-  const box = { x0: Math.max(0, x0 - 6 * unit), y0: Math.max(0, y - SCALE_PANEL_ABOVE * unit) };
+  const box = { x0: Math.max(0, x0 - SCALE_PANEL_SIDE * unit), y0: Math.max(0, y - SCALE_PANEL_ABOVE * unit) };
   // 작은 썸네일·큰 하단 여백에서는 막대가 화면 밖이라 상자가 뒤집히지 않게 빈 상자로 둔다.
-  return { ...box, x1: Math.max(box.x0, Math.min(width, x1 + 6 * unit)), y1: Math.max(box.y0, Math.min(height, y + SCALE_PANEL_BELOW * unit)) };
+  return { ...box, x1: Math.max(box.x0, Math.min(width, x1 + SCALE_PANEL_SIDE * unit)), y1: Math.max(box.y0, Math.min(height, y + SCALE_PANEL_BELOW * unit)) };
 }
 
 /** 축척 막대의 실제 불투명 판·막대·문자 영역과 같은 회피 상자. */
@@ -1363,7 +1365,9 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     : { x0: cx - 2.25 * siteR, y0: cy - 2.25 * siteR, x1: cx + 2.25 * siteR, y1: cy + 2.25 * siteR };
   const rings: number[] = [];
   if (showRadius) for (let meters = 500; meters < model.radiusM - 1; meters += 500) rings.push(meters / mpp);
-  const scaleLayout = scaleBarLayout(W, H, mpp, bottomInset, rightInset, scaleLeft, scaleX, u, scaleMaxPx, scaleY);
+  // 저장된 축척 상자(옛 최대 길이로 만든 것 포함)보다 막대가 길어지지 않게 상자 폭에서 좌우 여백을 뺀 길이로 묶는다.
+  const scaleBarMaxPx = scaleBoxOverride ? Math.max(1, Math.min(scaleMaxPx, (scaleBoxOverride.x1 - scaleBoxOverride.x0) / u - 2 * SCALE_PANEL_SIDE)) : scaleMaxPx;
+  const scaleLayout = scaleBarLayout(W, H, mpp, bottomInset, rightInset, scaleLeft, scaleX, u, scaleBarMaxPx, scaleY);
   const { bar, y: barY } = scaleLayout;
   const scaleBox = scaleBoxOverride ?? scaleBarBoxFromLayout(W, H, scaleLayout);
   const scaleBoxWidth = Math.max(0, scaleBox.x1 - scaleBox.x0);

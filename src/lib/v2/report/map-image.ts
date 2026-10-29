@@ -328,7 +328,7 @@ function extraFor(p: PlannedSlide, model: MapModel): Extra {
   const siteY = terrainLayout?.mapSiteY ?? 0.5;
   const scaleOptions = frame ? mapFrameScaleOptions(p.format ?? "wide", p.page?.layout ?? "map-summary", { width: VIEW_W, height: VIEW_H, siteX, siteY, fill }) : null;
   const style = frame && scaleOptions ? reportFrameStyle(frame, baseStyle, model, scaleOptions) : baseStyle;
-  const frameOptions = frame ? { hiddenKeys: [...new Set([...(style.hiddenKeys ?? []), ...frame.hiddenLabelKeys])], deletedElementKeys: frame.deletedElementKeys, labelBoxes: frame.labelBoxes, showAutomaticLabels: frame.labelRule !== "off", north: frame.decorations.north ? NORTH_INSET : (false as const), scale: frame.decorations.scaleBar } : {};
+  const frameOptions = frame ? { hiddenKeys: [...new Set([...(style.hiddenKeys ?? []), ...frame.hiddenLabelKeys])], deletedElementKeys: frame.deletedElementKeys, labelBoxes: frame.labelBoxes, showAutomaticLabels: frame.labelRule !== "off", north: frame.decorations.north ? NORTH_INSET * Math.min(1.5, Math.max(1, VIEW_H / 360)) : (false as const), scale: frame.decorations.scaleBar } : {};
   const highlightLabel = legendLabelOf(model, style.legendFocus);
   // 설명표 장: 두 칸 사이에 반경 원을 넣는 프레임 (렌더러가 점·표를 같은 프레임으로 놓는다)
   if (calloutDetail) {
@@ -400,7 +400,7 @@ export async function buildMapImages(plan: PlannedSlide[], layer?: BasemapChoice
               deletedElementKeys: frame?.deletedElementKeys,
               labelBoxes: frame?.labelBoxes,
               showAutomaticLabels: frame?.labelRule !== "off",
-              north: frame ? (frame.decorations.north ? NORTH_INSET : (false as const)) : undefined,
+              north: frame ? (frame.decorations.north ? NORTH_INSET * mapLayoutUnitForFrame(cellHeight) : (false as const)) : undefined,
               scale: frame?.decorations.scaleBar,
               style: cellStyle,
               highlightLabel: legendLabelOf(model, cellStyle?.legendFocus),

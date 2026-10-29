@@ -1,5 +1,6 @@
 /** §9-12 지도 부속(방위표 A형·축척 막대 134/12 px) 계약: 장면 값 하나를 화면과 PPT가 같이 쓴다. */
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import * as React from "react";
 import { createElement } from "react";
@@ -145,6 +146,38 @@ const draw = (reportFrame) => {
   const scaleLabel = calls.find((c) => c.method === "addText" && c.args[1].objectName?.includes("|축척|label"));
   assert.ok(scaleLabel, "축척 글자");
   near(scaleLabel.args[1].fontSize, SCALE_FONT_PX * unit * scaleFontScaleForPt(DEFAULT_REPORT_FONT_SIZES.scale) * 0.75, "축척 글자 기본 11pt 배율");
+}
+
+// 이미지 내보내기: 방위표 중심 y는 NORTH_INSET × u여야 한다(u = 1.5인 960×540에서 원이 위로 잘리지 않는다)
+{
+  for (const [width, height] of [[960, 540], [320, 440], [800, 330]]) {
+    const u = Math.min(1.5, Math.max(1, height / 360));
+    const north = NORTH_INSET * u;
+    const figure = renderToStaticMarkup(createElement(MapFigure, { model: modelOf(), width, height, basemap: "none", legend: false, fixed: true, north }));
+    const m = figure.match(/<circle cx="([\d.]+)" cy="([\d.]+)" r="([\d.]+)" fill="#fff"/);
+    assert.ok(m, `${width}×${height} 방위표 원`);
+    near(Number(m[2]), NORTH_INSET * u, `${width}×${height} 중심 y = NORTH_INSET·u`);
+    assert.ok(Number(m[2]) - Number(m[3]) >= 0, `${width}×${height} 원 위 끝이 지도 안`);
+  }
+  // map-image는 중심 y를 u 배율 없이 넘기지 않는다(import 줄 제외, NORTH_INSET 뒤에는 * 단위가 온다)
+  const mapImage = readFileSync(new URL("../../lib/v2/report/map-image.ts", import.meta.url), "utf8")
+    .split("\n").filter((line) => !/^import /.test(line)).join("\n");
+  for (const m of mapImage.matchAll(/NORTH_INSET(.{0,4})/g)) assert.match(m[1], /^\s*\*/, `map-image의 NORTH_INSET은 u를 곱해 쓴다: ${m[0]}`);
+}
+
+// 저장 축척 상자: 옛(88u) 상자를 저장값으로 주어도 새 134u 막대가 상자·지도 밖으로 나가지 않는다
+{
+  for (const [width, height] of [[800, 330], [960, 540], [560, 250]]) {
+    const base = { model: modelOf(), width, height, activeLayer: "white", scale: true, north: false, avoid: [] };
+    const old = buildMapScene({ ...base, scaleMaxPx: 88 });
+    const u = old.unit;
+    const box = old.scaleBox;
+    const now = buildMapScene({ ...base, scaleBoxOverride: box, scaleX: box.x0 + 6 * u, scaleY: box.y1 - 8 * u });
+    assert.ok(now.scale.x1 <= box.x1 + 1e-6, `${width}×${height} 막대 끝 ${now.scale.x1} ≤ 저장 상자 오른쪽 ${box.x1}`);
+    assert.ok(now.scale.x0 >= box.x0 - 1e-6, `${width}×${height} 막대 시작이 저장 상자 안`);
+    assert.ok(now.scale.x1 <= width, `${width}×${height} 막대 끝이 지도 안`);
+    assert.match(now.scale.label, /^[125]0*k?m$/, `${width}×${height} 1·2·5×10ⁿ 규칙 유지: ${now.scale.label}`);
+  }
 }
 
 // 축척 막대를 끈 프레임은 PPT에도 축척 막대가 없다(방위표는 scene이 이미 끈다)
