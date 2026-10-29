@@ -15,7 +15,7 @@ import { a05ReportModule } from "@/lib/v2/tile/a05/report";
 import { layerStyle, legendItemsOf, legendLabelOf, modelWithHiddenLayers } from "@/lib/v2/ui/map-layers";
 import { reportSummaryNotes, terrainCrossingLayer, terrainElevationLabel, terrainSectionAxisStops, terrainSectionBands, terrainSectionElevationAt, terrainSectionMarkerGeometry, terrainSectionPosition, terrainSectionTotal, sortTerrainCrossings, TERRAIN_CROSSING_LABELS, TERRAIN_SECTION_LABELS, TERRAIN_SECTION_TABLE_MAX_ROWS } from "@/lib/v2/ui/terrain-section";
 import MapFigure, { type MapFigureElementPick } from "../map-figure";
-import { locatorBox, NORTH_INSET, NORTH_RADIUS, northArrowBox, scaleBarBox, scaleChromeScaleForBox, scaleFontScaleForPt } from "@/lib/v2/ui/map-scene";
+import { locatorBox, NORTH_RADIUS, northArrowBox, scaleBarBox, scaleChromeScaleForBox, scaleFontScaleForPt } from "@/lib/v2/ui/map-scene";
 import type { PageStyle } from "@/lib/v2/ui/board-state";
 import { clampTextBox, DEFAULT_REPORT_FONT_SIZES, frameSiteMarks, TEXT_BOX_COLORS, TEXT_BOX_DEFAULTS, textBoxDefaults, type MapFrameState, type MapLabelBox, type PagePanelRect, type PagePanels, type TextBox, type TextBoxColor, type TextBoxKind } from "@/lib/v2/report/report-doc";
 import type { PlannedSlide } from "@/lib/v2/report/report-plan";
@@ -584,7 +584,7 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
   const viewport = useMemo(() => slideViewport(model, style, { width, height, siteX, siteY: mapSiteY, fill: mapFill }), [height, mapFill, mapSiteY, model, siteX, style, width]);
   const focusedLabel = useMemo(() => legendLabelOf(model, style.legendFocus), [model, style.legendFocus]);
   const activeLegendLabel = hoverLegend ?? focusedLabel;
-  const avoid = useMemo(() => {
+  const avoidWithoutLocator = useMemo(() => {
     const frameOffsetX = frame?.x ? frame.x * unit : 0;
     const frameOffsetY = frame?.y ? frame.y * unit : 0;
     const reserved = slideReserved(unit, {
@@ -599,7 +599,13 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
     const scaleAvoid = scaleBarBox(width, height, metersPerPixel(viewport.center[1], viewport.zoom), bottomInset, rightInset, false, undefined, layoutUnit);
     return [...reserved, ...(showScale && !savedScaleBox ? [scaleAvoid] : []), ...(showNorth && !savedNorthBox && northAvoid ? [northAvoid] : [])];
   }, [bottomInset, calloutLegend, format, frame?.x, frame?.y, height, layoutUnit, northAvoid, panels.legend, panels.summary, panels.title, rightInset, savedNorthBox, savedScaleBox, showNorth, showScale, terrainLayout?.rect, unit, viewport, width]);
-  const locator = reportFrame?.decorations.locator && model.radiusM > 0 ? (savedLocatorBox ?? locatorBox(width, height, unit, avoid)) : null;
+  // 위치도 자리는 위치도 없는 avoid(+옮긴 방위표)로 먼저 정하고, 바탕 라벨·설명선이 그 자리를 피하도록 avoid에 더한다.
+  const locator = reportFrame?.decorations.locator && model.radiusM > 0 ? (savedLocatorBox ?? locatorBox(width, height, unit, [
+    ...avoidWithoutLocator,
+    ...(showNorth && savedNorthBox ? [savedNorthBox] : []),
+    ...(showScale && savedScaleBox ? [savedScaleBox] : []),
+  ])) : null;
+  const avoid = useMemo(() => locator ? [...avoidWithoutLocator, locator] : avoidWithoutLocator, [avoidWithoutLocator, locator?.x0, locator?.y0, locator?.x1, locator?.y1]);
   const automaticScaleBox = showScale ? scaleBarBox(width, height, metersPerPixel(viewport.center[1], viewport.zoom), bottomInset, rightInset, false, undefined, layoutUnit) : null;
   const scaleBox = showScale ? (savedScaleBox ?? automaticScaleBox) : null;
   const defaultNorthWidth = Math.max(1, northAvoid ? northAvoid.x1 - northAvoid.x0 : 2 * NORTH_RADIUS * layoutUnit);
@@ -1942,7 +1948,7 @@ function SheetSurface({ slide, unit, basemap, thumbnail = false, editable = fals
               ...(cell.panels ? { panels: cell.panels } : {}),
             } : { ...(cell.style ?? slide.style), ...(cell.panels ? { panels: cell.panels } : {}) };
             const cellViewport = model ? slideViewport(model, cellStyle, { width, height, siteX: 0.5, fill: 0.8 }) : null;
-            const cellNorthBox = cell.reportFrame?.decorations.north ? northArrowBox(width, height, 0, NORTH_INSET) : null;
+            const cellNorthBox = cell.reportFrame?.decorations.north ? northArrowBox(width, height, geometry.edge * unit) : null;
             const cellScaleBox = cell.reportFrame?.decorations.scaleBar && cellViewport ? scaleBarBox(width, height, metersPerPixel(cellViewport.center[1], cellViewport.zoom)) : null;
             const cellLocatorBox = locatorBox(width, height, unit, [
               ...(cellNorthBox ? [cellNorthBox] : []),

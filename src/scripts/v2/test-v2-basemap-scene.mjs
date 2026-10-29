@@ -300,6 +300,33 @@ const build = (model, options = {}) => buildMapScene({ model, width: 800, height
   }
 }
 
+// ── M-4: 옮긴 방위표(northX)·키운 방위표(northScale)의 실제 자리가 점유 상자이고 바탕 라벨이 그 위를 피한다 ──
+{
+  const overlaps = (a, b) => a.x0 < b.x1 && a.x1 > b.x0 && a.y0 < b.y1 && a.y1 > b.y0;
+  const same = (a, b) => ["x0", "y0", "x1", "y1"].every((k) => Math.abs(a[k] - b[k]) < 1e-6);
+  // u = 1(layoutUnit 1): 중심 (100, 80) → 반지름 23 상자
+  const moved = build(modelOf("A04"), { layoutUnit: 1, north: 80, northX: 100 });
+  assert.deepEqual(moved.north, { x: 100, y: 80 });
+  const movedBox = { x0: 77, y0: 57, x1: 123, y1: 103 };
+  assert.ok(moved.occupiedBoxes.some((o) => same(o, movedBox)), "northX 상자(x 77..123)가 점유 상자에 있다");
+  for (const l of moved.base.labels) assert.ok(!overlaps(l.box, movedBox), `${l.text} 가 옮긴 방위표 상자와 겹침`);
+  // 방위표 없이 얻은 라벨 하나의 한가운데로 방위표를 옮기면 그 라벨은 버려진다
+  const free = build(modelOf("A04"), { layoutUnit: 1, north: false });
+  const target = free.base.labels.find((l) => l.kind === "place");
+  assert.ok(target, "방위표가 없으면 지명 라벨이 있다");
+  const cx = (target.box.x0 + target.box.x1) / 2;
+  const cy = (target.box.y0 + target.box.y1) / 2;
+  const onTarget = build(modelOf("A04"), { layoutUnit: 1, north: cy, northX: cx });
+  assert.ok(!onTarget.base.labels.some((l) => l.key === target.key), "옮긴 방위표 아래로 들어간 바탕 라벨은 버린다");
+  // D2: northScale ≠ 1이어도 그린 원의 중심(scene.north)과 점유 상자 중심이 같다
+  for (const northScale of [0.5, 2]) {
+    const scaled = build(modelOf("A04"), { layoutUnit: 1, northScale });
+    const r = 23 * scaled.northUnit;
+    const drawn = { x0: Math.max(0, scaled.north.x - r), y0: Math.max(0, scaled.north.y - r), x1: Math.min(800, scaled.north.x + r), y1: Math.min(600, scaled.north.y + r) };
+    assert.ok(scaled.occupiedBoxes.some((o) => same(o, drawn)), `northScale ${northScale}: 점유 상자가 그린 방위표와 같다`);
+  }
+}
+
 // ── base-fallback ──
 {
   const noBase = { center: [ORIGIN_LNG, ORIGIN_LAT], radiusM: 500, features: [], total: 0, notes: [], tileCode: "A04" };

@@ -94,4 +94,59 @@ assert.match(notes, /발표자 메모/, "발표자 메모가 speaker notes로 �
 const scaleText = (xml) => [...xml.matchAll(/<p:grpSp>[\s\S]*?name="([^"]*map-D04-scale[^"]*)"[\s\S]*?<a:t>([^<]*)<\/a:t>[\s\S]*?<\/p:grpSp>/g)].map((match) => match[2]).join("|");
 assert.equal(scaleText(a3.slide), scaleText(wide.slide), "잠긴 지도는 판형이 바뀌어도 축척이 같다");
 
+// M-4: 바탕 이름 라벨은 위치도·옮긴 방위표를 피한다(도형 이름의 바탕 라벨 글상자 중심이 두 상자 안에 없다)
+{
+  const { toUtmk } = await import("../../lib/v2/crs.ts");
+  const { mapBaseFromScene } = await import("../../lib/v2/ui/basemap.ts");
+  const { addEditableMap } = await import("../../lib/v2/report/map-pptx.ts");
+  const LNG = 127.0636;
+  const LAT = 37.4979;
+  const [ox, oy] = toUtmk([LNG, LAT]);
+  const places = [];
+  for (let i = 0; i < 7; i += 1) for (let j = 0; j < 5; j += 1) places.push({ name: `${"가나다라마바사"[i]}${"동서남북중"[j]}동`, kind: "dong", x: -420 + i * 140, y: -300 + j * 150 });
+  const scene = {
+    version: "v2-scene@2", analysisId: "a-m4", manifestHash: "h",
+    origin: { epsg: "EPSG:5179", x: ox, y: oy, lng: LNG, lat: LAT }, radiusM: 500, ground: { kind: "flat" }, site: null,
+    buildings: [{ id: "b0", name: null, sublabel: null, labelPriority: 0, rings: [[[0, 0], [20, 0], [20, 20], [0, 20], [0, 0]]], baseZ: null, heightM: 9, heightMethod: "source", floorsAbove: 3, useCode: null, approvalDate: null }],
+    parcels: [],
+    context: { roads: [{ points: [[-450, -60], [450, -60]], widthM: 20, hierarchy: "간선", name: "테헤란로" }], green: [], greenKinds: [], water: [], rail: [], stations: [], places },
+    counts: { buildingsTotal: 1, buildingsIncluded: 1, parcelsTotal: 0, parcelsIncluded: 0 }, sources: [], limitations: [],
+  };
+  const model = { center: [LNG, LAT], radiusM: 500, features: [], total: 0, notes: [], tileCode: "A04", base: mapBaseFromScene(scene) };
+  const mapPlan = { ...base, map: model };
+  const draw = (reportFrame, style = mapPlan.style) => {
+    const calls = [];
+    const recorder = new Proxy({}, { get: (_, method) => (...args) => { calls.push({ method: String(method), args }); } });
+    addEditableMap(recorder, mapPlan, model, { style, format: "wide", reportFrame, basemap: "vector" });
+    return calls;
+  };
+  const named = (calls, part) => calls.filter((c) => typeof c.args[1]?.objectName === "string" && c.args[1].objectName.includes(part)).map((c) => c.args[1]);
+  const labelsOf = (calls) => named(calls, "map-base-label-").filter((o) => o.objectName.endsWith("|text"));
+  const center = (o) => [o.x + o.w / 2, o.y + o.h / 2];
+  const inside = ([px, py], o) => px > o.x && px < o.x + o.w && py > o.y && py < o.y + o.h;
+  const SLIDE_W = slideSize("wide").w;
+  const SLIDE_H = slideSize("wide").h;
+
+  const plain = draw({ ...defaultFrame(), decorations: { north: true, scaleBar: true, locator: false } });
+  assert.ok(labelsOf(plain).length >= 8, `촘촘한 바탕에서 라벨이 충분히 남는다: ${labelsOf(plain).length}`);
+
+  const withLocator = draw({ ...defaultFrame(), decorations: { north: true, scaleBar: true, locator: true } });
+  const [locator] = named(withLocator, "|위치도|frame");
+  assert.ok(locator, "위치도 틀");
+  for (const label of labelsOf(withLocator)) assert.ok(!inside(center(label), locator), `바탕 라벨 ${label.objectName} 이 위치도 안에 있다`);
+
+  // 라벨 하나의 한가운데로 방위표를 옮긴다(저장 패널은 쪽 비율)
+  const target = labelsOf(plain).find((o) => !o.rotate);
+  assert.ok(target, "방위표 아래로 옮길 라벨");
+  const [tx, ty] = center(target);
+  const w = 0.05;
+  const h = 0.09;
+  const panels = { north: { x: tx / SLIDE_W - w / 2, y: ty / SLIDE_H - h / 2, w, h } };
+  const movedNorth = draw({ ...defaultFrame(), decorations: { north: true, scaleBar: true, locator: false } }, { ...mapPlan.style, panels });
+  const [bg] = named(movedNorth, "|방위표|bg");
+  assert.ok(bg && inside([tx, ty], bg), "방위표가 옮긴 자리에 있다");
+  assert.ok(!labelsOf(movedNorth).some((o) => o.objectName === target.objectName), "옮긴 방위표 아래의 바탕 라벨은 버린다");
+  for (const label of labelsOf(movedNorth)) assert.ok(!inside(center(label), bg), `바탕 라벨 ${label.objectName} 이 방위표 안에 있다`);
+}
+
 console.log("v2 report doc PPTX tests passed");

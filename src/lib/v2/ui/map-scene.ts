@@ -219,10 +219,10 @@ function siteElevationScene(outline: SiteOutline, project: (lng: number, lat: nu
 }
 
 /** 북쪽 표시의 실제 배경·화살표·N 문자를 함께 감싸는 회피 상자. */
-export function northArrowBox(width: number, height: number, rightInset = 0, north?: number | false, unitOverride?: number): MapSceneBox | null {
+export function northArrowBox(width: number, height: number, rightInset = 0, north?: number | false, unitOverride?: number, centerX?: number): MapSceneBox | null {
   if (north === false) return null;
   const u = unitOverride ?? Math.min(1.5, Math.max(1, height / 360));
-  const x = width - rightInset - NORTH_INSET * u;
+  const x = centerX ?? width - rightInset - NORTH_INSET * u;
   const y = north || NORTH_INSET * u;
   return { x0: Math.max(0, x - NORTH_RADIUS * u), y0: Math.max(0, y - NORTH_RADIUS * u), x1: Math.min(width, x + NORTH_RADIUS * u), y1: Math.min(height, y + NORTH_RADIUS * u) };
 }
@@ -1516,7 +1516,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
   const barX0 = scaleBoxOverride ? scaleBox.x0 + Math.max(0, scaleBoxWidth - bar.px) / 2 : scaleLayout.x0;
   const barX1 = barX0 + bar.px;
   const north = northOpt === false ? null : { x: northX ?? (W - rightInset - NORTH_INSET * u), y: northOpt || NORTH_INSET * u };
-  const northBox = north ? northArrowBox(W, H, rightInset, northOpt, northUnit) : null;
+  const northBox = north ? northArrowBox(W, H, rightInset, north.y, northUnit, north.x) : null;
   const calloutAvoid = [
     ...avoid,
     ...(scale ? [scaleBox] : []),

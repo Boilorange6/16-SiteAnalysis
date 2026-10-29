@@ -218,4 +218,34 @@ const draw = (reportFrame) => {
   assert.ok(on.some((c) => c.args.some((a) => typeof a?.objectName === "string" && a.objectName.includes("|축척|"))), "scaleBar=true면 축척 도형이 있다");
 }
 
+// 장식 켜짐·꺼짐은 장면과 PPT가 같다: 조판 칸(D3·D5)과 설명표 상세 장(D4)
+{
+  const has = (calls, part) => calls.some((c) => c.args.some((a) => typeof a?.objectName === "string" && a.objectName.includes(part)));
+  const cell = (reportFrame) => {
+    const { slide, calls } = stub();
+    addEditableMap(slide, null, plan.map, { mode: "cell", frame: { x: 0.5, y: 0.5, w: 6, h: 3.5 }, style: {}, format: "wide", reportFrame });
+    return calls;
+  };
+  const deco = (decorations) => ({ ...defaultFrame(), decorations: { north: true, scaleBar: true, locator: false, ...decorations } });
+  assert.equal(has(cell(deco({ north: false })), "|방위표|"), false, "D3 조판 칸: north=false면 방위표 도형이 없다");
+  assert.ok(has(cell(deco({ north: true })), "|방위표|"), "D3 조판 칸: north=true면 방위표가 있다");
+  assert.equal(has(cell(undefined), "|축척|"), false, "D5 reportFrame 없는 조판 칸은 화면처럼 축척 막대가 없다");
+  assert.equal(has(cell(deco({ scaleBar: false })), "|축척|"), false, "D5 조판 칸 scaleBar=false");
+  assert.ok(has(cell(deco({ scaleBar: true })), "|축척|"), "D5 조판 칸 scaleBar=true면 축척이 있다");
+
+  const { slide, calls } = stub();
+  addEditableMap(slide, { ...plan, callout: { page: 1, pages: 2 } }, plan.map, { style: plan.style, format: "wide", reportFrame: defaultFrame() });
+  assert.equal(has(calls, "|축척|"), false, "D4 설명표 상세 장은 장면처럼 축척 막대가 없다");
+  assert.ok(has(calls, "|방위표|"), "D4 설명표 상세 장에도 방위표는 남는다");
+}
+
+// D1: 조판 칸 위치도가 피하는 방위표 상자는 칸 지도가 그리는 원과 같은 중심(NORTH_INSET·u, 우측 여백 포함)을 쓴다
+{
+  const surface = readFileSync(new URL("../../components/v2/report/slide-surface.tsx", import.meta.url), "utf8");
+  const line = surface.split("\n").find((text) => text.includes("const cellNorthBox"));
+  assert.ok(line, "cellNorthBox 계산 줄");
+  assert.doesNotMatch(line, /NORTH_INSET/, "고정 30 px 중심을 넘기지 않는다(u > 1에서 원보다 위로 어긋남)");
+  assert.match(line, /northArrowBox\(width, height, geometry\.edge \* unit\)/, "칸 지도와 같은 우측 여백으로 기본 중심 상자를 쓴다");
+}
+
 console.log("v2 map chrome (§9-12) contracts passed");

@@ -530,7 +530,18 @@ function lineTickSegments(points: readonly PixelPoint[], size: number): Array<[P
   return ticks;
 }
 
-function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "tile" }; mode?: NativeMapMode; style?: PageStyle; format?: SlideFormat; reportFrame?: MapFrameState; layout?: ReportLayout; basemap?: BasemapChoice; baseTheme?: BaseThemeRef }): MapScene {
+/**
+ * 위치도 자리: 위치도 없이 만든 avoid(+방위표·축척 자리)로 먼저 정하고, 장면의 avoid에도 더해 바탕 라벨·설명선이 그 자리를 피하게 한다.
+ * 화면(SlideSurface)도 같은 순서다. 반환값은 addLocator가 그대로 그린다.
+ */
+function locatorFor(model: MapModel, reportFrame: MapFrameState | undefined, saved: MapSceneBox | null, reserved: readonly MapSceneBox[]): MapSceneBox | null {
+  if (!reportFrame?.decorations.locator || !Number.isFinite(model.radiusM) || model.radiusM <= 0) return null;
+  return saved ?? locatorBox(activeSceneWidth, activeSceneHeight, activeSceneWidth / Math.max(0.1, activeFrame.w), reserved);
+}
+
+type NativeScene = { scene: MapScene; locator: MapSceneBox | null; drawScale: boolean };
+
+function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "tile" }; mode?: NativeMapMode; style?: PageStyle; format?: SlideFormat; reportFrame?: MapFrameState; layout?: ReportLayout; basemap?: BasemapChoice; baseTheme?: BaseThemeRef }): NativeScene {
   const mode = options.mode ?? "tile";
   const format = options.format ?? activeFormat;
   const reportFrame = options.reportFrame;
@@ -541,6 +552,9 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
     const cellLegend = cellLegendLayout(displayModel);
     const style = options.style ?? {};
     const cellUnit = mapLayoutUnitForFrame(activeFrame.h * activePxPerInch);
+    const showNorth = reportFrame?.decorations.north ?? true;
+    // 화면은 reportFrame이 없는 칸에 축척 막대를 그리지 않는다.
+    const drawScale = reportFrame?.decorations.scaleBar ?? false;
     const savedNorthBox = savedPanelBox(style.panels?.north, "frame");
     const savedScaleBox = savedPanelBox(style.panels?.scaleBar, "frame");
     const cellViewport = slideViewport(displayModel, style, { width, height, siteX: 0.5, fill: 0.8 });
@@ -550,10 +564,16 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
     const northScale = boxScale(savedNorthBox, defaultNorthBox);
     const scaleChromeScale = scaleChromeScaleForBox(savedScaleBox, defaultScaleBox);
     const focus = legendLabelOf(displayModel, style.legendFocus);
+    const northChrome = showNorth ? savedNorthBox ?? defaultNorthBox : null;
+    const locator = locatorFor(displayModel, reportFrame, savedPanelBox(style.panels?.locator, "frame"), [
+      ...(cellLegend ? [cellLegend.box] : []),
+      ...(northChrome ? [northChrome] : []),
+      ...(drawScale ? [savedScaleBox ?? defaultScaleBox] : []),
+    ]);
     // 조판 셀의 코드 chip은 map scene 위에 마지막으로 그려진다. 고정·자동
     // 라벨 카드가 chip 아래에서 시작하도록 셀 좌표의 상단 안전영역을 예약한다.
     const cellChipBottom = ((0.1 + 0.3) / activeFrame.h) * height;
-    return buildMapScene({
+    const scene = buildMapScene({
       model: displayModel,
       width,
       height,
@@ -577,14 +597,15 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
       siteMarks: frameSiteMarks(reportFrame),
       legendBox: cellLegend?.box ?? null,
       calloutTop: cellChipBottom + 8 * cellUnit,
-      avoid: [],
+      avoid: locator ? [locator] : [],
       bare: false,
       viewport: slideViewport(displayModel, style, { width, height, siteX: 0.5, fill: 0.8 }),
       northScale,
       scaleChromeScale,
-      ...(savedNorthBox ? { north: savedNorthBox.y0 + (savedNorthBox.y1 - savedNorthBox.y0) / 2, northX: (savedNorthBox.x0 + savedNorthBox.x1) / 2 } : {}),
+      ...(!showNorth ? { north: false as const } : savedNorthBox ? { north: savedNorthBox.y0 + (savedNorthBox.y1 - savedNorthBox.y0) / 2, northX: (savedNorthBox.x0 + savedNorthBox.x1) / 2 } : {}),
       ...(savedScaleBox ? { scaleX: savedScaleBox.x0 + 6 * cellUnit, scaleY: savedScaleBox.y1 - 8 * cellUnit, scaleBoxOverride: savedScaleBox } : {}),
     });
+    return { scene, locator, drawScale };
   }
   const plan = options.plan!;
   const style = options.style ?? plan.style ?? {};
@@ -639,13 +660,18 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
   const avoid = calloutDetail
     ? []
      : [...slideReserved(activePxPerInch, { info: hasSummary, titleRect: panels.title, infoRect: panels.summary, legend, calloutLegend, terrainSection: terrainLayout?.rect, format }).map(localize), ...(savedScaleBox ? [] : scaleAvoid ? [scaleAvoid] : []), ...(savedNorthBox ? [] : northAvoid ? [northAvoid] : [])];
+  const locator = locatorFor(displayModel, reportFrame, savedPanelBox(style.panels?.locator), [
+    ...avoid,
+    ...(showNorth && savedNorthBox ? [savedNorthBox] : []),
+    ...(showScale && !calloutDetail && savedScaleBox ? [savedScaleBox] : []),
+  ]);
   const focus = legendLabelOf(displayModel, style.legendFocus);
   const pinnedKeys = [...new Set([
     ...(plan.pinnedKeys ?? []),
     ...(frameStyle.pinnedKeys ?? []),
     ...(reportFrame?.labelRule === "all-visible" ? mapLabelEntries(displayModel).map((entry) => entry.key) : []),
   ])];
-  return buildMapScene({
+  const scene = buildMapScene({
     rightInset,
     ...(calloutDetail ? {} : { calloutTop: calloutTopPx }),
     ...(calloutAlignment?.calloutLeftBottom !== undefined
@@ -677,11 +703,12 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
     north: showNorth ? (savedNorthBox ? (savedNorthBox.y0 + savedNorthBox.y1) / 2 : northY) : false,
     ...(savedNorthBox ? { northX: (savedNorthBox.x0 + savedNorthBox.x1) / 2 } : {}),
     ...(savedScaleBox ? { scaleX: savedScaleBox.x0 + 6 * Math.min(1.5, Math.max(1, height / 360)), scaleY: savedScaleBox.y1 - 8 * Math.min(1.5, Math.max(1, height / 360)), scaleBoxOverride: savedScaleBox } : {}),
-    avoid,
+    avoid: locator ? [...avoid, locator] : avoid,
     bare: false,
     viewport,
     ...(nativeScaleMaxPx !== undefined ? { scaleMaxPx: nativeScaleMaxPx } : {}),
   });
+  return { scene, locator, drawScale: !calloutDetail && showScale };
 }
 
 type Bucket = { paths: PixelPath[]; fill?: string; fillOpacity?: number; line?: string; lineWidth?: number; lineOpacity?: number; dash?: string; key: string; display: string };
@@ -1103,10 +1130,7 @@ function addScale(slide: Slide, code: string, scene: MapScene): void {
   slide.addText(bar.label, { x: pxX(x0), y: pxY(y - 6 * textChrome * u - 0.36 * fontPx - labelH / 2), w: pxW(bar.px), h: pxH(labelH), align: "center", valign: "middle", fontFace: FONT, fontSize: fontPt(fontPx, 6), bold: true, color: INK, margin: 0, objectName: tag(code, key, "축척", "label") });
 }
 
-function addLocator(slide: Slide, code: string, model: MapModel, scene: MapScene, savedBox?: MapSceneBox | null): void {
-  if (!Number.isFinite(model.radiusM) || model.radiusM <= 0) return;
-  const localUnit = activeSceneWidth / Math.max(0.1, activeFrame.w);
-  const box = savedBox ?? locatorBox(activeSceneWidth, activeSceneHeight, localUnit, scene.occupiedBoxes);
+function addLocator(slide: Slide, code: string, model: MapModel, box: MapSceneBox): void {
   const width = Math.max(1, box.x1 - box.x0);
   const height = Math.max(1, box.y1 - box.y0);
   const x = box.x0;
@@ -1181,7 +1205,7 @@ export function addEditableMap(slide: Slide, plan: (PlannedSlide & { kind: "tile
   activeMode = options.mode ?? "tile";
   try {
     const visibleModel = frameHidden(model, options.reportFrame?.hiddenLayers ?? []);
-    const scene = sceneFor(visibleModel, {
+    const { scene, locator, drawScale } = sceneFor(visibleModel, {
       plan: plan ?? undefined,
       mode: options.mode ?? "tile",
       style: options.style ?? plan?.style,
@@ -1207,8 +1231,8 @@ export function addEditableMap(slide: Slide, plan: (PlannedSlide & { kind: "tile
     addSiteMarks(slide, code, scene);
     addLabels(slide, code, scene);
     addNorth(slide, code, scene);
-    if (options.reportFrame?.decorations.scaleBar !== false) addScale(slide, code, scene);
-    if (options.reportFrame?.decorations.locator) addLocator(slide, code, model, scene, savedPanelBox(options.style?.panels?.locator, (options.mode ?? "tile") === "cell" ? "frame" : "page"));
+    if (drawScale) addScale(slide, code, scene);
+    if (locator) addLocator(slide, code, model, locator);
     if ((options.mode ?? "tile") === "cell") addCellLegend(slide, code, visibleModel, options.style);
     return status;
   } finally {
