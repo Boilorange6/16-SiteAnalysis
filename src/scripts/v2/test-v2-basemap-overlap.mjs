@@ -124,4 +124,27 @@ async function residentialGeometries(polygons) {
   );
 }
 
+// ── 분할은 bbox만 본다: 구멍 많은 큰 면 + 작은 면 수백 개도 빠르고, 하위 묶음 안에는 bbox 겹침이 없다 ──
+{
+  const { splitOverlapping } = await import("../../lib/v2/ui/poly-overlap.ts");
+  const holes = Array.from({ length: 105 }, (_, i) => box(20 + (i % 15) * 60, 20 + Math.floor(i / 15) * 60, 30, 30));
+  const big = [box(0, 0, 1000, 1000), ...holes];
+  const small = Array.from({ length: 650 }, (_, i) => [box((i % 30) * 33, Math.floor(i / 30) * 33, 30, 30)]);
+  const faces = [...small.slice(0, 300), big, ...small.slice(300)];
+  const started = performance.now();
+  const groups = splitOverlapping(faces);
+  const elapsed = performance.now() - started;
+  assert.ok(elapsed < 1000, `splitOverlapping ${Math.round(elapsed)} ms`);
+  assert.equal(groups.flat().length, faces.length, "면을 잃지 않는다");
+  const bboxOf = (poly) => { const xs = poly[0].map((p) => p[0]); const ys = poly[0].map((p) => p[1]); return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]; };
+  for (const group of groups) {
+    const boxes = group.map(bboxOf);
+    for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
+      const [a, b] = [boxes[i], boxes[j]];
+      assert.ok(!(a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3]), "하위 묶음 안 면들의 bbox가 겹친다");
+    }
+  }
+  assert.ok(groups.length >= 2, "큰 면은 작은 면들과 다른 하위 묶음");
+}
+
 console.log("test-v2-basemap-overlap: ok");

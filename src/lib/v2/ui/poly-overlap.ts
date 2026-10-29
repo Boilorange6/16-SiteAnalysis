@@ -87,7 +87,7 @@ function overlaps(a: Poly, b: Poly): boolean {
     const shared = intersect(featureCollection([toFeature(a), toFeature(b)]));
     return !!shared && geometryArea(shared.geometry) > OVERLAP_EPS;
   } catch {
-    return false; // 판정이 안 되면 겹침 없음으로 둔다(합치지도 나누지도 않아 기하를 잃지 않는다)
+    return true; // 판정이 안 되면 겹침으로 본다: 합치기는 union이 실패해도 원본을 보존하므로 거짓 양성은 무해하고, 거짓 음성은 구멍을 남긴다
   }
 }
 
@@ -137,18 +137,19 @@ export function mergeOverlapping(polys: readonly Poly[]): Poly[] {
   });
 }
 
-/** 탐욕 배정: 겹치는 면이 없는 첫 하위 묶음에 넣는다. 한 하위 묶음 안의 면끼리는 서로 겹치지 않는다. */
+/**
+ * 탐욕 배정: bbox가 겹치는 면이 없는 첫 하위 묶음에 넣는다. 한 하위 묶음 안의 면끼리는 bbox도 안 겹치므로 면도 안 겹친다.
+ * 정밀 판정을 쓰지 않는다(구멍 많은 큰 면은 판정이 수 초 걸린다). 대가는 하위 묶음이 조금 늘어나는 것뿐이다.
+ */
 export function splitOverlapping(polys: readonly Poly[]): Poly[][] {
-  const earlier: number[][] = polys.map(() => []);
-  for (const [a, b] of overlapPairs(polys)) earlier[b]!.push(a);
-  const groupOf: number[] = [];
   const groups: Poly[][] = [];
-  polys.forEach((poly, i) => {
-    const taken = new Set(earlier[i]!.map((j) => groupOf[j]));
+  const boxes: Array<Array<NonNullable<ReturnType<typeof bboxOf>>>> = [];
+  for (const poly of polys) {
+    const box = bboxOf(poly);
     let g = 0;
-    while (taken.has(g)) g++;
+    if (box) while (g < groups.length && boxes[g]!.some((o) => o[0] < box[2] && box[0] < o[2] && o[1] < box[3] && box[1] < o[3])) g++;
     (groups[g] ??= []).push(poly);
-    groupOf[i] = g;
-  });
+    (boxes[g] ??= []).push(...(box ? [box] : []));
+  }
   return groups;
 }
