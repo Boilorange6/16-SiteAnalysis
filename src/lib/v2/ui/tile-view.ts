@@ -374,13 +374,25 @@ export function sourceLineOf(sources: TileResult["provenance"]["sources"]): stri
   return [...new Set(lines)].join(" · ");
 }
 
-/** 핵심 숫자 카드. 타일 정의가 "none"이면 카드 없음, 정의가 없거나 null이면 헤드라인으로 만든 카드, 헤드라인도 없으면 null. */
-function keyFigureOf(r: TileResult, module: ReturnType<typeof tileClientModuleFor>, helpers: TileHeadlineHelpers, headline: TileView["headline"]): KeyFigure | null {
+const hasMetricValue = (metric: Metric): boolean => metric.status === "observed" || metric.status === "estimated";
+
+/**
+ * 핵심 숫자 카드. 타일 정의가 "none"이면 카드 없음, 정의가 없거나 null이면 헤드라인으로 만든 카드, 헤드라인도 없으면 null.
+ * 헤드라인 지표가 미확인·비공개·해당 없음이면 카드에 그 글자를 쓰지 않고, 같은 정책의 다음 값 있는 지표로 만든다(없으면 null).
+ */
+function keyFigureOf(r: TileResult, module: ReturnType<typeof tileClientModuleFor>, helpers: TileHeadlineHelpers, metrics: Metric[], view: Pick<TileView, "headline" | "headlineMetricId">): KeyFigure | null {
   const defined = module?.keyFigureFor?.(r, helpers) ?? null;
   if (defined === "none") return null;
   if (defined) return defined;
-  if (!headline) return null;
-  return { question: headline.label, answer: { value: headline.value, kind: /^[-+]?[\d.,]/.test(headline.value) ? "number" : "name" }, stats: [] };
+  let card: { value: string; label: string } | null = view.headline;
+  const selected = metrics.find((metric) => metric.id === view.headlineMetricId);
+  if (selected && !hasMetricValue(selected)) {
+    const ids = [...(HEADLINE_POLICY[r.tileCode as TileCode]?.ids ?? []), ...(r.judgment?.basisMetricIds ?? [])];
+    const next = ids.map((id) => metrics.find((metric) => metric.id === id)).find((metric): metric is Metric => metric !== undefined && hasMetricValue(metric));
+    card = next ? metricRow(next) : null;
+  }
+  if (!card) return null;
+  return { question: card.label, answer: { value: card.value, kind: /^[-+]?[\d.,]/.test(card.value) ? "number" : "name" }, stats: [] };
 }
 
 export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParcel?: readonly MapPolygon[] | null, a05Filter?: A05Filter | null): TileView {
@@ -492,7 +504,7 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
   };
   const shaped = module?.view?.(baseView, r) ?? baseView;
   // 카드는 타일 고유 view가 헤드라인을 고친 뒤에 만든다(헤드라인으로 돌아가는 카드가 그 값을 따른다).
-  const view = { ...shaped, keyFigure: hasResult ? keyFigureOf(r, module, headlineHelpers, shaped.headline) : null };
+  const view = { ...shaped, keyFigure: hasResult ? keyFigureOf(r, module, headlineHelpers, metrics, shaped) : null };
   // `results.map(toTileView)`는 scene 자리에 배열 인덱스를 넘긴다 — origin이 없으면 장면이 아니다.
   if (!scene?.origin) return view;
   // 한 장면의 모든 타일이 같은 바탕 객체를 공유한다(타일별 생략은 model.tileCode로 그리는 쪽이 정한다).

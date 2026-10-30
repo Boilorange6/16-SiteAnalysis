@@ -7,8 +7,16 @@ const SPLIT_PREFIX = "세분: ";
 const MAX_PARTS = 5;
 const OTHER_COLOR = "#B9BDC6";
 
-/** 세분 이름에서 용도지역 분류(주거·상업·공업·녹지·기타)를 읽어 지도와 같은 색을 낸다. */
-const zoneColor = (name: string): string => layerStyle(`zone:${(["주거", "상업", "공업", "녹지"] as const).find((cls) => name.includes(cls)) ?? "기타"}`).color;
+const ZONE_CLASSES = ["주거", "상업", "공업", "녹지", "관리", "농림", "자연환경보전"] as const;
+
+/**
+ * 세분 이름의 색. 지도가 그 이름의 면을 그린 레이어(`zone:<분류>`)가 있으면 그 스타일을 그대로 쓰고,
+ * 면이 지도에 없으면(상한으로 잘림) 이름에서 분류를 읽어 같은 레이어 스타일을 쓴다.
+ */
+function zoneColor(name: string, polygons: TileResult["presentation"]["polygons"]): string {
+  const layer = polygons?.find((polygon) => polygon.name === name && polygon.layer.startsWith("zone:"))?.layer;
+  return layerStyle(layer ?? `zone:${ZONE_CLASSES.find((cls) => name.includes(cls)) ?? "기타"}`).color;
+}
 
 function a12KeyFigure(result: TileResult): KeyFigure | null {
   const siteFeature = result.presentation.features?.find((feature) => feature.layer === "zoning_site");
@@ -24,7 +32,7 @@ function a12KeyFigure(result: TileResult): KeyFigure | null {
   const kept = new Set([...site, ...split.filter((part) => !site.includes(part))].slice(0, MAX_PARTS));
   const rest = split.filter((part) => !kept.has(part)).reduce((sum, part) => sum + part.share, 0);
   const parts: NonNullable<KeyFigure["parts"]> = [
-    ...split.filter((part) => kept.has(part)).map((part) => ({ ...part, color: zoneColor(part.label), ...(site.includes(part) ? { site: true } : {}) })),
+    ...split.filter((part) => kept.has(part)).map((part) => ({ ...part, color: zoneColor(part.label, result.presentation.polygons), ...(site.includes(part) ? { site: true } : {}) })),
     ...(rest > 0 ? [{ label: "그 밖", share: Math.round(rest * 10) / 10, color: OTHER_COLOR }] : []),
   ];
   const radius = radiusLabel(result.conditions.radiusM);

@@ -5,6 +5,12 @@ import { fmtInt } from "../ui/callout-layout";
 /** 지표 값. 미확인·비공개·해당 없음이면 null이라 그 줄은 카드에 넣지 않는다. */
 export const metricNumber = (result: TileResult, id: string): number | null => result.metrics.find((metric) => metric.id === id)?.value ?? null;
 
+/** 값이 있는 지표(없으면 null). 화면과 같은 서식은 `helpers.metricRow(metric).value`로 얻는다. */
+export const valueMetric = (result: TileResult, id: string): TileResult["metrics"][number] | null => {
+  const metric = result.metrics.find((candidate) => candidate.id === id);
+  return metric && metric.value !== null ? metric : null;
+};
+
 /** 반경 표기: 1000 → `1km`, 500 → `500m`, 1500 → `1.5km`. */
 export const radiusLabel = (radiusM: number): string => (radiusM >= 1000 ? `${radiusM / 1000}km` : `${radiusM}m`);
 
