@@ -163,7 +163,7 @@ export default function TileDialog({ view, layer, onLayer, onRetry, cut, onCut, 
   };
   return (
     <div className={styles.overlay} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div ref={ref} className={`${styles.dialog} ${more ? styles.dialogPanelOpen : ""}`.trim()} data-panel-open={more ? "true" : "false"} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
+      <div ref={ref} className={`${styles.dialog} ${styles.bandDialog} ${more ? styles.dialogPanelOpen : ""}`.trim()} data-panel-open={more ? "true" : "false"} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
         <div className={styles.stage}>
           <Stage key={view.tileId} view={view} state={state} chart={view.hasFace && back && !state} frame="detail" siteX={detailSiteX} rightInset={insetOf} legendY={OV.edge + 38 + 8} page={page} onPage={setPage} cut={selectedCut} pinnedKeys={pinnedLabels.filter((label) => label.on).map((label) => label.key)} hoverKey={focusedLabelKey} emphasisKey={focusedLabelKey} onFeaturePin={(feature) => onToggleLabel(feature.key)} terrainSection={terrainSection} />
         </div>
