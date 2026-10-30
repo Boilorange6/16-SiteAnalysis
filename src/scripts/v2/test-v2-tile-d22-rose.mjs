@@ -87,6 +87,32 @@ for (const [columns, width, height] of [[2, 688, 455], [3, 453.33, 260], [4, 336
 }
 assert.ok(windRoseLayout(672, 492, "tile").rMax > windRoseLayout(336, 196, "tile").rMax, "4칸 바람장미도 실측 박스에 맞춰 커짐");
 
+// 펼침 창: 오른쪽 정보 판(rightInset) 뒤로 장미 원·방위 글자·눈금·풍속 범례가 들어가면 안 된다.
+for (const [width, height] of [[976, 648], [1392, 780]]) {
+  const inset = 384;
+  const free = width - inset;
+  const layout = windRoseLayout(width, height, "tile", 16.4, inset);
+  const rose = { x0: layout.cx - layout.rMax, y0: layout.cy - layout.rMax, x1: layout.cx + layout.rMax, y1: layout.cy + layout.rMax };
+  const parts = { 장미: rose, 범례: layout.legend, ...Object.fromEntries(layout.labels.map((b, i) => [`방위 ${i}`, b])), ...Object.fromEntries(layout.tickBoxes.map((b, i) => [`눈금 ${i}`, b])) };
+  for (const [name, b] of Object.entries(parts)) {
+    assert.ok(b.x1 <= free + 0.5, `펼침 ${width}: ${name} x1 ${b.x1.toFixed(1)} > ${free}`);
+    assert.ok(b.x0 >= 0, `펼침 ${width}: ${name} x0 ${b.x0.toFixed(1)} < 0`);
+  }
+  assert.ok(layout.labels.every((label) => !overlaps(label, layout.legend)), `펼침 ${width}: 방위 글자와 범례 겹침`);
+  assert.ok(!overlaps(layout.legend, rose), `펼침 ${width}: 범례와 장미 겹침`);
+  assert.ok(layout.rMax >= 150, `펼침 ${width}: 장미가 너무 작아짐 ${layout.rMax.toFixed(1)}`);
+}
+assert.deepEqual(windRoseLayout(976, 648, "tile", 16.4, 0), windRoseLayout(976, 648, "tile", 16.4), "inset 0 은 지금과 같다");
+{
+  const full = windRoseLayout(1392, 780, "tile", 16.4);
+  const inset = windRoseLayout(1392, 780, "tile", 16.4, 384);
+  assert.ok(inset.cx < full.cx || inset.rMax < full.rMax, "inset이 있으면 배치가 달라진다");
+  const svg = renderToStaticMarkup(React.createElement(WindRoseFigure, { model, width: 976, height: 648, fixed: true, chrome: "tile", rightInset: 384 }));
+  assert.match(svg, /viewBox="0 0 976 648"/, "배경 사각형·viewBox는 전체 폭 그대로");
+  const legendX = Number(svg.match(/data-wind-rose-legend="true" transform="translate\(([\d.]+) /)?.[1]);
+  assert.ok(legendX + 10 < 976 - 384, `SVG 범례 x ${legendX}가 정보 판 왼쪽`);
+}
+
 assert.equal(formatDistanceM(16_819), "16.8 km");
 assert.equal(formatDistanceM(999), "999m");
 assert.match(sourceLineOf([{ sourceId: "asos", releaseId: "real@2025-12-31", sourceAsOf: "2025-12-31", fetchedAt: "2026-10-01T00:00:00Z" }]), /^기상청 ASOS 시간자료 2025-12-31$/);

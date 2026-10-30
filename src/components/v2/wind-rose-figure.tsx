@@ -12,6 +12,8 @@ export type WindRoseFigureProps = {
   season?: RoseSeason;
   /** standalone은 자체 제목·출처를 포함하고, tile/slide은 외부 오버레이 자리를 예약한다. */
   chrome?: WindRoseChrome;
+  /** 펼침 창 오른쪽 정보 판이 덮는 폭. 장미·범례는 그 왼쪽에만 놓는다(배경은 전체 폭). 함수는 실측 폭을 받는다. */
+  rightInset?: number | ((width: number) => number);
 };
 
 export type WindRoseChrome = "standalone" | "tile" | "slide";
@@ -147,7 +149,9 @@ function fitLegend(height: number, chrome: WindRoseChrome, y0: number) {
 }
 
 /** WindRoseFigure의 실제 장식 위치와 외부 오버레이 예약 자리를 함께 계산한다. */
-export function windRoseLayout(width: number, height: number, chrome: WindRoseChrome = "tile", maxDirectionPct = 0): WindRoseLayout {
+export function windRoseLayout(fullWidth: number, height: number, chrome: WindRoseChrome = "tile", maxDirectionPct = 0, rightInset = 0): WindRoseLayout {
+  // 펼침 창은 오른쪽 정보 판이 덮는 폭(rightInset)을 빼고 그 왼쪽 빈 영역 안에서 배치한다.
+  const width = Math.max(1, fullWidth - Math.max(0, rightInset));
   const frame = chrome !== "standalone";
   let cx = width * 0.39;
   const cy = frame ? height * 0.53 : height * 0.47;
@@ -164,7 +168,8 @@ export function windRoseLayout(width: number, height: number, chrome: WindRoseCh
   let legend = legendBox(legendX);
 
   const compactTile = chrome === "tile" && height < LEGEND_HEIGHT * 4;
-  if (compactTile && (labels.some((label) => overlaps(label, legend)) || overlaps(legend, box(cx - rMax, cy - rMax, cx + rMax, cy + rMax)))) {
+  // 정보 판을 피하느라 좁아진 펼침 창도 낮은 카드와 같은 겹침 해소(범례를 오른쪽 끝으로, 장미 축소)를 쓴다.
+  if ((compactTile || (chrome === "tile" && rightInset > 0)) && (labels.some((label) => overlaps(label, legend)) || overlaps(legend, box(cx - rMax, cy - rMax, cx + rMax, cy + rMax)))) {
     const rightLegendX = width - LEGEND_EDGE_GAP - legendVisualWidth + 10 * legendScale;
     legendX = rightLegendX;
     legend = legendBox(legendX);
@@ -217,11 +222,11 @@ export function windRoseLayout(width: number, height: number, chrome: WindRoseCh
   };
 }
 
-function WindRoseSvg({ model, width, height, fixed = false, label = "D22 바람장미", season = "annual", chrome = "tile" }: WindRoseFigureProps) {
+function WindRoseSvg({ model, width, height, fixed = false, label = "D22 바람장미", season = "annual", chrome = "tile", rightInset }: WindRoseFigureProps) {
   const observedHours = hoursOf(model);
   const directionPcts = model.dirs.map((bins) => (bins.reduce((sum, value) => sum + (Number.isFinite(value) && value > 0 ? value : 0), 0) / Math.max(1, observedHours)) * 100);
   const maxDirectionPct = Math.max(0, ...directionPcts);
-  const layout = windRoseLayout(width, height, chrome, maxDirectionPct);
+  const layout = windRoseLayout(width, height, chrome, maxDirectionPct, typeof rightInset === "function" ? rightInset(width) : rightInset);
   const { cx, cy, rMax, labelRadius, legendX, legendY, legendScale, legendWidth } = layout;
   const frame = chrome !== "standalone";
   const wedges = roseWedges(model, cx, cy, rMax, layout.scaleMaxPct);
