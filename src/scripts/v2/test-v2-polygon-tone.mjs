@@ -21,8 +21,10 @@ assert.deepEqual(POLYGON_TONES, { separate: { fillOpacity: 0.25, stroke: null, s
 // 분류
 for (const l of ["use:주거", "floors_5_8", "bldg_1990s", "tall_ge35", "low_le12", "building"]) assert.equal(polygonTone(l), "separate", l);
 for (const l of ["zone:주거", "district:지구단위계획", "facility:교통", "jimok:대", "lot_lt100", "block_lt05", "maint_stage:조합"]) assert.equal(polygonTone(l), "zone", l);
+// 학구·정비 단계도 구역 면: 선 모양 대신 채움 색으로 가른다(사용자 결정 2026-10-30)
+for (const l of ["school_zone_elem", "school_zone_elem_site", "school_zone_middle", "school_zone_middle_site", "school_zone_high", "school_zone_high_site", "maint_stage:정비계획", "maint_stage:미확인"]) assert.equal(polygonTone(l), "zone", l);
 // 스타일이 fillOpacity·stroke·strokeWidth·dash·hatch를 직접 정하면 지금 값 그대로(null)
-for (const l of ["use:미상", "maint_area:모아타운", "maint_stage:정비계획", "school_zone_elem", "park", "trade_district_q1", "dens_0", "block_open", "svf_building", "sun_face", "topo_coverage", "parcel_picker"]) assert.equal(polygonTone(l), null, l);
+for (const l of ["use:미상", "maint_area:모아타운", "park", "trade_district_q1", "dens_0", "block_open", "svf_building", "sun_face", "topo_coverage", "parcel_picker"]) assert.equal(polygonTone(l), null, l);
 
 // polygonPaint
 assert.deepEqual(polygonPaint("use:주거", layerStyle("use:주거"), false), { fillOpacity: 0.25, stroke: null, strokeWidth: 0 });
