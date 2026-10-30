@@ -166,4 +166,45 @@ const page = (id, no, overrides = {}) => ({
   assert.ok(rendered.every((node) => node.cleared && node.children.length === 0), "각 쪽 직후 DOM 비우기");
 }
 
+// ── 캡처 전 대기: 쪽 frame이 아직 렌더되지 않았으면(React 커밋 전) 나타나 준비될 때까지 기다린다 ──
+// 2026-10-30 결함: frame이 없으면 바로 반환해, 대지 크기(unit)를 재기 전 조각만 캡처한 빈 쪽이 PDF·PNG에 들어갔다.
+{
+  const { waitForExportSurface } = await import("../../lib/v2/report/raster-export.ts");
+  const hadDocument = "document" in globalThis;
+  const hadWindow = "window" in globalThis;
+  globalThis.document = { fonts: { ready: Promise.resolve() } };
+  globalThis.window = { requestAnimationFrame: (callback) => setTimeout(callback, 5) };
+  const rect = { left: 0, top: 0, width: 1200, height: 675 };
+  const makeNode = (appearAfterMs, readyAfterMs) => {
+    const startedAt = Date.now();
+    const frame = {
+      dataset: { frameReady: "false" },
+      getBoundingClientRect: () => rect,
+    };
+    const node = {
+      offsetWidth: 1200,
+      offsetHeight: 675,
+      getBoundingClientRect: () => rect,
+      querySelector: () => {
+        const elapsed = Date.now() - startedAt;
+        if (appearAfterMs === null || elapsed < appearAfterMs) return null;
+        if (elapsed >= readyAfterMs) frame.dataset.frameReady = "true";
+        return frame;
+      },
+    };
+    return { node, frame };
+  };
+  try {
+    const late = makeNode(60, 120);
+    await waitForExportSurface(late.node, 500, 3000);
+    assert.equal(late.frame.dataset.frameReady, "true", "frame이 늦게 렌더돼도 준비될 때까지 기다린다");
+
+    const never = makeNode(null, 0);
+    await assert.rejects(waitForExportSurface(never.node, 500, 80), /크기를 계산하지 못했습니다/, "frame이 끝내 없으면 빈 쪽 대신 오류");
+  } finally {
+    if (!hadDocument) delete globalThis.document;
+    if (!hadWindow) delete globalThis.window;
+  }
+}
+
 console.log("v2 report export tests passed");

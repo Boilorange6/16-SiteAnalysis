@@ -48,6 +48,7 @@ export function captureOptionsForNode(node: CaptureNodeSize, options: { pixelRat
 }
 
 const EXPORT_READY_TIMEOUT_MS = 4000;
+const EXPORT_FRAME_TIMEOUT_MS = 20000;
 
 function nextFrame(): Promise<void> {
   if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
@@ -135,9 +136,15 @@ async function waitForFonts(deadline: number): Promise<void> {
 }
 
 async function waitForFrameLayout(node: HTMLElement, deadline: number): Promise<void> {
-  const frame = node.querySelector<HTMLElement>('[data-preview-frame="true"]');
-  if (!frame || typeof frame.getBoundingClientRect !== "function") return;
+  // React createRoot().render는 비동기라 무거운 쪽은 frame이 아직 없을 수 있다. 없는 채로 캡처하면
+  // 크기(unit)를 재기 전 조각만 찍힌 빈 쪽이 되므로, 나타날 때까지 계속 다시 찾는다.
   while (Date.now() < deadline) {
+    const frame = node.querySelector<HTMLElement>('[data-preview-frame="true"]');
+    if (!frame) {
+      await nextFrame();
+      continue;
+    }
+    if (typeof frame.getBoundingClientRect !== "function") return;
     const rect = frame.getBoundingClientRect();
     const hostRect = typeof node.getBoundingClientRect === "function" ? node.getBoundingClientRect() : null;
     const fillsHost = !hostRect || (
@@ -153,12 +160,16 @@ async function waitForFrameLayout(node: HTMLElement, deadline: number): Promise<
 }
 
 /** 캡처 전 폰트·이미지·SlideSurface frame 레이아웃을 안정시킨다. */
-export async function waitForExportSurface(node: HTMLElement, timeoutMs = EXPORT_READY_TIMEOUT_MS): Promise<void> {
+export async function waitForExportSurface(
+  node: HTMLElement,
+  timeoutMs = EXPORT_READY_TIMEOUT_MS,
+  frameTimeoutMs = EXPORT_FRAME_TIMEOUT_MS,
+): Promise<void> {
   if (typeof document === "undefined") return;
-  const deadline = Date.now() + timeoutMs;
-  await waitForFonts(deadline);
-  await waitForFrameLayout(node, deadline);
-  await waitForImages(node, deadline);
+  await waitForFonts(Date.now() + timeoutMs);
+  // 렌더 대기는 정확성 문제라 따로 길게 잡는다(넘기면 빈 쪽 대신 오류). 이미지 대기는 그 뒤에 새로 센다.
+  await waitForFrameLayout(node, Date.now() + frameTimeoutMs);
+  await waitForImages(node, Date.now() + timeoutMs);
   await nextFrame();
 }
 
