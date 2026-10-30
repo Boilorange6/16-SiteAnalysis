@@ -130,6 +130,15 @@ async function waitForImages(node: HTMLElement, deadline: number): Promise<void>
   ]);
 }
 
+/** 비동기로 그림을 만드는 층(3D 매스 PNG)은 끝나기 전까지 aria-busy="true"다. 풀릴 때까지 기다리고, 넘기면 로딩 글이 찍힌 쪽 대신 오류로 멈춘다. */
+async function waitForBusy(node: HTMLElement, deadline: number): Promise<void> {
+  if (typeof node.querySelector !== "function") return;
+  while (node.querySelector('[aria-busy="true"]')) {
+    if (Date.now() >= deadline) throw new Error("내보낼 쪽의 그림을 만들지 못했습니다");
+    await nextFrame();
+  }
+}
+
 async function waitForFonts(deadline: number): Promise<void> {
   if (typeof document === "undefined" || !document.fonts?.ready) return;
   await waitWithTimeout(document.fonts.ready, deadline - Date.now());
@@ -169,6 +178,7 @@ export async function waitForExportSurface(
   await waitForFonts(Date.now() + timeoutMs);
   // 렌더 대기는 정확성 문제라 따로 길게 잡는다(넘기면 빈 쪽 대신 오류). 이미지 대기는 그 뒤에 새로 센다.
   await waitForFrameLayout(node, Date.now() + frameTimeoutMs);
+  await waitForBusy(node, Date.now() + frameTimeoutMs);
   await waitForImages(node, Date.now() + timeoutMs);
   await nextFrame();
 }

@@ -175,7 +175,7 @@ const page = (id, no, overrides = {}) => ({
   globalThis.document = { fonts: { ready: Promise.resolve() } };
   globalThis.window = { requestAnimationFrame: (callback) => setTimeout(callback, 5) };
   const rect = { left: 0, top: 0, width: 1200, height: 675 };
-  const makeNode = (appearAfterMs, readyAfterMs) => {
+  const makeNode = (appearAfterMs, readyAfterMs, busyUntilMs = 0) => {
     const startedAt = Date.now();
     const frame = {
       dataset: { frameReady: "false" },
@@ -185,8 +185,10 @@ const page = (id, no, overrides = {}) => ({
       offsetWidth: 1200,
       offsetHeight: 675,
       getBoundingClientRect: () => rect,
-      querySelector: () => {
+      querySelector: (selector) => {
         const elapsed = Date.now() - startedAt;
+        // 3D 매스 같은 비동기 그림 층은 끝나기 전까지 aria-busy="true"
+        if (selector === '[aria-busy="true"]') return elapsed < busyUntilMs ? {} : null;
         if (appearAfterMs === null || elapsed < appearAfterMs) return null;
         if (elapsed >= readyAfterMs) frame.dataset.frameReady = "true";
         return frame;
@@ -198,6 +200,14 @@ const page = (id, no, overrides = {}) => ({
     const late = makeNode(60, 120);
     await waitForExportSurface(late.node, 500, 3000);
     assert.equal(late.frame.dataset.frameReady, "true", "frame이 늦게 렌더돼도 준비될 때까지 기다린다");
+
+    const busy = makeNode(0, 0, 150);
+    const busyStarted = Date.now();
+    await waitForExportSurface(busy.node, 500, 3000);
+    assert.ok(Date.now() - busyStarted >= 140, "aria-busy 그림 층이 풀릴 때까지 기다린 뒤 캡처한다");
+
+    const stuck = makeNode(0, 0, 1e9);
+    await assert.rejects(waitForExportSurface(stuck.node, 500, 80), /그림을 만들지 못했습니다/, "그림 층이 끝내 안 풀리면 로딩 글이 찍힌 쪽 대신 오류");
 
     const never = makeNode(null, 0);
     await assert.rejects(waitForExportSurface(never.node, 500, 80), /크기를 계산하지 못했습니다/, "frame이 끝내 없으면 빈 쪽 대신 오류");

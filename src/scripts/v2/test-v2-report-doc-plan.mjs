@@ -34,7 +34,17 @@ const restoredLegacyLayout = restoreReportDoc({
 }, new Set(["t-A01"]));
 assert.equal(restoredLegacyLayout.pages[0]?.layout, "map-summary", "저장된 단일 타일 side-by-side는 map-summary로 마이그레이션");
 
-const sheetSourceViews = [...views.values()].slice(0, 2);
+// 새 쪽 기본: 그림 타일(장미·매스)은 「그림 + 요약」, 그 밖의 지도 없는 장은 「숫자 먼저」 (2026-10-30 결정 C)
+{
+  const base = views.get("t-A01");
+  const roseModel = { station: "near", dirs: Array.from({ length: 16 }, () => [1, 0, 0, 0, 0]), calmHours: 1, missingHours: 0, totalHours: 100 };
+  const figureCtx = { ...tileContext, views: new Map([["t-D22", { ...base, tileId: "t-D22", code: "D22", rose: roseModel }]]) };
+  const rosePages = pagesForTile(EMPTY_REPORT_DOC, "t-D22", figureCtx.views.get("t-D22"), tileReportSettingsFromBoard(board, "t-A01"), figureCtx);
+  assert.equal(rosePages[0]?.layout, "map-summary", "새 바람장미 쪽 기본은 그림 + 요약");
+  assert.equal(pagesForTile(EMPTY_REPORT_DOC, "t-A01", views.get("t-A01"), tileReportSettingsFromBoard(board, "t-A01"), tileContext)[0]?.layout, "map-summary", "지도 타일 기본은 그대로");
+}
+
+const sheetSourceViews =[...views.values()].slice(0, 2);
 assert.equal(sheetSourceViews.length, 2, "조판 변환용 원본 타일");
 const sheetParent = sheetView("t-SHEET", sheetSourceViews, "2x2");
 const sheetPages = pagesForTile(EMPTY_REPORT_DOC, sheetParent.tileId, sheetParent, tileReportSettingsFromBoard(board, sheetSourceViews[0].tileId), { ...tileContext, settingsFor: (id) => tileReportSettingsFromBoard(board, id) });

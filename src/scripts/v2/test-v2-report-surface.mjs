@@ -99,4 +99,21 @@ const sourceSlide = {
 const sourceMarkup = renderToStaticMarkup(createElement(SlideSurface, { slide: sourceSlide, basemap: "none", mode: "export" }));
 assert.match(sourceMarkup, /data-report-source-table="true"/, "출처 표는 export 행 밀도 계약의 대상이다");
 
+// ── 그림 타일(바람장미) 장: 화면·PDF(export)는 실제 도판을, 썸네일만 자리표시를 그린다(2026-10-30 결정 C)
+{
+  const dirs = Array.from({ length: 16 }, (_, dir) => (dir === 14 ? [0, 40, 0, 0, 0] : [1, 0, 0, 0, 0]));
+  const rose = { station: "near", dirs, calmHours: 10, missingHours: 5, totalHours: 100 };
+  const roseSlide = { ...a3, format: "wide", map: null, rose, roseSeason: "annual", page: { kind: "tile", ...base.page, layout: "map-summary" } };
+  const roseExport = renderToStaticMarkup(createElement(SlideSurface, { slide: roseSlide, basemap: "none", mode: "export" }));
+  assert.match(roseExport, /data-surface-figure="rose"/, "export 표면은 장미 그림 층을 그린다");
+  assert.match(roseExport, /data-wind-rose-chrome="slide"/, "PPT와 같은 slide chrome의 장미 SVG");
+  assert.match(roseExport, /viewBox="0 0 960 540"/, "PPT와 같은 960×540 기준 장면");
+  assert.doesNotMatch(roseExport, /도판 미리보기/, "자리표시 글이 없다");
+  const rosePreview = renderToStaticMarkup(createElement(SlideSurface, { slide: roseSlide, basemap: "none", mode: "preview" }));
+  assert.match(rosePreview, /data-wind-rose-chrome="slide"/, "편집 화면도 같은 장미");
+  const roseThumb = renderToStaticMarkup(createElement(SlideSurface, { slide: roseSlide, basemap: "none", mode: "thumb" }));
+  assert.doesNotMatch(roseThumb, /data-wind-rose-chrome|data-surface-figure/, "썸네일(thumb)은 장미·매스 그림을 그리지 않는다(성능)");
+  assert.match(slideSurfaceSource, /\(slide\.mass \|\| slide\.rose\) && !thumbnail \? <FigureLayer/, "TileSurface의 썸네일 경로는 그림 층 대신 자리표시를 쓴다");
+}
+
 console.log("v2 report surface tests passed");

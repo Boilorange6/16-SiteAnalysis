@@ -14,6 +14,7 @@ import type { S03Cut } from "../tile/s03/cut";
 import type { S04Cut } from "../tile/s04/cut";
 import { sheetCapacity, type SheetGrid as UiSheetGrid } from "./sheet";
 import { clampReportFontSizes, EMPTY_REPORT_DOC, defaultFrame, mergeReportFontSizes, normalizeMapLabelBox, PAGE_ELEMENT_KEYS, reportFontSizesFromLegacyScale, TEXT_BOX_COLORS, type MapFrameState, type ReportDoc, type ReportPage, type ReportFontSizes, type TextBoxAlign, type TextBoxKind, type TilePart, type PageElementKey } from "../report/report-doc";
+import { isFigureTileId } from "../report/report-layout";
 import { normalizePagePanels, clonePagePanels, type PagePanelKey, type PagePanelRect, type PagePanels } from "../report/report-geometry";
 export type { PagePanelKey, PagePanelRect, PagePanels } from "../report/report-geometry";
 import type { TileReportSettings } from "../report/report-plan";
@@ -1083,11 +1084,13 @@ function restoreReportPage(value: unknown, validTileIds: ReadonlySet<string>, op
   if (!isRecord(value) || typeof value.id !== "string" || value.id.length === 0 || !reportPageIdPattern.test(value.id) || !isReportLayout(value.layout)) return null;
   const fontSizes = clampReportFontSizes(value.fontSizes);
   const pageMapColors = normalizeMapColors(value.mapColors);
-  const layout = value.kind === "tile" && value.layout === "side-by-side" ? "map-summary" : value.layout;
+  // 그림 타일(바람장미·3D 매스)은 「숫자 먼저」가 없다(§9-8). 열 때 「그림 + 요약」으로 바꾸고, 「숫자 먼저」 기준으로 옮긴 패널 자리는 버린다.
+  const figureNumbersFirst = value.kind === "tile" && value.layout === "numbers-first" && typeof value.tileId === "string" && isFigureTileId(value.tileId);
+  const layout = (value.kind === "tile" && value.layout === "side-by-side") || figureNumbersFirst ? "map-summary" : value.layout;
   const base = {
     id: value.id,
     layout,
-    panels: reportPanels(value.panels),
+    panels: figureNumbersFirst ? {} : reportPanels(value.panels),
     textBoxes: reportTextBoxes(value.textBoxes),
     notes: typeof value.notes === "string" ? value.notes : "",
     ...(options.preserveMissingPageElementKeys && !Object.prototype.hasOwnProperty.call(value, "deletedElementKeys")

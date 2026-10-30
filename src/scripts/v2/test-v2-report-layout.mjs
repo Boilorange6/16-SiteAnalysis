@@ -90,4 +90,34 @@ for (const format of ["wide", "a3", "a4"]) {
   assert.deepEqual(chartsColumnLayout(summary, 1.85).distance, distance, "거리 그래프 칸은 글자 배율에 따라 줄지 않는다");
 }
 
+// ── 그림 타일(바람장미·3D 매스): 「숫자 먼저」 없이 「그림 + 요약」만 (2026-10-30 결정 C)
+{
+  const figure = reportLayoutDecision({ pageKind: "tile", hasMap: false, figure: true, hasSummary: true });
+  assert.deepEqual(figure.choices.map((choice) => choice.value), ["map-full", "map-summary"], "그림 타일은 숫자 먼저를 뺀다");
+  assert.deepEqual(figure.choices.map((choice) => choice.label), ["그림 크게", "그림 + 요약"]);
+  // 지도 없는 다른 장(뒷면 표 등)은 그대로 숫자 먼저를 갖는다.
+  assert.ok(reportLayoutDecision({ pageKind: "tile", hasMap: false, hasSummary: true }).choices.some((choice) => choice.value === "numbers-first"), "그림 타일이 아닌 지도 없는 장은 숫자 먼저 유지");
+  assert.ok(map.choices.some((choice) => choice.value === "numbers-first"), "지도 타일은 숫자 먼저 유지");
+
+  const { isFigureTileId } = await import("../../lib/v2/report/report-layout.ts");
+  assert.ok(isFigureTileId("t-D22") && isFigureTileId("fe9e688b-f7d0-4eda-b00a-7867ea6636ee-S01"), "D22·S01 타일 id");
+  assert.ok(!isFigureTileId("t-A01") && !isFigureTileId("t-D17"), "그 밖의 타일 id");
+
+  const savedPage = (tileId, layout, panels = {}) => ({ id: `p-${tileId}`, kind: "tile", layout, panels, textBoxes: [], notes: "", tileId, part: { type: "single" }, settings: { face: "front", callout: "overview" }, frame: defaultFrame() });
+  const customPanel = { title: { x: 0.1, y: 0.1, w: 0.3, h: 0.1 } };
+  const restored = restoreReportDoc({
+    v: 1,
+    format: "wide",
+    pages: [
+      savedPage("t-D22", "numbers-first", customPanel),
+      savedPage("t-S01", "numbers-first"),
+      savedPage("t-A01", "numbers-first", customPanel),
+      savedPage("t-D22", "map-full"),
+    ].map((page, index) => ({ ...page, id: `p-${index}` })),
+  }, new Set(["t-D22", "t-S01", "t-A01"]));
+  assert.deepEqual(restored.pages.map((page) => page.layout), ["map-summary", "map-summary", "numbers-first", "map-full"], "저장된 숫자 먼저 그림 장만 그림 + 요약으로, 지도 장·다른 레이아웃은 그대로");
+  assert.deepEqual(restored.pages[0].panels, {}, "숫자 먼저 기준으로 옮긴 패널 자리는 버린다");
+  assert.ok(restored.pages[2].panels.title, "지도 장의 패널 자리는 그대로");
+}
+
 console.log("v2 report layout contract tests passed");

@@ -17,6 +17,7 @@ type LayoutSwitcherProps = {
   onClose: () => void;
   pageKind?: ReportLayoutPageKind;
   hasMap?: boolean;
+  figure?: boolean;
   hasSummary?: boolean;
   hasCharts?: boolean;
   grid?: ReportGrid;
@@ -45,8 +46,8 @@ function LayoutPreview({ layout, grid }: { layout: ReportLayout; grid?: ReportGr
   );
 }
 
-export default function LayoutSwitcher({ value, onChange, compact = false, pageNumber, opacity, onOpacityChange, onClose, pageKind = "tile", hasMap = true, hasSummary = true, hasCharts = false, grid = "2x2", onGridChange, renderSignatures, deletedItems = [] }: LayoutSwitcherProps) {
-  const decision = reportLayoutDecision({ pageKind, hasMap, hasSummary, hasCharts, renderSignatures });
+export default function LayoutSwitcher({ value, onChange, compact = false, pageNumber, opacity, onOpacityChange, onClose, pageKind = "tile", hasMap = true, figure = false, hasSummary = true, hasCharts = false, grid = "2x2", onGridChange, renderSignatures, deletedItems = [] }: LayoutSwitcherProps) {
+  const decision = reportLayoutDecision({ pageKind, hasMap, figure, hasSummary, hasCharts, renderSignatures });
   // 그래프 자료를 잃은 map-charts 쪽은 「지도 + 요약」 내용으로 그려지므로 그 버튼이 눌린 것으로 보인다.
   const activeLayout = value === "side-by-side" || (value === "map-charts" && !hasCharts) ? "map-summary" : value;
   const gridChoices = decision.gridChoices.length > 0 ? decision.gridChoices : reportGridChoices();

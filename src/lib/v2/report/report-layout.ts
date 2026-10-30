@@ -15,6 +15,8 @@ export type ReportGridChoice = { value: ReportGrid; label: string };
 export type ReportLayoutInput = {
   pageKind: ReportLayoutPageKind;
   hasMap?: boolean;
+  /** 지도가 아니라 그림(바람장미·3D 매스)이 전면인 장. 「숫자 먼저」는 지도 틀 전용이라 뺀다. */
+  figure?: boolean;
   hasSummary?: boolean;
   /** 그래프 자료가 있어 「지도 + 그래프」를 고를 수 있나 */
   hasCharts?: boolean;
@@ -33,6 +35,13 @@ const GRID_CHOICES: readonly ReportGridChoice[] = [
   { value: "3x2", label: "3×2 · 6칸" },
   { value: "3x1", label: "3×1 · 3칸" },
 ];
+
+/** 보고서 장이 지도가 아니라 그림(바람장미 D22·3D 매스 S01)을 전면에 그리는 타일 코드 */
+export const FIGURE_TILE_CODES: ReadonlySet<string> = new Set(["D22", "S01"]);
+
+export function isFigureTileId(tileId: string): boolean {
+  return FIGURE_TILE_CODES.has(/(?:^|-)([ADS]\d{2})$/.exec(tileId)?.[1] ?? "");
+}
 
 function pageLabel(input: ReportLayoutInput): string {
   if (input.pageKind === "compare") return "조판";
@@ -77,7 +86,7 @@ export function reportLayoutDecision(input: ReportLayoutInput): ReportLayoutDeci
     { value: "map-full", label: `${mapWord} 크게` },
     { value: "map-summary", label: `${mapWord} + 요약` },
     ...(input.hasCharts ? [{ value: "map-charts" as const, label: "지도 + 그래프" }] : []),
-    { value: "numbers-first", label: "숫자 먼저" },
+    ...(input.figure ? [] : [{ value: "numbers-first" as const, label: "숫자 먼저" }]),
   ];
   for (const candidate of candidates) {
     const signature = signatures[candidate.value];
