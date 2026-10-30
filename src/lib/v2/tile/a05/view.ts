@@ -6,9 +6,27 @@ import { describeA05Filter, reaggregateA05, type A05Filter } from "../../engine/
 import { DEFAULT_CALLOUT_MODE, fmtInt, OTHER_HOUSING_COLOR, OTHER_HOUSING_LABEL, rankComplexes, STOCK_LEGEND, summarize } from "../../ui/callout-layout";
 import type { TileResult } from "../../tile-result";
 import type { CalloutModel } from "../../ui/tile-view";
-import type { TileClientModule, TileViewPreparation } from "../types";
+import { metricCount, metricNumber, statList } from "../key-figure";
+import type { KeyFigure, TileClientModule, TileViewPreparation } from "../types";
 
 const HOUSING_LAYERS = new Set(["apt", "officetel"]);
+
+/** `result`는 prepare를 거친 뒤의 결과라 A05 필터를 건 보기에서는 필터 뒤 세대수가 큰 답이다. */
+function a05KeyFigure(result: TileResult): KeyFigure | null {
+  const households = metricCount(result, "households", "세대");
+  if (households === null) return null;
+  const unknown = metricNumber(result, "households_unknown_complexes");
+  return {
+    question: "반경 확인 세대",
+    answer: { value: households, kind: "number" },
+    ...(unknown !== null && unknown > 0 ? { sub: `세대 수를 알 수 없는 단지 ${unknown}곳은 합계에서 제외` } : {}),
+    stats: statList([
+      [metricCount(result, "apartment_complexes", "곳"), "아파트 단지"],
+      [metricCount(result, "other_residential", "곳"), "기타 공동주택"],
+      [metricCount(result, "officetels", "곳"), "오피스텔"],
+    ]),
+  };
+}
 
 /** 저장하지 않는 A05 화면 필터를 파생 결과·카드 칩·보고서 한 줄로 투영한다. */
 export function prepareA05(result: TileResult, filter: unknown): TileViewPreparation {
@@ -64,6 +82,7 @@ export const a05ClientModule = {
   code: "A05",
   chart: { subject: "주거 건물·단지", countUnit: "곳" },
   headline: { ids: ["households", "apartment_complexes"] },
+  keyFigureFor: a05KeyFigure,
   mapNote: "원 크기 = 확인 세대·호실 · 색 = 준공 연대 · 속 빈 원 = 준공 연대 미상",
   prepare: (result, context) => prepareA05(result, context.filter),
   callout: calloutForA05,

@@ -1,9 +1,26 @@
 import type { RasterRef, TileResult } from "../../tile-result";
 import type { MapModel } from "../../ui/map-layers";
 import type { TileView } from "../../ui/tile-view";
-import type { TileClientModule, TileLayerOption } from "../types";
+import { metricNumber, metricPercent, statList } from "../key-figure";
+import type { KeyFigure, TileClientModule, TileLayerOption } from "../types";
 import { s02CutModule } from "./cut";
 import { S02_DATE_LABEL, type S02DateKey } from "./dates";
+
+const hoursText = (result: TileResult, id: string): string | null => {
+  const value = metricNumber(result, id);
+  return value === null ? null : `${value.toFixed(1)}시간`;
+};
+
+/** 동지 기본 보기의 카드. 계절 컷 장은 컷 장 작업에서 따로 정의한다. */
+function s02KeyFigure(result: TileResult): KeyFigure | null {
+  const winter = hoursText(result, "mean_sun_h_winter");
+  if (winter === null) return null;
+  return {
+    question: "동지 평균 일조",
+    answer: { value: winter, kind: "number" },
+    stats: statList([[hoursText(result, "mean_sun_h_spring"), "춘분 평균 일조"], [metricPercent(result, "share_cont2h_0915_pct_winter"), "동지 연속 2시간 확보"]]),
+  };
+}
 
 type S02RasterDate = S02DateKey;
 
@@ -116,6 +133,7 @@ function filterS02Layer(model: MapModel | null, layerId: string): MapModel | nul
 export const s02ClientModule = {
   code: "S02",
   headline: { ids: ["mean_sun_h_winter"] },
+  keyFigureFor: s02KeyFigure,
   mapNote: "동지 기본 일조시간 · 계절 레이어 · 건물·지형 그림자 반영",
   caveat: "건물·지형 모델에 의한 기하학적 일조 추정입니다. 구름·실제 기상·창면 조건 및 법적 일조 판정을 포함하지 않습니다.",
   modelBadge: "그림자 추정 · 법적 판정 아님",

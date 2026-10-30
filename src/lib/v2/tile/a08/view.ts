@@ -1,9 +1,25 @@
-import type { TileClientModule } from "../types";
+import type { KeyFigure, TileClientModule } from "../types";
 import type { TileResult } from "../../tile-result";
 import type { MapModel } from "../../ui/map-layers";
 import { layerStyle } from "../../ui/map-layers";
+import { metricCount, metricPercent, statList } from "../key-figure";
 
 const DEFAULT_LAYER = "building_jeonse";
+
+/** 전세가율은 같은 필지에 전세·매매가 모두 있는 단지끼리 비교한 값이다(대응 단지 수가 지표의 분자). */
+function a08KeyFigure(result: TileResult): KeyFigure | null {
+  const ratio = metricPercent(result, "jeonse_to_trade_ratio_pct");
+  if (ratio === null) return null;
+  const paired = result.metrics.find((metric) => metric.id === "jeonse_to_trade_ratio_pct")?.numerator;
+  const renewal = metricCount(result, "renewal_count", "건");
+  const sub = [paired == null ? null : `대응 ${paired}단지 기준`, renewal === null ? null : `갱신 계약 ${renewal}`].filter((part) => part !== null).join(" · ");
+  return {
+    question: "전세가율",
+    answer: { value: ratio, kind: "number" },
+    ...(sub ? { sub } : {}),
+    stats: statList([[metricCount(result, "jeonse_count", "건"), "전세 계약"], [metricCount(result, "monthly_count", "건"), "월세 계약"]]),
+  };
+}
 
 const layerOptions = (_result: TileResult) => [
   { id: "building_jeonse", label: "건물-전세" },
@@ -72,6 +88,7 @@ function filterA08Map(model: MapModel | null, layerId: string): MapModel | null 
 export const a08ClientModule = {
   code: "A08",
   headline: { ids: ["jeonse_to_trade_ratio_pct", "jeonse_deposit_per_m2", "monthly_rent_median", "jeonse_count", "monthly_count"] },
+  keyFigureFor: a08KeyFigure,
   layers: {
     options: layerOptions,
     filter: filterA08Map,
