@@ -429,6 +429,7 @@ function missingView(tileId: string, summary: SummaryView): TileView {
     badges: [{ text: "결과 없음", tone: "status" }],
     headline: null,
     headlineMetricId: null,
+    keyFigure: null,
     rows: [],
     sentence: "결과 없음",
     grade: null,

@@ -70,6 +70,7 @@ export function sheetView(id: string, tiles: TileView[], grid: SheetGrid): TileV
     }),
     headline: { value: `${tiles.length}칸`, label: grid },
     headlineMetricId: null,
+    keyFigure: null,
     rows: [],
     sentence: null,
     grade: null,

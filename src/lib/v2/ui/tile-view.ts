@@ -5,7 +5,7 @@
 import type { MapPolygon, OUTPUT_FACES, RasterRef, RoseSeason, TileResult } from "../tile-result";
 import type { Scene } from "../scene";
 import { tileClientModuleFor } from "../tile/client";
-import type { Metric, TileHeadlinePolicy } from "../tile/types";
+import type { KeyFigure, Metric, TileHeadlineHelpers, TileHeadlinePolicy } from "../tile/types";
 import type { A05Counts, A05Filter } from "../engine/a05-filter";
 import { paletteCalloutLegend, type CalloutLegendSpec, type Complex, type Stat } from "./callout-layout";
 import type { DiagramPaletteRef } from "./map-palette";
@@ -36,6 +36,8 @@ export type TileView = {
   headline: { value: string; label: string; aux?: string; tag?: string } | null;
   /** 헤드라인에 선택된 결론 지표. 파라미터·확인율 지표는 여기에 오지 않는다. */
   headlineMetricId: string | null;
+  /** 타일 장의 핵심 숫자 카드. 결과가 없거나 카드를 두지 않는 타일(D01)은 null */
+  keyFigure: KeyFigure | null;
   rows: Row[];
   sentence: string | null;
   grade: { label: string; criteria: string } | null;
@@ -372,6 +374,15 @@ export function sourceLineOf(sources: TileResult["provenance"]["sources"]): stri
   return [...new Set(lines)].join(" · ");
 }
 
+/** 핵심 숫자 카드. 타일 정의가 "none"이면 카드 없음, 정의가 없거나 null이면 헤드라인으로 만든 카드, 헤드라인도 없으면 null. */
+function keyFigureOf(r: TileResult, module: ReturnType<typeof tileClientModuleFor>, helpers: TileHeadlineHelpers, headline: TileView["headline"]): KeyFigure | null {
+  const defined = module?.keyFigureFor?.(r, helpers) ?? null;
+  if (defined === "none") return null;
+  if (defined) return defined;
+  if (!headline) return null;
+  return { question: headline.label, answer: { value: headline.value, kind: /^[-+]?[\d.,]/.test(headline.value) ? "number" : "name" }, stats: [] };
+}
+
 export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParcel?: readonly MapPolygon[] | null, a05Filter?: A05Filter | null): TileView {
   const module = tileClientModuleFor(r.tileCode);
   const prepared = module?.prepare?.(r, { filter: a05Filter }) ?? { result: r };
@@ -407,11 +418,9 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
   let headline: TileView["headline"] = null;
   let headlineMetricId: string | null = null;
   const hasResult = r.status === "complete" || r.status === "partial";
+  const headlineHelpers: TileHeadlineHelpers = { policyMetric: () => policyMetric(r, metrics), metricRow };
   if (hasResult && metrics.length > 0) {
-    const headlineOverride = module?.headlineFor?.(r, {
-      policyMetric: () => policyMetric(r, metrics),
-      metricRow,
-    }) ?? null;
+    const headlineOverride = module?.headlineFor?.(r, headlineHelpers) ?? null;
     if (headlineOverride) {
       headline = headlineOverride.headline;
       headlineMetricId = headlineOverride.metricId;
@@ -441,6 +450,7 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
     badges: [...merged.values()],
     headline,
     headlineMetricId,
+    keyFigure: null,
     rows: allRows,
     sentence: displaySentence(r, allRows, filterLine),
     grade: gradedMetricOk ? { label: GRADE_TEXT[r.judgment!.level!], criteria: `내부 제안 기준: ${r.judgment!.criteria}` } : null,
@@ -480,7 +490,9 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
     layerOptions,
     defaultLayer,
   };
-  const view = module?.view?.(baseView, r) ?? baseView;
+  const shaped = module?.view?.(baseView, r) ?? baseView;
+  // 카드는 타일 고유 view가 헤드라인을 고친 뒤에 만든다(헤드라인으로 돌아가는 카드가 그 값을 따른다).
+  const view = { ...shaped, keyFigure: hasResult ? keyFigureOf(r, module, headlineHelpers, shaped.headline) : null };
   // `results.map(toTileView)`는 scene 자리에 배열 인덱스를 넘긴다 — origin이 없으면 장면이 아니다.
   if (!scene?.origin) return view;
   // 한 장면의 모든 타일이 같은 바탕 객체를 공유한다(타일별 생략은 model.tileCode로 그리는 쪽이 정한다).

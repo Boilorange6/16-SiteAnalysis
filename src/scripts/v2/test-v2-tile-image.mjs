@@ -26,6 +26,7 @@ const view = {
   badges: [],
   headline: { value: "2.1", label: "일조시간", aux: "시간" },
   headlineMetricId: "mean_sun_h_winter",
+  keyFigure: null,
   rows: [],
   sentence: null,
   grade: null,

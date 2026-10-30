@@ -31,6 +31,19 @@ export type TileHeadlineHelpers = {
   metricRow: (metric: Metric) => { value: string; label: string; aux?: string; tag?: string };
 };
 
+/** 보고서·화면 타일 장의 「핵심 숫자 카드」 입력이다. 엔진이 낸 지표·행만 읽어 만들고, 값이 없는 줄은 넣지 않는다. */
+export type KeyFigure = {
+  /** 질문 줄 */
+  question: string;
+  answer: { pre?: string; value: string; post?: string; target?: string; kind: "number" | "name" };
+  /** 보조 줄 (분모·노선 등) */
+  sub?: string;
+  /** 보조 숫자 0–3개. 미확인 값은 넣지 않는다. */
+  stats: Array<{ value: string; label: string }>;
+  /** 구성 막대(A12). 최대 5 + 「그 밖」. */
+  parts?: Array<{ label: string; share: number; color: string; site?: boolean }>;
+};
+
 export type TileLayerOption = { id: string; label: string };
 
 export type TileLayerOptions = readonly TileLayerOption[] | ((result: TileResult) => readonly TileLayerOption[]);
@@ -117,6 +130,11 @@ export interface TileClientModule {
   parameterBadges?: readonly { metricId: string; prefix: string; note: string }[];
   /** 공용 정책 대신 헤드라인을 직접 정한다. null이면 공용 정책(headline 필드)으로 넘어간다. */
   headlineFor?: (result: TileResult, helpers: TileHeadlineHelpers) => { headline: NonNullable<TileView["headline"]>; metricId: string } | null;
+  /**
+   * 타일 장의 핵심 숫자 카드를 직접 정한다. "none"이면 카드를 그리지 않고, null이면 헤드라인으로 만든 카드로 돌아간다.
+   * result는 타일 고유 prepare(A05 필터 등)를 거친 뒤의 결과다.
+   */
+  keyFigureFor?: (result: TileResult, helpers: TileHeadlineHelpers) => KeyFigure | "none" | null;
   /** 헤드라인이 대신 보여 주므로 행 목록에서 뺄 지표 id. */
   rowsExclude?: readonly string[];
   /** 캐시된 옛 판단 문장을 현재 표기와 맞춘다(필터 꼬리표 붙이기 전). */

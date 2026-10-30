@@ -66,6 +66,8 @@ export function applyS02View(base: TileView, result?: TileResult): TileView {
       ? {
           headline: { value: metric.value, label: metric.label, aux: metric.aux, tag: metric.tag },
           headlineMetricId: `mean_sun_h_${date}`,
+          // 계절 컷이 헤드라인을 바꾸므로 base의 카드는 낡았다. S02 카드는 컷 장 작업에서 정의한다.
+          keyFigure: null,
         }
       : {}),
     notes: nextNotes,
