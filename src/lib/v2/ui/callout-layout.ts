@@ -646,6 +646,31 @@ export function segCross(p1: Pt, p2: Pt, p3: Pt, p4: Pt): boolean {
   return d1 * d2 < -1e-9 && d3 * d4 < -1e-9;
 }
 
+/** 선분 a→b가 상자(경계 0.5 안쪽)와 만나는가. 끝점이 상자 안에 있어도 만난 것이다. */
+export function segmentHitsRect(a: Pt, b: Pt, r: { x0: number; y0: number; x1: number; y1: number }, inset = 0.5): boolean {
+  const x0 = r.x0 + inset, y0 = r.y0 + inset, x1 = r.x1 - inset, y1 = r.y1 - inset;
+  if (x0 >= x1 || y0 >= y1) return false;
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  let t0 = 0;
+  let t1 = 1;
+  for (const [p, q] of [[-dx, a[0] - x0], [dx, x1 - a[0]], [-dy, a[1] - y0], [dy, y1 - a[1]]] as const) {
+    if (p === 0) {
+      if (q < 0) return false;
+      continue;
+    }
+    const t = q / p;
+    if (p < 0) {
+      if (t > t1) return false;
+      if (t > t0) t0 = t;
+    } else {
+      if (t < t0) return false;
+      if (t < t1) t1 = t;
+    }
+  }
+  return true;
+}
+
 export const pathOf = (p: Placed): Pt[] => [p.dot, p.knee, p.edge];
 
 /** 같은 칸 지시선 사이의 교차 수 (테스트·자체 점검용) */
@@ -823,18 +848,28 @@ function layoutVariableCallouts(f: CalloutFrame, points: LayoutPoint[]): { place
         const dimension = dimensions[index]!;
         const x = side === "L" ? column.x0 : column.x1 - dimension.width;
         const edgeX = side === "L" ? x + dimension.width : x;
-        const kneeX = side === "L" ? edgeX + f.m.stub : edgeX - f.m.stub;
+        // 꺾임 x는 칸 안쪽 경계 하나로 통일한다. 좁은 카드는 꺾임→카드 가장자리 수평선만 길어지고,
+        // 대각선(점→꺾임)은 이웃 카드의 x 범위 안으로 들어오지 않는다.
+        const kneeX = side === "L" ? Math.max(column.x1, edgeX) + f.m.stub : Math.min(column.x0, edgeX) - f.m.stub;
         const centerY = tops[index]! + dimension.height / 2;
-        return { point, dimension, top: tops[index]!, edgeX, kneeX, centerY, segment: [[point.x, point.y] as Pt, [kneeX, centerY] as Pt] as const };
+        const rect = { x0: x, y0: tops[index]!, x1: x + dimension.width, y1: tops[index]! + dimension.height };
+        const dot: Pt = [point.x, point.y];
+        const knee: Pt = [kneeX, centerY];
+        return { point, dimension, top: tops[index]!, edgeX, kneeX, centerY, rect, path: [dot, knee, [edgeX, centerY] as Pt] as const };
       });
       return { tops, paths };
     };
+    // 지시선끼리의 교차 수 + 지시선이 다른 카드 상자를 지나거나 점이 다른 카드 밑에 있는 수.
     const crossings = (order: readonly LayoutPoint[]) => {
       const paths = geometry(order).paths;
       let count = 0;
       for (let i = 0; i < paths.length; i++) {
-        for (let j = i + 1; j < paths.length; j++) {
-          if (segCross(paths[i]!.segment[0], paths[i]!.segment[1], paths[j]!.segment[0], paths[j]!.segment[1])) count += 1;
+        for (let j = 0; j < paths.length; j++) {
+          if (i === j) continue;
+          const a = paths[i]!.path;
+          const b = paths[j]!.path;
+          if (j > i) for (let s = 0; s < 2; s++) for (let t = 0; t < 2; t++) if (segCross(a[s]!, a[s + 1]!, b[t]!, b[t + 1]!)) count += 1;
+          for (let s = 0; s < 2; s++) if (segmentHitsRect(a[s]!, a[s + 1]!, paths[j]!.rect)) count += 1;
         }
       }
       return count;

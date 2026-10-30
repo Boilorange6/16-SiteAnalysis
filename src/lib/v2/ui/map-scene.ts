@@ -753,6 +753,60 @@ function visibleAnchor(points: readonly (readonly [number, number])[], fallback:
   return pointInFrame(fallback, width, height) ? fallback as [number, number] : null;
 }
 
+/** 면 라벨 기준점 후보 격자의 한 변 개수. 후보는 최대 13 × 13 = 169개다(성능 상한). */
+const INTERIOR_ANCHOR_GRID = 13;
+
+/**
+ * 면 라벨 기준점: 면 안쪽(구멍 제외)이고 화면 안인 점 중 면의 보이는 중심에 가장 가까운 점.
+ * 좌우 카드 칸 사이 띠(bands, 안쪽 띠부터)를 차례로 찾고, 어느 띠에도 없으면 띠에 가장 가까운 점을 쓴다(점이 카드 밑으로 덜 들어가게).
+ * 이미 쓴 기준점(taken)과 gap 이상 떨어진 점만 쓰고, 꺾임 세로선(keepOut x 범위)과 피할 상자(avoidBoxes)는 가능하면 피한다.
+ * 링이 같은 면(반경 전체를 덮는 구역 면)이 한 점·원 둘레에 몰리지 않게 한다. 없으면 null(호출자가 옛 방식으로 돌아간다).
+ */
+function interiorAnchor(
+  rings: ReadonlyArray<ReadonlyArray<readonly [number, number]>>,
+  width: number,
+  height: number,
+  bands: ReadonlyArray<readonly [number, number]>,
+  keepOut: ReadonlyArray<readonly [number, number]>,
+  avoidBoxes: ReadonlyArray<MapSceneBox>,
+  taken: ReadonlyArray<readonly [number, number]>,
+  gap: number,
+): [number, number] | null {
+  const outer = rings[0] ?? [];
+  if (outer.length < 3) return null;
+  const fx0 = Math.max(0, minOf(outer.map(([x]) => x)));
+  const fx1 = Math.min(width, maxOf(outer.map(([x]) => x)));
+  const fy0 = Math.max(0, minOf(outer.map(([, y]) => y)));
+  const fy1 = Math.min(height, maxOf(outer.map(([, y]) => y)));
+  if (fx0 >= fx1 || fy0 >= fy1) return null;
+  const centre: [number, number] = [(fx0 + fx1) / 2, (fy0 + fy1) / 2];
+  const holes = rings.slice(1);
+  const inside = (x: number, y: number) => pointInRing(x, y, outer) && !holes.some((hole) => pointInRing(x, y, hole)) && pointInFrame([x, y], width, height);
+  const widest = bands.at(-1);
+  const outsideBands = (x: number) => (widest ? Math.max(0, widest[0] - x, x - widest[1]) : 0);
+  const tiers: Array<[number, number]> = [...bands.map(([b0, b1]): [number, number] => [Math.max(fx0, b0), Math.min(fx1, b1)]), [fx0, fx1]];
+  for (const [index, [x0, x1]] of tiers.entries()) {
+    if (x1 <= x0) continue;
+    const candidates: Array<[number, number]> = [];
+    for (let i = 0; i < INTERIOR_ANCHOR_GRID; i += 1) {
+      for (let j = 0; j < INTERIOR_ANCHOR_GRID; j += 1) candidates.push([x0 + ((i + 0.5) / INTERIOR_ANCHOR_GRID) * (x1 - x0), fy0 + ((j + 0.5) / INTERIOR_ANCHOR_GRID) * (fy1 - fy0)]);
+    }
+    const distance = (point: readonly [number, number]) => Math.hypot(point[0] - centre[0], point[1] - centre[1]);
+    // 마지막 층(띠 밖)은 띠에 가까운 점부터, 그 밖은 면의 보이는 중심에 가까운 점부터.
+    const lastTier = index === tiers.length - 1;
+    candidates.sort((a, b) => (lastTier ? outsideBands(a[0]) - outsideBands(b[0]) : 0) || distance(a) - distance(b));
+    for (const [useKeepOut, useAvoid] of [[true, true], [true, false], [false, false]] as const) {
+      for (const [x, y] of candidates) {
+        if (useAvoid && avoidBoxes.some((box) => x >= box.x0 && x <= box.x1 && y >= box.y0 && y <= box.y1)) continue;
+        if (useKeepOut && keepOut.some(([k0, k1]) => x >= k0 && x <= k1)) continue;
+        if (taken.some(([tx, ty]) => Math.hypot(tx - x, ty - y) < gap)) continue;
+        if (inside(x, y)) return [x, y];
+      }
+    }
+  }
+  return null;
+}
+
 const railPointDistance = (a: readonly [number, number], b: readonly [number, number]): number => Math.hypot(b[0] - a[0], b[1] - a[1]);
 const railPolylineLength = (points: readonly (readonly [number, number])[]): number => points.slice(1).reduce((sum, point, index) => sum + railPointDistance(points[index]!, point), 0);
 
@@ -1652,6 +1706,26 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
       ? selectAutomaticLabels(labels).filter((entry) => !hidden.has(entry.key) && !pinnedSet.has(entry.key) && entry.key !== hoverLabel?.key && !["rail_station", "rail_nearest", "rail_entrance", "rail_line", "rail_station_axis"].includes(entry.layer))
       : [];
     placementCandidates.push(...pinnedLabels.map((entry) => ({ entry, variant: "fixed" as const, rank: -2 })), ...(hoverLabel ? [{ entry: hoverLabel, variant: "hover" as const, rank: -1 }] : []), ...automatic.map((entry) => ({ entry, variant: "auto" as const, rank: 2 - (entry.labelPriority ?? 0) })));
+  }
+  // 면 라벨 기준점은 자동·고정·호버로 뽑힌 면에만 다시 잡는다: 면 안쪽, 가능하면 좌우 카드 칸 사이 띠(옛 규칙은 둘레의 한 꼭짓점).
+  // 링이 같은 면이 한 점·칸 밑에 몰려 지시선이 다른 카드를 지나는 것을 막는다. 후보 상한은 interiorAnchor가 둔다.
+  {
+    const polygonRings = new Map(visiblePolygons.map((entry) => [entry.key, entry.rings]));
+    // 안쪽 띠는 두 꺾임 세로선 사이, 바깥 띠는 카드 칸 사이. 꺾임 세로선 가까이(±0.4 stub)는 가능하면 비운다.
+    const kneeL = calloutFrameModel.left.x1 + calloutMetrics.stub;
+    const kneeR = calloutFrameModel.right.x0 - calloutMetrics.stub;
+    const bands: Array<[number, number]> = [[kneeL, kneeR], [calloutFrameModel.left.x1, calloutFrameModel.right.x0]];
+    const keepOut: Array<[number, number]> = [[kneeL - 0.4 * calloutMetrics.stub, kneeL + 0.4 * calloutMetrics.stub], [kneeR - 0.4 * calloutMetrics.stub, kneeR + 0.4 * calloutMetrics.stub]];
+    const taken: Array<[number, number]> = [];
+    // 대지 표식·범례·방위표·축척 밑에 점이 숨지 않게 가능하면 피한다.
+    const anchorAvoid: MapSceneBox[] = [...(showSiteMarker && !muted ? [siteBounds] : []), ...(legendBox ? [legendBox] : []), ...calloutAvoid];
+    for (const { entry } of placementCandidates) {
+      if (entry.pick.kind !== "polygon") continue;
+      const polygonRing = polygonRings.get(entry.key);
+      const anchor = polygonRing ? interiorAnchor(polygonRing, W, H, bands, keepOut, anchorAvoid, taken, 10 * u) : null;
+      if (anchor) entry.p = anchor;
+      taken.push(entry.p);
+    }
   }
   const candidateLayouts = placementCandidates.map(({ entry, variant, rank }) => {
     const fontSize = variant === "auto" ? Math.max(9 * labelScale, entry.small ? 10.5 * u * 0.9 * labelScale : 10.5 * u * labelScale) : calloutLabelFs;
