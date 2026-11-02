@@ -171,4 +171,14 @@ for (const format of ["wide", "a3", "a4"]) {
   assert.deepEqual(others.pages.map((page) => page.layout), ["map-key", "map-key", "map-key", "map-key", "map-key"], "타일이 아닌 장의 옛 값도 map-key로");
 }
 
+// ── Ruling 37: 단면이 있는 D17은 선택지가 「지도 + 그래프」 하나, 저장 map-key·numbers-first도 map-charts로 읽는다. 단면이 없으면 둘.
+{
+  const terrain = reportLayoutDecision({ pageKind: "tile", hasMap: true, hasCharts: true, terrain: true });
+  assert.deepEqual(terrain.choices.map((choice) => choice.value), ["map-charts"], "단면 있는 D17 선택지는 map-charts 하나");
+  const plain = reportLayoutDecision({ pageKind: "tile", hasMap: true, hasCharts: true });
+  assert.deepEqual(plain.choices.map((choice) => choice.value), ["map-key", "map-charts"], "단면 없는 D17은 둘");
+  for (const stored of ["map-key", "map-charts", "numbers-first", "map-summary"]) assert.equal(resolveReportLayout(stored, { hasMap: true, figure: false, hasCharts: true, terrain: true }), "map-charts", `저장 ${stored} → map-charts`);
+  assert.equal(resolveReportLayout("map-key", { hasMap: true, figure: false, hasCharts: true }), "map-key", "단면이 없으면 저장 map-key는 그대로");
+}
+
 console.log("v2 report layout contract tests passed");

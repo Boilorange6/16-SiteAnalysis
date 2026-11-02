@@ -19,6 +19,8 @@ export type ReportLayoutInput = {
   figure?: boolean;
   /** 그래프 자료가 있어 「지도 + 그래프」를 고를 수 있나 */
   hasCharts?: boolean;
+  /** D17 지형 단면을 그리는 장: 그래프 카드 자리가 단면이라 「지도 + 그래프」 한 가지 배치만 갖는다(Ruling 37). */
+  terrain?: boolean;
 };
 
 export type ReportLayoutDecision = {
@@ -82,6 +84,7 @@ export function reportLayoutDecision(input: ReportLayoutInput): ReportLayoutDeci
 
   // 지도도 그림도 없는 장(뒷면 표 등)은 숫자 먼저 하나뿐이다.
   if (!input.hasMap && !input.figure) return { pageLabel: label, choices: [{ value: "numbers-first", label: "숫자 먼저" }], gridChoices: [] };
+  if (input.terrain && input.hasMap && !input.figure) return { pageLabel: label, choices: [{ value: "map-charts", label: "지도 + 그래프" }], gridChoices: [] };
   const choices: ReportLayoutChoice[] = [
     { value: "map-key", label: input.hasMap ? "지도 + 숫자" : "그림 + 숫자" },
     ...(input.hasCharts && !input.figure ? [{ value: "map-charts" as const, label: "지도 + 그래프" }] : []),
@@ -93,8 +96,9 @@ export function reportLayoutDecision(input: ReportLayoutInput): ReportLayoutDeci
  * 그리는 단계의 공통 판정. 저장된 값(옛 값 포함)과 이 장의 지도·그림·그래프 유무로 실제 레이아웃을 정한다.
  * 그래프 자료를 잃은 map-charts(옛 분석 등)는 map-key로 그려 빈 그래프 카드를 남기지 않는다.
  */
-export function resolveReportLayout(layout: ReportLayout, page: { hasMap: boolean; figure: boolean; hasCharts: boolean }): "map-key" | "map-charts" | "numbers-first" {
+export function resolveReportLayout(layout: ReportLayout, page: { hasMap: boolean; figure: boolean; hasCharts: boolean; terrain?: boolean }): "map-key" | "map-charts" | "numbers-first" {
   if (!page.hasMap && !page.figure) return "numbers-first";
+  if (page.terrain && page.hasMap && !page.figure) return "map-charts"; // 단면 장은 저장 값과 상관없이 단면이 있는 배치로 읽는다(Ruling 37)
   if ((layout === "map-charts" || layout === "numbers-first") && page.hasCharts && !page.figure) return "map-charts";
   return "map-key";
 }

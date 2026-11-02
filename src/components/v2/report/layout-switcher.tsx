@@ -19,6 +19,8 @@ type LayoutSwitcherProps = {
   hasMap?: boolean;
   figure?: boolean;
   hasCharts?: boolean;
+  /** D17 단면 장: 선택지가 「지도 + 그래프」 하나 */
+  terrain?: boolean;
   grid?: ReportGrid;
   onGridChange?: (grid: ReportGrid) => void;
   deletedItems?: readonly DeletedLayoutItem[];
@@ -45,10 +47,10 @@ function LayoutPreview({ layout, grid }: { layout: ReportLayout; grid?: ReportGr
   );
 }
 
-export default function LayoutSwitcher({ value, onChange, compact = false, pageNumber, opacity, onOpacityChange, onClose, pageKind = "tile", hasMap = true, figure = false, hasCharts = false, grid = "2x2", onGridChange, deletedItems = [] }: LayoutSwitcherProps) {
-  const decision = reportLayoutDecision({ pageKind, hasMap, figure, hasCharts });
+export default function LayoutSwitcher({ value, onChange, compact = false, pageNumber, opacity, onOpacityChange, onClose, pageKind = "tile", hasMap = true, figure = false, hasCharts = false, terrain = false, grid = "2x2", onGridChange, deletedItems = [] }: LayoutSwitcherProps) {
+  const decision = reportLayoutDecision({ pageKind, hasMap, figure, hasCharts, terrain });
   // 그리는 단계와 같은 판정: 그래프 자료를 잃은 map-charts·옛 값은 「지도 + 숫자」로 그려지므로 그 버튼이 눌린 것으로 보인다.
-  const activeLayout = pageKind === "tile" ? resolveReportLayout(value, { hasMap, figure, hasCharts }) : value;
+  const activeLayout = pageKind === "tile" ? resolveReportLayout(value, { hasMap, figure, hasCharts, terrain }) : value;
   const gridChoices = decision.gridChoices.length > 0 ? decision.gridChoices : reportGridChoices();
   return (
     <section className={`${styles.layoutSwitcher} ${compact ? styles.layoutSwitcherCompact : ""}`} aria-label="페이지 레이아웃">

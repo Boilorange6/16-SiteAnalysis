@@ -149,7 +149,7 @@ function pageWithResolvedLayout(page: Extract<ReportPage, { kind: "tile" }>, sli
   const hasMap = slide.kind === "sheet" ? slide.cells.some((cell) => !!cell?.view.map) : (slide.kind === "tile" || slide.kind === "cover") && !!slide.map;
   const figure = isFigureSlide(slide);
   const hasCharts = slide.kind === "tile" && (slideCharts(slide, page.frame.hiddenLayers) !== null || slideTerrainSection(slide));
-  const layout = resolveReportLayout(page.layout, { hasMap, figure, hasCharts });
+  const layout = resolveReportLayout(page.layout, { hasMap, figure, hasCharts, terrain: slide.kind === "tile" && slideTerrainSection(slide) });
   // 저장값이 map-key가 아니고 지도·그림 장으로 그려지면 옛 요약 판·출처 줄 자리는 그리는 복사본에서만 뺀다(저장 문서는 그대로).
   // 판정값이 numbers-first(뒷면 표 등)이면 자리를 그대로 둔다. map-key는 사용자가 새로 옮긴 자리다.
   const dropOld = page.layout !== "map-key" && layout !== "numbers-first" && ("summary" in page.panels || "source" in page.panels);
