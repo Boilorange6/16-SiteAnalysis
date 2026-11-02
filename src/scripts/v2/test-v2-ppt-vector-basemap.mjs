@@ -288,6 +288,24 @@ const sheetPlanOf = (models, images = {}) => ({
   assert.ok(!markup.includes("data-map-base"), "화면도 벡터 바탕 없음");
 }
 
+// ── Task 8(사용자 결정 d10): D10은 위성 고정을 풀어 사용자가 고른 바탕(일반)에서 수관 래스터가 보인다. D01은 그대로 위성 고정 ──
+{
+  const resultFor = (tileCode) => {
+    const result = structuredClone(GODEOK_RESULTS.find((r) => r.tileCode === "D04"));
+    result.tileId = `t-${tileCode}`;
+    result.tileCode = tileCode;
+    result.presentation = { ...result.presentation, basemap: "Satellite" };
+    return result;
+  };
+  const d01 = toTileView(resultFor("D01")).map;
+  const d10 = toTileView(resultFor("D10")).map;
+  assert.equal(d01.basemap, "Satellite", "D01은 결과가 지정한 위성을 유지");
+  assert.equal(d10.basemap, undefined, "D10은 바탕을 고정하지 않는다(저장된 분석도 열 때 풀린다)");
+  assert.equal(frameBasemap({ basemap: "base" }, d10), "Base", "프레임이 고른 일반 바탕이 그려진다");
+  assert.equal(frameBasemap({ basemap: "air" }, d10), "Satellite", "사용자가 항공을 고르면 항공");
+  assert.equal(exportBasemap(d10, "Base"), "Base", "보드가 고른 일반 바탕이 내보내기에 간다");
+}
+
 // ── fix1-2: 한 판정(mapDrawPlan)으로 그림 종류·도형을 정한다 — 그리기 방식 × 타일/칸 × 벡터/VWorld ──
 {
   const plain = modelOf("A04", { base });
