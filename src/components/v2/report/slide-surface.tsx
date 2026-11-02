@@ -12,7 +12,9 @@ import { SLIDE_LEGEND, calloutLegendEntries, layoutRects, slideCalloutAvoidance,
 import { coverLayout, fitBlock, fitFooterText, fontSizeForStyle, footerBasemaps, shrinkPt, sourceLayout, titlePlateRect, type Slide } from "@/lib/v2/report/pptx-kit";
 import { SLIDE_OVERVIEW_FILL, calloutHoverText, calloutKeyFromTag, calloutKeyTag, calloutPageTitleTail, slideCalloutFrame } from "@/lib/v2/ui/callout-layout";
 import { a05ReportModule } from "@/lib/v2/tile/a05/report";
-import { layerStyle, legendItemsOf, legendLabelOf, modelWithHiddenLayers } from "@/lib/v2/ui/map-layers";
+import { layerStyle, legendItemsOf, legendLabelOf, modelWithHiddenLayers, type MapModel } from "@/lib/v2/ui/map-layers";
+import { rasterKey } from "@/lib/v2/ui/raster-image";
+import type { RasterRef } from "@/lib/v2/tile-result";
 import { reportSummaryNotes, terrainCrossingLayer, terrainElevationLabel, terrainSectionAxisStops, terrainSectionBands, terrainSectionElevationAt, terrainSectionMarkerGeometry, terrainSectionPosition, terrainSectionTotal, sortTerrainCrossings, TERRAIN_CROSSING_LABELS, TERRAIN_SECTION_LABELS, TERRAIN_SECTION_TABLE_MAX_ROWS } from "@/lib/v2/ui/terrain-section";
 import MapFigure, { type MapFigureElementPick } from "../map-figure";
 import type Mass3DComponent from "../mass-3d";
@@ -535,9 +537,40 @@ function DecorationTransformFrame({ label, box, bounds, onDragStart, onDragMove,
   </div>;
 }
 
+/** 보고서 화면이 받아 칠한 값 래스터 그림(D10 수관·D29 SVF·S02~S04). 쪽·썸네일·캡처가 한 번만 받도록 모듈에 둔다. */
+export const surfaceRasterCache = new Map<string, string>();
+
+/**
+ * 지도 모델의 값 래스터를 보드(`map-box`)·내보내기(`map-image`)와 같은 `loadRasters`로 받아 `MapFigure`의 `rasterHref`로 돌려준다.
+ * 받는 동안은 `aria-busy`를 켜 내보내기 캡처(`waitForBusy`)가 래스터가 없는 쪽을 찍지 않게 한다.
+ */
+function useSurfaceRasters(model: MapModel | null | undefined): { rasterHref: (ref: RasterRef) => string | null; busy: boolean } {
+  const [version, setVersion] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const analysisId = model?.analysisId;
+  const tileCode = model?.tileCode;
+  const names = analysisId && tileCode ? (model?.rasters ?? []).map((ref) => ref.name).join(",") : "";
+  useEffect(() => {
+    if (!model || !names) { setBusy(false); return; }
+    if ((model.rasters ?? []).every((ref) => surfaceRasterCache.has(rasterKey(model.analysisId!, model.tileCode!, ref.name)))) { setBusy(false); return; }
+    let alive = true;
+    setBusy(true);
+    void import("@/lib/v2/report/map-image")
+      .then(({ loadRasters }) => loadRasters(model, surfaceRasterCache))
+      .catch(() => undefined) // 래스터를 못 받은 쪽도 벡터·바탕만으로 그린다
+      .then(() => { if (alive) { setBusy(false); setVersion((n) => n + 1); } });
+    return () => { alive = false; };
+    // model 전체가 아니라 래스터 식별(분석·타일·이름)이 바뀔 때만 다시 받는다.
+  }, [analysisId, tileCode, names]);
+  // 받은 뒤 identity가 바뀌어야 memo된 MapFigure가 다시 그린다(version).
+  const rasterHref = useCallback((ref: RasterRef) => (analysisId && tileCode ? surfaceRasterCache.get(rasterKey(analysisId, tileCode, ref.name)) ?? null : null), [analysisId, tileCode, version]);
+  return { rasterHref, busy };
+}
+
 function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, interactive, pickable = false, selectedElementKey = null, selectedElementLabelVisible, selectedLabelKey = null, selectedPanelKey = null, onMapElementSelect, onMapLabelSelect, onLabelBoxChange, onLabelBoxReset, onDeleteElement, onHideLabel, onShowLabel, selectedDecorationKey = null, onDecorationSelect, onDecorationDelete, onMapHoverLegend, panelInteraction, mapEditEntry = false, onMapMoveActive, thumbnail = false, onPatch, onDirectPatch, hoverLegend, terrainSection, terrainLayout, calloutLegend, calloutTop, calloutLeftBottom, northAvoid: northAvoidProp, scale = true, label, format = "wide", frame, panelBasis = "page", reportFrame, preserveShortCalloutLabels = false, fontHighlight, onFontContextMenu, contextCell, fill, callout, pageGeometry, calloutFrame }: MapLayerProps) {
   const styles = useSurfaceStyles();
   const selectSurface = useContext(SurfaceSelectContext);
+  const surfaceRasters = useSurfaceRasters(model);
   const geometry = slideGeometry(format);
   const frameWidth = frame?.w ?? geometry.w;
   const frameHeight = frame?.h ?? geometry.h;
@@ -849,6 +882,7 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
         layoutUnit={layoutUnit}
         basemap={thumbnail ? "none" : "tiles"}
         layer={displayBasemap}
+        rasterHref={surfaceRasters.rasterHref}
         legend={false}
         north={showNorth ? ((savedNorthBox ?? northAvoid) ? ((savedNorthBox ?? northAvoid)!.y0 + (savedNorthBox ?? northAvoid)!.y1) / 2 : undefined) : false}
         northX={showNorth && savedNorthBox ? (savedNorthBox.x0 + savedNorthBox.x1) / 2 : undefined}
@@ -894,6 +928,7 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
         dragging={dragging}
       />
       {callout && <CalloutSlideOverlay slide={callout} part="anchored" dragging={dragging} overviewFrame={calloutFrame} />}
+      {surfaceRasters.busy && <span aria-busy="true" data-raster-busy="true" style={{ display: "none" }} />}
     </div>
   );
   const calloutFixed = callout && <CalloutSlideOverlay slide={callout} part="fixed" overviewFrame={calloutFrame} />;
@@ -1516,8 +1551,8 @@ function VisualPlaceholder({ title, message, unit }: { title: string; message: s
 }
 
 /**
- * 그림 타일(바람장미·3D 매스) 장의 전면 그림. PPT(map-image.ts)와 같은 그림을 같은 틀(쪽 전체)에 놓는다.
- * 장미는 PPT와 같은 960 px 기준 장면을 쪽 폭에 맞춰 키우고, 매스는 같은 입력으로 쪽 크기에 맞춰 그린다.
+ * 그림 타일(바람장미·3D 매스) 장의 그림. PPT(map-image.ts)와 같은 그림을 같은 틀(새 장 배치는 기하 map 틀, 옛 경로는 쪽 전체)에 놓는다.
+ * 장미는 PPT와 같은 960 px 기준 장면을 틀 폭에 맞춰 키우고, 매스는 같은 입력으로 틀 크기에 맞춰 그린다.
  * 썸네일은 호출부가 이 층 대신 자리표시를 쓴다(WebGL 비용).
  */
 const FIGURE_SCENE_W = 960;
@@ -1531,16 +1566,16 @@ function LazyMass3D(props: React.ComponentProps<typeof Mass3DComponent>) {
   }, []);
   return Mass3D ? <Mass3D {...props} /> : <div aria-busy="true" role="status" style={{ width: props.width, height: props.height }} />;
 }
-function FigureLayer({ slide, width, height, aspect }: { slide: Extract<PlannedSlide, { kind: "tile" }>; width: number; height: number; aspect: number }) {
+function FigureLayer({ slide, width, height, aspect, frame = null, unit }: { slide: Extract<PlannedSlide, { kind: "tile" }>; width: number; height: number; aspect: number; /** 새 장 배치의 기하 map 틀(inch). 없으면 옛 경로의 쪽 전체. */ frame?: Rect | null; unit: number }) {
   const { mass, rose } = slide;
   const sceneH = Math.round(FIGURE_SCENE_W * aspect);
   return (
-    <div data-surface-figure={mass ? "mass" : "rose"} style={{ position: "absolute", inset: 0, overflow: "hidden", background: "#F2F2EF" }}>
+    <div data-surface-figure={mass ? "mass" : "rose"} data-part={frame ? "map" : undefined} style={frame ? { position: "absolute", left: frame.x * unit, top: frame.y * unit, width: frame.w * unit, height: frame.h * unit, overflow: "hidden", background: "#F2F2EF" } : { position: "absolute", inset: 0, overflow: "hidden", background: "#F2F2EF" }}>
       {mass ? (
         <LazyMass3D scene={mass.scene} camera={mass.camera} width={width} height={height} fixed exploded={mass.exploded} palette={mass.palette} quality="detail" label={S01_MASS_LABEL} mode="image" />
       ) : rose ? (
         <div style={{ width: FIGURE_SCENE_W, height: sceneH, transformOrigin: "0 0", transform: `scale(${width / FIGURE_SCENE_W})` }}>
-          <WindRoseFigure model={rose} width={FIGURE_SCENE_W} height={sceneH} fixed season={slide.roseSeason ?? "annual"} chrome="slide" />
+          <WindRoseFigure model={rose} width={FIGURE_SCENE_W} height={sceneH} fixed season={slide.roseSeason ?? "annual"} chrome={frame ? "frame" : "slide"} />
         </div>
       ) : null}
     </div>
@@ -2387,9 +2422,9 @@ function TileSurface({ slide, frame: pageFrame = null, unit, basemap, panels, in
   const terrainLayout = terrainShown ? terrainSectionLayout(panels, slideLayout(format), format) : null;
   const geometry = slideGeometry(format);
   const mapLayout = slide.page?.layout === "numbers-first" || slide.page?.layout === "side-by-side" ? layoutRects(slide.page.layout, format).map : null;
-  // 새 장 배치에서 지도를 그리는 장은 지도 틀이 기하의 map이다(②에서 카드를 지우면 전체 폭). 그림 장은 아직 쪽 전체를 쓴다(Task 8).
+  // 새 장 배치에서 지도·그림을 그리는 장은 그 틀이 기하의 map이다(②에서 카드를 지우면 전체 폭). 그림 장(바람장미·매스)도 같은 틀을 채운다.
   const geo = pageFrame?.geometry ?? null;
-  const frameMap = geo && model ? geo.map : null;
+  const frameMap = geo && (model || slide.mass || slide.rose) ? geo.map : null;
   const mapFrame = frameMap ?? (mapLayout ? { x: mapLayout.x * geometry.w, y: mapLayout.y * geometry.h, w: mapLayout.w * geometry.w, h: mapLayout.h * geometry.h } : null);
   const width = Math.max(1, Math.round((mapFrame?.w ?? geometry.w) * unit));
   const height = Math.max(1, Math.round((mapFrame?.h ?? geometry.h) * unit));
@@ -2437,7 +2472,7 @@ function TileSurface({ slide, frame: pageFrame = null, unit, basemap, panels, in
   }, [model, onDirectPatch, slide.style.legendFocus]);
   return (
     <>
-       {displayModel ? <div className={styles.mapLayerHost} data-surface-map={mapFrame ? "true" : undefined} data-part={frameMap ? "map" : undefined} style={frameMap ? { position: "absolute", left: 0, top: 0, width: frameMap.w * unit, height: frameMap.h * unit } : mapFrame ? { position: "absolute", left: String(Number((mapLayout!.x * 100).toFixed(2))) + "%", top: String(Number((mapLayout!.y * 100).toFixed(2))) + "%", width: String(Number((mapLayout!.w * 100).toFixed(2))) + "%", height: String(Number((mapLayout!.h * 100).toFixed(2))) + "%" } : undefined}><MapLayer model={displayModel} style={mapStyle} unit={unit} basemap={basemap} panels={calloutPanels} pageGeometry={frameMap ? geo! : undefined} calloutFrame={pageFrame?.calloutOverview ?? undefined} siteX={frameMap ? 0.5 : calloutDetailFrame?.siteX ?? slideSiteX(mapStyle, panels.summary !== null, format)} fill={callout ? mapFill : undefined} callout={callout} pinnedKeys={mapStyle.pinnedKeys} interactive={interactive} pickable={pickable} selectedElementKey={selection?.kind === "mapElement" ? selection.key : null} selectedElementLabelVisible={selection?.kind === "mapElement" ? selection.labelVisible : undefined} selectedLabelKey={selection?.kind === "mapLabel" ? selection.key : null} selectedPanelKey={selection?.kind === "panel" ? selection.key : null} selectedDecorationKey={selection?.kind === "decoration" ? selection.key : null} onMapElementSelect={onMapElementSelect} onMapLabelSelect={onMapLabelSelect} onDecorationSelect={onDecorationSelect} onDecorationDelete={onDecorationDelete} onLabelBoxChange={onLabelBoxChange} onLabelBoxReset={onLabelBoxReset} onDeleteElement={onDeleteElement} onHideLabel={onHideLabel} onShowLabel={onShowLabel} onPanelDelete={onPanelDelete} mapEditEntry={mapEditEntry} onMapMoveActive={onMapMoveActive} thumbnail={thumbnail} onPatch={onPatch} onDirectPatch={onDirectPatch} hoverLegend={hoverLegend} onMapHoverLegend={setHoverLegend} terrainSection={slide.view.code === "D17" ? slide.terrainSection ?? "A" : undefined} terrainLayout={terrainLayout} calloutLegend={resolvedCalloutLegend} calloutTop={calloutAlignment ? calloutAlignment.calloutTop * unit : undefined} calloutLeftBottom={calloutAlignment?.calloutLeftBottom ? calloutAlignment.calloutLeftBottom * unit : undefined} northAvoid={northAvoid} scale={!(slide.callout && slide.callout.page > 0)} frame={mapFrame ?? undefined} format={format} label={slide.view.title + " 지도"} reportFrame={reportFrame} preserveShortCalloutLabels={staticSurface && !thumbnail} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} /></div> : (slide.mass || slide.rose) && !thumbnail ? <FigureLayer slide={slide} width={width} height={height} aspect={geometry.h / geometry.w} /> : slide.mass ? <VisualPlaceholder title={slide.view.title} message="3D 매스 미리보기는 내보내기와 같은 페이지 위치로 표시됩니다." unit={unit} /> : slide.rose ?<VisualPlaceholder title={slide.view.title} message="바람장미 도판 미리보기" unit={unit} /> : chart ? <ChartPlaceholder view={slide.view} unit={unit} /> : <VisualPlaceholder title={slide.view.title} message={slide.body.kind === "state" ? slide.body.message : "표시할 지도 결과가 없습니다."} unit={unit} />}
+       {displayModel ? <div className={styles.mapLayerHost} data-surface-map={mapFrame ? "true" : undefined} data-part={frameMap ? "map" : undefined} style={frameMap ? { position: "absolute", left: 0, top: 0, width: frameMap.w * unit, height: frameMap.h * unit } : mapFrame ? { position: "absolute", left: String(Number((mapLayout!.x * 100).toFixed(2))) + "%", top: String(Number((mapLayout!.y * 100).toFixed(2))) + "%", width: String(Number((mapLayout!.w * 100).toFixed(2))) + "%", height: String(Number((mapLayout!.h * 100).toFixed(2))) + "%" } : undefined}><MapLayer model={displayModel} style={mapStyle} unit={unit} basemap={basemap} panels={calloutPanels} pageGeometry={frameMap ? geo! : undefined} calloutFrame={pageFrame?.calloutOverview ?? undefined} siteX={frameMap ? 0.5 : calloutDetailFrame?.siteX ?? slideSiteX(mapStyle, panels.summary !== null, format)} fill={callout ? mapFill : undefined} callout={callout} pinnedKeys={mapStyle.pinnedKeys} interactive={interactive} pickable={pickable} selectedElementKey={selection?.kind === "mapElement" ? selection.key : null} selectedElementLabelVisible={selection?.kind === "mapElement" ? selection.labelVisible : undefined} selectedLabelKey={selection?.kind === "mapLabel" ? selection.key : null} selectedPanelKey={selection?.kind === "panel" ? selection.key : null} selectedDecorationKey={selection?.kind === "decoration" ? selection.key : null} onMapElementSelect={onMapElementSelect} onMapLabelSelect={onMapLabelSelect} onDecorationSelect={onDecorationSelect} onDecorationDelete={onDecorationDelete} onLabelBoxChange={onLabelBoxChange} onLabelBoxReset={onLabelBoxReset} onDeleteElement={onDeleteElement} onHideLabel={onHideLabel} onShowLabel={onShowLabel} onPanelDelete={onPanelDelete} mapEditEntry={mapEditEntry} onMapMoveActive={onMapMoveActive} thumbnail={thumbnail} onPatch={onPatch} onDirectPatch={onDirectPatch} hoverLegend={hoverLegend} onMapHoverLegend={setHoverLegend} terrainSection={slide.view.code === "D17" ? slide.terrainSection ?? "A" : undefined} terrainLayout={terrainLayout} calloutLegend={resolvedCalloutLegend} calloutTop={calloutAlignment ? calloutAlignment.calloutTop * unit : undefined} calloutLeftBottom={calloutAlignment?.calloutLeftBottom ? calloutAlignment.calloutLeftBottom * unit : undefined} northAvoid={northAvoid} scale={!(slide.callout && slide.callout.page > 0)} frame={mapFrame ?? undefined} format={format} label={slide.view.title + " 지도"} reportFrame={reportFrame} preserveShortCalloutLabels={staticSurface && !thumbnail} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} /></div> : (slide.mass || slide.rose) && !thumbnail ? <FigureLayer slide={slide} width={width} height={height} aspect={frameMap ? frameMap.h / frameMap.w : geometry.h / geometry.w} frame={frameMap} unit={unit} /> : slide.mass ? <VisualPlaceholder title={slide.view.title} message="3D 매스 미리보기는 내보내기와 같은 페이지 위치로 표시됩니다." unit={unit} /> : slide.rose ?<VisualPlaceholder title={slide.view.title} message="바람장미 도판 미리보기" unit={unit} /> : chart ? <ChartPlaceholder view={slide.view} unit={unit} /> : <VisualPlaceholder title={slide.view.title} message={slide.body.kind === "state" ? slide.body.message : "표시할 지도 결과가 없습니다."} unit={unit} />}
        {terrainShown && <TerrainSectionPreview slide={slide} unit={unit} layout={terrainLayout} />}
       {slide.body.kind === "state" && <div className={styles.slidePanel} style={{ left: unit * 4, top: unit * 2.7, width: unit * 5.1, height: unit * 1.15 }}><div className={styles.slideText + " " + styles.slideTextStrong} style={fontStyle(16, unit)}>{slide.body.message}</div></div>}
        {geo && geo.column && frameMap && <div className={styles.kfColumnBand} data-part="column-band" style={{ position: "absolute", left: frameMap.w * unit, top: 0, width: (slideSize(format).w - frameMap.w) * unit, height: frameMap.h * unit }} />}

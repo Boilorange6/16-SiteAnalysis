@@ -38,8 +38,9 @@ export function rasterCell(view: TileView, name: string, note: string, key: stri
 
 export function roseCell(view: TileView, season: RoseSeason, label: string, key: string): TileCutCell {
   const model = season === "annual" ? view.rose : view.roses?.[season];
+  // 숫자 카드는 연간 값이다(spec §4-2 「카드는 계절 보기를 따른다」): 계절 칸은 연간 카드를 싣지 않는다(계절 값이 없다).
   const next = model
-    ? { ...view, rose: model, notes: [label, ...view.notes.filter((note) => note !== label)] }
+    ? { ...view, rose: model, ...(season === "annual" ? {} : { keyFigure: null }), notes: [label, ...view.notes.filter((note) => note !== label)] }
     : view;
   return { view: next, mapKey: `${view.tileId}:rose-${key}`, rose: model ?? undefined, roseSeason: season };
 }

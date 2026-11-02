@@ -26,7 +26,7 @@ import type { A05Filter } from "../engine/a05-filter";
 import { sheetCapacity, sheetView } from "../ui/sheet";
 import { pageItems } from "../ui/callout-layout";
 import { slideCharts } from "./analysis-charts";
-import { resolveReportLayout } from "./report-layout";
+import { isFigureSlide, resolveReportLayout } from "./report-layout";
 
 export type ReportDocPlanContext = {
   summary: SummaryView;
@@ -136,7 +136,8 @@ function pageLayoutForSlide(slide: ReportSlide): ReportPage["layout"] {
         ? !!slide.map
         : false;
   // 그림 타일(바람장미·3D 매스)은 「숫자 먼저」 없이 「그림 + 숫자」(§9-8). 그 밖의 지도 없는 장(뒷면 표 등)은 숫자 먼저.
-  if (!hasMap) return slide.kind === "tile" && (slide.rose || slide.mass) ? "map-key" : "numbers-first";
+  // 그림 칸만 있는 컷 시트(D22 계절 4컷 등)도 같다: 선택지 `그림 + 숫자`(map-key)와 저장 값이 일치해야 복원 뒤에도 같은 값이다.
+  if (!hasMap) return isFigureSlide(slide) ? "map-key" : "numbers-first";
   // 새로 만드는 쪽만: 이 쪽이 실제로 그리는 보기의 지도에 그래프 자료가 있으면 「지도 + 그래프」. 센 지도는 `slideCharts`가 정한다
   // (`slide.map`, 설명선 개요는 점 없는 바탕 지도라 `view.map`. 레이어 고르기는 view에 이미 반영됨).
   // 요약 칸이 없는 설명선 상세 장은 「지도 + 숫자」와 다르게 그려지지 않으므로 고르지 않는다.
@@ -146,7 +147,7 @@ function pageLayoutForSlide(slide: ReportSlide): ReportPage["layout"] {
 /** 그리는 단계: 저장된 쪽 값을 이 장의 지도·그림·그래프 유무로 실제 레이아웃에 맞춘다(resolveReportLayout). 저장 문서는 바꾸지 않는다. */
 function pageWithResolvedLayout(page: Extract<ReportPage, { kind: "tile" }>, slide: ReportSlide): ReportPage {
   const hasMap = slide.kind === "sheet" ? slide.cells.some((cell) => !!cell?.view.map) : (slide.kind === "tile" || slide.kind === "cover") && !!slide.map;
-  const figure = slide.kind === "tile" && !!(slide.rose || slide.mass);
+  const figure = isFigureSlide(slide);
   const hasCharts = slide.kind === "tile" && slideCharts(slide, page.frame.hiddenLayers) !== null;
   const layout = resolveReportLayout(page.layout, { hasMap, figure, hasCharts });
   // 저장값이 map-key가 아니고 지도·그림 장으로 그려지면 옛 요약 판·출처 줄 자리는 그리는 복사본에서만 뺀다(저장 문서는 그대로).

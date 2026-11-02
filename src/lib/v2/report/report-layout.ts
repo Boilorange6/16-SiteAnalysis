@@ -41,6 +41,19 @@ export function isFigureTileId(tileId: string): boolean {
   return FIGURE_TILE_CODES.has(/(?:^|-)([ADS]\d{2})$/.exec(tileId)?.[1] ?? "");
 }
 
+type FigureSlideLike = { kind: string; rose?: unknown; mass?: unknown; cells?: ReadonlyArray<{ rose?: unknown; mass?: unknown } | null | undefined> };
+
+/**
+ * 그림(바람장미·3D 매스)이 전면인 장인가: 그림 타일 한 장이거나, 칸이 모두 그림인 컷 시트(D22 계절 4컷 등).
+ * 레이아웃 창의 선택지(`그림 + 숫자`)와 저장 값(`map-key`)이 이 판정 하나를 따라 저장·복원이 같은 값이 된다.
+ */
+export function isFigureSlide(slide: FigureSlideLike): boolean {
+  if (slide.kind === "tile") return !!(slide.rose || slide.mass);
+  if (slide.kind !== "sheet") return false;
+  const cells = (slide.cells ?? []).filter((cell) => !!cell);
+  return cells.length > 0 && cells.every((cell) => !!(cell!.rose || cell!.mass));
+}
+
 function pageLabel(input: ReportLayoutInput): string {
   if (input.pageKind === "compare") return "조판";
   if (input.pageKind === "cover") return "표지";

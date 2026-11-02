@@ -521,8 +521,8 @@ function tileFrame(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, frame: R
   // 그림 만들기(buildMapImages)와 같은 판정: 무엇이 바탕 도형이고, 그림은 어떤 종류이며, 주제 도형을 그리는지.
   const draw = p.map && mapStatus && mapLayer ? mapDrawPlan(mapStatus, mapLayer, mapDrawing) : null;
   const mapImage = images[mapKeyOf(p) ?? v.tileId];
-  // 지도 장의 그림은 지도 틀 안에만 놓인다. 그림 장(바람장미·매스)은 아직 쪽 전체다(Task 8).
-  const imageRect = p.map ? geo.map : { x: 0, y: 0, w: size.w, h: size.h };
+  // 그림은 지도 틀 안에만 놓인다. 그림 장(바람장미·매스)도 같은 틀을 채운다(그림 만들기가 틀 모양 장면으로 만든다).
+  const imageRect = geo.map;
   const fallbackNotes: string[] = [];
   if (!draw || draw.image === "full" || draw.image === "background") background(s, mapImage, undefined, format, imageRect);
   if (draw?.thematicShapes && p.map) {
@@ -685,7 +685,8 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
   infoPanel(s, items, summaryRect, summaryScale);
   pageTextBoxes(s, p, format);
   pageNotes(s, p, fallbackNotes);
-  strip(s, p, !chart, format, look.basemap);
+  // 바탕지도를 그린 장만 바탕지도 출처(credit)가 붙는다: 그림 장(바람장미·매스)과 도판 구성비 장은 지도가 없다.
+  strip(s, p, footerBasemaps(p, look.basemap).length > 0, format, look.basemap);
 }
 
 function sheet(pptx: PptxGenJS, p: PlannedSlide & { kind: "sheet" }, images: MapImages, look: PptxMapLook) {

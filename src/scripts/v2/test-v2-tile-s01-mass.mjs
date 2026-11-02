@@ -288,4 +288,30 @@ const onePixelPng = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAA
 const imageZip = await JSZip.loadAsync(await renderReportPptx(plan, { "t-S01:mass": onePixelPng }));
 assert.ok(Object.keys(imageZip.files).some((name) => name.startsWith("ppt/media/")), "S01 report slide embeds its PNG image");
 
+// ── Task 8: 그림 장은 기하 map 틀을 채우고, 바탕지도를 그리지 않은 장의 각주에 바탕지도 출처가 없다(S1·S3)
+{
+  const { pageFrameFor, figureSceneSize } = await import("../../lib/v2/report/report-page-frame.ts");
+  const { MASS_CHROME } = await import("../../lib/v2/ui/mass-3d-runtime.ts");
+  const docPlan = planReportDoc({ ...EMPTY_REPORT_DOC, pages: docPages }, docViews, docContext);
+  const framed = docPlan.find((slide) => slide.kind === "tile" && slide.mass);
+  const frame = framed && pageFrameFor(framed);
+  assert.ok(frame, "S01 장은 새 장 배치로 그린다");
+  assert.doesNotMatch(frame.footer.text, /VWorld|OpenStreetMap/, "지도가 없는 장의 각주에 바탕지도 출처가 없다");
+  const geo = frame.geometry;
+  const slideXml = await (await JSZip.loadAsync(await renderReportPptx(docPlan, { [mapKeyOf(framed)]: onePixelPng }))).file(`ppt/slides/slide${docPlan.indexOf(framed) + 1}.xml`).async("string");
+  assert.doesNotMatch(slideXml, /VWorld|OpenStreetMap/, "PPT 장에도 바탕지도 출처가 없다");
+  const pic = /<p:pic>[\s\S]*?<a:off x="(\d+)" y="(\d+)"\/>\s*<a:ext cx="(\d+)" cy="(\d+)"\/>/.exec(slideXml);
+  assert.ok(pic, "매스 그림이 장에 놓인다");
+  const [px, py, pw, ph] = pic.slice(1).map((value) => Number(value) / 914400);
+  for (const [name, got, want] of [["x", px, geo.map.x], ["y", py, geo.map.y], ["w", pw, geo.map.w], ["h", ph, geo.map.h]]) assert.ok(Math.abs(got - want) < 0.001, `매스 그림 ${name}은 기하 map 틀: ${got} ≈ ${want}`);
+  // 그림 크기는 틀 모양이다. 그 안의 범례 칩은 각주 띠 위에서 끝나고, N 표식은 틀 오른쪽 안이다.
+  const scene = figureSceneSize(geo);
+  assert.equal(scene.w, 960);
+  assert.ok(Math.abs(scene.w / scene.h - geo.map.w / geo.map.h) < 0.005, "그림 장면은 지도 틀과 같은 비율");
+  const perPx = geo.map.h / scene.h;
+  const chipBottom = geo.map.y + (scene.h - MASS_CHROME.chipBottom + MASS_CHROME.chipH) * perPx;
+  assert.ok(chipBottom <= geo.footer.y + 1e-6, `범례 칩 아래 ${chipBottom.toFixed(3)} in가 각주 띠 ${geo.footer.y} in 위`);
+  assert.ok((scene.w - MASS_CHROME.northInset + MASS_CHROME.northR) * perPx <= geo.map.w, "N 표식은 틀 안");
+}
+
 console.log("✓ v2 S01 mass projection, figure, and report integration");

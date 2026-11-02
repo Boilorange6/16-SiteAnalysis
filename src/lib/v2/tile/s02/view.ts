@@ -11,7 +11,25 @@ const hoursText = (result: TileResult, id: string): string | null => {
   return value === null ? null : `${value.toFixed(1)}시간`;
 };
 
-/** 동지 기본 보기의 카드. 계절 컷 장은 컷 장 작업에서 따로 정의한다. */
+const UNSHOWN_ROW = /^(?:미확인|비공개|해당 없음)$/;
+
+/**
+ * 컷 장(동지 말고 다른 계절·분석일을 고른 쪽)의 카드: 그 컷의 평균 일조 + 보조 숫자(동지와 비교, 그 컷의 연속 2시간 확보).
+ * 지표 행(`TileView.rows`)만 읽는다. 그 컷의 평균 값이 없으면 동지 카드를 대신 내지 않고 카드가 없다(spec §4-2 「카드는 계절 보기를 따른다」).
+ */
+function s02CutKeyFigure(rows: TileView["rows"], date: S02DateKey): KeyFigure | null {
+  const shown = (label: string) => rows.find((row) => row.label === label && !UNSHOWN_ROW.test(row.value))?.value ?? null;
+  const name = S02_DATE_LABEL[date];
+  const mean = shown(`${name} 평균 일조시간`);
+  if (mean === null) return null;
+  return {
+    question: `${name} 평균 일조`,
+    answer: { value: mean, kind: "number" },
+    stats: statList([[date === "winter" ? null : shown("동지 평균 일조시간"), "동지 평균 일조"], [shown(`${name} 진태양시 09~15 연속 2시간 확보`), `${name} 연속 2시간 확보`]]),
+  };
+}
+
+/** 동지 기본 보기의 카드. 계절 컷 장은 `applyS02View`가 그 컷의 값으로 다시 만든다(`s02CutKeyFigure`). */
 function s02KeyFigure(result: TileResult): KeyFigure | null {
   const winter = hoursText(result, "mean_sun_h_winter");
   if (winter === null) return null;
@@ -77,16 +95,13 @@ export function applyS02View(base: TileView, result?: TileResult): TileView {
   const label = date ? S02_DATE_LABEL[date] : null;
   const metric = label ? base.rows.find((row) => row.label === `${label} 평균 일조시간`) : undefined;
   const nextNotes = !result && note ? [note, ...base.notes.filter((existing) => existing !== note)] : base.notes;
+  // 컷 장(결과 없이 이미 만들어진 view에 컷을 입힐 때)의 카드: 동지는 `toTileView`가 만든 기본 카드(base) 그대로, 다른 컷은 그 컷의 값으로
+  // 만들고 값이 없으면 카드가 없다. `toTileView`의 첫 변환(`result` 있음)은 `keyFigureFor`의 카드가 이 값을 덮으므로 건드리지 않는다.
+  const cutCard = !result && date && date !== "winter" ? s02CutKeyFigure(base.rows, date) : undefined;
   return {
     ...base,
-    ...(note && metric
-      ? {
-          headline: { value: metric.value, label: metric.label, aux: metric.aux, tag: metric.tag },
-          headlineMetricId: `mean_sun_h_${date}`,
-          // 계절 컷이 헤드라인을 바꾸므로 base의 카드는 낡았다. S02 카드는 컷 장 작업에서 정의한다.
-          keyFigure: null,
-        }
-      : {}),
+    ...(note && metric ? { headline: { value: metric.value, label: metric.label, aux: metric.aux, tag: metric.tag }, headlineMetricId: `mean_sun_h_${date}` } : {}),
+    ...(cutCard !== undefined ? { keyFigure: cutCard } : {}),
     notes: nextNotes,
     map: nextMap,
   };

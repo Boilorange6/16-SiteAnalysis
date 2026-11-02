@@ -16,7 +16,8 @@ export type WindRoseFigureProps = {
   rightInset?: number | ((width: number) => number);
 };
 
-export type WindRoseChrome = "standalone" | "tile" | "slide";
+/** `slide`: 오른쪽에 정보 판이 있는 옛 쪽 전체 그림. `frame`: 새 장 배치의 지도 틀을 채우는 그림(카드는 왼쪽에 떠 있으므로 장미를 틀 가운데에 둔다). */
+export type WindRoseChrome = "standalone" | "tile" | "slide" | "frame";
 export type WindRoseBox = { x0: number; y0: number; x1: number; y1: number };
 export type WindRoseTick = { value: number; ratio: number; label: string; box: WindRoseBox };
 export type WindRoseLayout = {
@@ -153,14 +154,15 @@ export function windRoseLayout(fullWidth: number, height: number, chrome: WindRo
   // 펼침 창은 오른쪽 정보 판이 덮는 폭(rightInset)을 빼고 그 왼쪽 빈 영역 안에서 배치한다.
   const width = Math.max(1, fullWidth - Math.max(0, rightInset));
   const frame = chrome !== "standalone";
-  let cx = width * 0.39;
+  let cx = width * (chrome === "frame" ? 0.5 : 0.39);
   const cy = frame ? height * 0.53 : height * 0.47;
   let rMax = frame ? Math.min(width * 0.33, height * 0.389) : Math.min(width * 0.33, height * 0.4);
-  const legendX0 = frame && chrome === "slide" ? 16 : frame ? width * 0.66 : width * 0.7;
-  const legendFit = fitLegend(height, chrome, frame && chrome === "slide" ? height - 185 : frame ? height * 0.22 : height * 0.23);
+  const slideLike = chrome === "slide" || chrome === "frame";
+  const legendX0 = frame && slideLike ? 16 : frame ? width * 0.66 : width * 0.7;
+  const legendFit = fitLegend(height, chrome, frame && slideLike ? height - 185 : frame ? height * 0.22 : height * 0.23);
   const legendY = legendFit.y;
   const legendScale = legendFit.scale;
-  const legendWidth = frame && chrome === "slide" ? 110 : width * 0.28;
+  const legendWidth = frame && slideLike ? 110 : width * 0.28;
   const legendVisualWidth = (chrome === "tile" ? Math.max(legendWidth + 14, LEGEND_CONTENT_WIDTH) : legendWidth + 14) * legendScale;
   const legendBox = (x: number): WindRoseBox => box(x - 10 * legendScale, legendY - 12 * legendScale, x - 10 * legendScale + legendVisualWidth, legendY + LEGEND_HEIGHT * legendScale);
   let legendX = legendX0;

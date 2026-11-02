@@ -30,7 +30,8 @@ function viewForCut(view: TileView, value: unknown): TileView {
   if (!isD22Cut(value)) return view;
   if (value.mode === "annual") return { ...view, rose: view.rose ?? null };
   const label = note(value)!;
-  return { ...view, notes: [label, ...view.notes.filter((existing) => existing !== label)] };
+  // 4계절 장에는 연간 숫자 카드를 쓰지 않는다(계절 값이 없다, spec §4-2).
+  return { ...view, keyFigure: null, notes: [label, ...view.notes.filter((existing) => existing !== label)] };
 }
 
 function plan(view: TileView, value: unknown): TileCutPlan {

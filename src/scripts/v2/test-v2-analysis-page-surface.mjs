@@ -761,4 +761,17 @@ for (const format of ["wide", "a3", "a4"]) {
   }
 }
 
+// ── Task 8: 보고서 화면도 값 래스터(D10 수관·D29 SVF·S02~S04)를 그린다(§1 화면 = 보고서). 받은 래스터는 같은 캐시에서 바로 읽는다.
+{
+  const { rasterKey } = await import("../../lib/v2/ui/raster-image.ts");
+  const { surfaceRasterCache } = await import("../../components/v2/report/slide-surface.tsx");
+  const ref = { name: "canopy", kind: "mask", crs: "EPSG:5179", x0: 960000, y0: 1950000, cellM: 1, cols: 100, rows: 100, dtype: "u8", bands: 1, scale: 1, offset: 0, nodata: 255, palette: "canopy", label: "수관 · 1m 격자", bytes: 100, sha256: "a".repeat(64) };
+  const one = planOf({ ...tilePage, layout: "map-key" });
+  const withRaster = { ...one, map: { ...one.map, analysisId: "raster-a", tileCode: "D10", rasters: [ref] } };
+  assert.doesNotMatch(render(withRaster), /data-raster=/, "래스터를 받기 전에는 그림이 없다");
+  surfaceRasterCache.set(rasterKey("raster-a", "D10", "canopy"), "data:image/png;base64,UkFTVEVS");
+  // 썸네일(`mode: "thumb"`)은 IntersectionObserver가 있어야 같은 SlidePreview를 마운트하므로 SSR로는 못 본다. 같은 MapLayer 경로라 화면 캡처로 확인한다.
+  for (const mode of ["edit", "export"]) assert.match(render(withRaster, mode), /<image[^>]*data-raster="canopy"[^>]*href="data:image\/png;base64,UkFTVEVS"/, `${mode}: 보고서 화면이 래스터를 그린다(편집·내보내기 캡처)`);
+}
+
 console.log("✓ v2 analysis page surface");

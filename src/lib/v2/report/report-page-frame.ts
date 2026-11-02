@@ -259,6 +259,14 @@ export function pageFrameFor(slide: PlannedSlide, basemap?: BasemapChoice): Repo
   return reportPageFrame(slide, slide.page?.layout === "map-charts" ? slideCharts(slide, hidden) : null, basemap);
 }
 
+/**
+ * 그림 장(바람장미 D22·3D 매스 S01)의 그림 장면 크기(px). 그림은 기하 `map` 틀을 채우므로 폭 960 px·틀 모양이다.
+ * 화면 `FigureLayer`와 그림 만들기(`map-image.ts`)가 같은 값을 쓴다(1 in = `scenePxPerInch` px).
+ */
+export function figureSceneSize(geometry: ReportPageGeometry): { w: number; h: number } {
+  return { w: 960, h: Math.round((960 * geometry.map.h) / geometry.map.w) };
+}
+
 export type PixelBox = { x0: number; y0: number; x1: number; y1: number };
 
 /**

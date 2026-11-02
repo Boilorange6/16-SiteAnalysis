@@ -47,6 +47,22 @@ try {
   assert.deepEqual(viewHourLegend.at(-1), { label: "동지 일조시간(시간) · 15시간 이상", min: 15, max: null });
   assert.ok(tile.metrics.some((metric) => metric.id === "mean_sun_h_winter"));
   assert.ok(tile.metrics.some((metric) => metric.id === "share_cont2h_0915_pct_winter"));
+  // 컷 장의 카드는 그 컷(계절)을 따른다(spec §4-2): 동지는 기본 카드, 다른 계절은 그 계절의 값, 그 계절 값이 없으면 카드 없음.
+  {
+    const { viewForCut } = await import("../../lib/v2/ui/cut-selection.ts");
+    const base = toTileView(tile);
+    assert.deepEqual(base.keyFigure.question, "동지 평균 일조");
+    assert.deepEqual(viewForCut(base, { tile: "S02", mode: "single", date: "winter" }).keyFigure, base.keyFigure, "동지 컷은 기본 카드 그대로");
+    const rowOf = (view, label) => view.rows.find((row) => row.label === label);
+    const spring = viewForCut(base, { tile: "S02", mode: "single", date: "spring" }).keyFigure;
+    assert.ok(spring, "춘분 컷도 카드가 있다");
+    assert.equal(spring.question, "춘분 평균 일조");
+    assert.equal(spring.answer.value, rowOf(base, "춘분 평균 일조시간").value, "큰 답은 춘분 평균 일조시간");
+    assert.ok(spring.stats.some((stat) => stat.label === "춘분 연속 2시간 확보" && stat.value === rowOf(base, "춘분 진태양시 09~15 연속 2시간 확보").value), "보조는 그 계절의 연속 2시간 확보");
+    assert.ok(!JSON.stringify(spring).includes("미확인"), "미확인을 카드에 쓰지 않는다");
+    const noSummer = { ...base, rows: base.rows.filter((row) => row.label !== "하지 평균 일조시간") };
+    assert.equal(viewForCut(noSummer, { tile: "S02", mode: "single", date: "summer" }).keyFigure, null, "그 계절 값이 없으면 카드를 내지 않는다(동지 카드를 대신 내지 않는다)");
+  }
   assert.ok(!tile.limitations.some((limitation) => limitation.note.includes("09:00–15:00") && limitation.note.includes("최대 6시간")));
   assert.ok(!tile.judgment.sentence.includes("최대 6시간"));
   assert.ok(!tile.judgment.sentence.includes("법적 일조권 충족"));

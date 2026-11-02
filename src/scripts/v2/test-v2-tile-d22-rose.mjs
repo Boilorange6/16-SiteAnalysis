@@ -175,4 +175,76 @@ const slide = await zip.file("ppt/slides/slide2.xml").async("string");
 assert.match(slide, /바람장미/);
 assert.match(slide, /정온/);
 
+// ── Task 8: 그림 장은 기하 map 틀을 채우고 숫자 카드·제목·각주에 가리지 않는다. 바탕지도를 그리지 않은 장의 각주에 바탕지도 출처가 없다
+{
+  const { EMPTY_REPORT_DOC } = await import("../../lib/v2/report/report-doc.ts");
+  const { importLegacyReport, planReportDoc } = await import("../../lib/v2/report/report-doc-plan.ts");
+  const { pageFrameFor, figureSceneSize } = await import("../../lib/v2/report/report-page-frame.ts");
+  const { mapKeyOf } = await import("../../lib/v2/report/report-plan.ts");
+  const { isFigureSlide, reportLayoutDecision } = await import("../../lib/v2/report/report-layout.ts");
+  const { d22CutModule } = await import("../../lib/v2/tile/d22/cut.ts");
+  const docViews = new Map([[d22Result.tileId, view]]);
+  const docContext = { summary: toSummaryView(GODEOK_SUMMARY, [d22Result]), analysisDate: "2026-09-30", views: docViews };
+  const docPages = importLegacyReport(EMPTY_REPORT_DOC, board, docViews, docContext);
+  const docPlan = planReportDoc({ ...EMPTY_REPORT_DOC, pages: docPages }, docViews, docContext);
+  const framed = docPlan.find((slide) => slide.kind === "tile" && slide.rose);
+  const frame = framed && pageFrameFor(framed);
+  assert.ok(frame, "D22 장은 새 장 배치로 그린다");
+  assert.doesNotMatch(frame.footer.text, /VWorld|OpenStreetMap/, "지도가 없는 장의 각주에 바탕지도 출처가 없다");
+  const geo = frame.geometry;
+  const rosePng = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=";
+  const slideXml = await (await JSZip.loadAsync(await renderReportPptx(docPlan, { [mapKeyOf(framed)]: rosePng }))).file(`ppt/slides/slide${docPlan.indexOf(framed) + 1}.xml`).async("string");
+  assert.doesNotMatch(slideXml, /VWorld|OpenStreetMap/, "PPT 장에도 바탕지도 출처가 없다");
+  const pic = /<p:pic>[\s\S]*?<a:off x="(\d+)" y="(\d+)"\/>\s*<a:ext cx="(\d+)" cy="(\d+)"\/>/.exec(slideXml);
+  assert.ok(pic, "장미 그림이 장에 놓인다");
+  const [px, py, pw, ph] = pic.slice(1).map((value) => Number(value) / 914400);
+  for (const [name, got, want] of [["x", px, geo.map.x], ["y", py, geo.map.y], ["w", pw, geo.map.w], ["h", ph, geo.map.h]]) assert.ok(Math.abs(got - want) < 0.001, `장미 그림 ${name}은 기하 map 틀: ${got} ≈ ${want}`);
+
+  // 화면(SSR, 1 in = 1 px): 그림 틀도 기하 map 틀이다. 바람장미는 틀 폭에 맞춰 줄여 그려진다.
+  {
+    const { SlideSurface } = await import("../../components/v2/report/slide-surface.tsx");
+    const markup = renderToStaticMarkup(React.createElement(SlideSurface, { slide: framed, basemap: "none", mode: "edit" }));
+    const tag = /<div[^>]*data-part="map"[^>]*>/.exec(markup)?.[0];
+    assert.ok(tag, "그림 틀(data-part=map)이 있다");
+    const num = (prop) => Number(new RegExp(`${prop}:(-?[\\d.]+)(?:px)?[;"]`).exec(tag)?.[1] ?? NaN);
+    for (const [name, got, want] of [["left", num("left"), geo.map.x], ["top", num("top"), geo.map.y], ["width", num("width"), geo.map.w], ["height", num("height"), geo.map.h]]) assert.ok(Math.abs(got - want) < 0.011, `화면 그림 틀 ${name}은 기하 map: ${got} ≈ ${want}`);
+    assert.match(markup, /data-surface-figure="rose"/);
+  }
+
+  // 그림 장면은 지도 틀 모양이고, 그 안의 장미·방위 글자·눈금·범례는 숫자 카드(+주석 칩)·제목 칩과 겹치지 않으며 각주 띠 위에 있다.
+  const scene = figureSceneSize(geo);
+  const layout = windRoseLayout(scene.w, scene.h, "frame", 16.4);
+  const perPx = geo.map.w / scene.w;
+  const inch = (b) => ({ x: geo.map.x + b.x0 * perPx, y: geo.map.y + b.y0 * perPx, w: (b.x1 - b.x0) * perPx, h: (b.y1 - b.y0) * perPx });
+  const hit = (a, b) => a.x < b.x + b.w - 1e-6 && b.x < a.x + a.w - 1e-6 && a.y < b.y + b.h - 1e-6 && b.y < a.y + a.h - 1e-6;
+  const covers = [["제목 칩", geo.title], ["숫자 카드", geo.keyCard], ["주석 칩", geo.keyNotesChip]].filter(([, rect]) => rect);
+  const parts = [["장미", { x0: layout.cx - layout.rMax, y0: layout.cy - layout.rMax, x1: layout.cx + layout.rMax, y1: layout.cy + layout.rMax }], ["범례", layout.legend], ...layout.labels.map((b, i) => [`방위 ${i}`, b]), ...layout.tickBoxes.map((b, i) => [`눈금 ${i}`, b])];
+  for (const [partName, box] of parts) {
+    const rect = inch(box);
+    assert.ok(rect.y + rect.h <= geo.footer.y + 1e-6, `${partName}은 각주 띠 위`);
+    for (const [coverName, cover] of covers) assert.ok(!hit(rect, cover), `${partName}이 ${coverName}에 가리지 않는다`);
+  }
+
+  // 카드는 계절 보기를 따른다(spec §4-2): 4계절 컷은 연간 카드를 싣지 않고, 연간 컷 장은 연간 카드를 그대로 쓴다.
+  const seasons = { tile: "D22", mode: "seasons4" };
+  assert.equal(d22CutModule.view(view, seasons).keyFigure, null, "계절 4컷 보기는 연간 숫자 카드를 쓰지 않는다");
+  const sheetPlan = d22CutModule.plan(view, seasons);
+  assert.equal(sheetPlan.sheets[0].cells.length, 4);
+  assert.ok(sheetPlan.sheets[0].cells.every((cell) => cell.view.keyFigure === null), "계절 칸은 연간 카드를 싣지 않는다");
+  assert.ok(view.keyFigure, "전제: 연간 카드가 있다");
+  assert.deepEqual(d22CutModule.plan(view, { tile: "D22", mode: "annual" }).single.view.keyFigure, view.keyFigure, "연간 컷 장은 연간 카드");
+
+  // 그림 컷 시트 장(타일 쪽의 cutSheet 부분): 선택지가 「그림 + 숫자」 하나(map-key)이고 저장 값도 복원 뒤 같은 값이다.
+  // 예전에 저장된 값은 지도가 없는 시트라 numbers-first였다. 그리는 단계가 map-key로 맞춘다.
+  const tilePage = docPages.find((page) => page.kind === "tile");
+  assert.ok(tilePage, "D22 타일 쪽");
+  const sheetPage = { ...tilePage, id: "legacy-sheet", layout: "numbers-first", part: { type: "cutSheet", index: 0 }, settings: { ...tilePage.settings, cut: seasons } };
+  const sheetSlide = planReportDoc({ ...EMPTY_REPORT_DOC, pages: [sheetPage] }, docViews, docContext).find((slide) => slide.kind === "sheet");
+  assert.ok(sheetSlide && isFigureSlide(sheetSlide), "그림 칸만 있는 시트는 그림 장");
+  assert.equal(sheetSlide.page.layout, "map-key", "그린 복사본은 map-key(저장 문서의 numbers-first는 열 때 map-key가 되므로 같은 값)");
+  const decision = reportLayoutDecision({ pageKind: "tile", hasMap: false, figure: isFigureSlide(sheetSlide) });
+  assert.deepEqual(decision.choices.map((choice) => [choice.value, choice.label]), [["map-key", "그림 + 숫자"]]);
+  assert.equal(isFigureSlide({ kind: "sheet", cells: [{ rose: {} }, { view: {} }] }), false, "그림이 아닌 칸이 섞인 조판은 그림 장이 아니다");
+}
+
 console.log("✓ v2 D22 wind rose figure and report");

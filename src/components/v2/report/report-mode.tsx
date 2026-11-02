@@ -24,6 +24,7 @@ import { useFocusTrap } from "../use-focus-trap";
 import { mapLabelEntries } from "../map-figure";
 import { slideCharts } from "@/lib/v2/report/analysis-charts";
 import { usesReportPageFrame } from "@/lib/v2/report/report-page-frame";
+import { isFigureSlide } from "@/lib/v2/report/report-layout";
 import { SlideSurface, type FontTargetKey, type SurfaceContextMenuTarget, type SurfaceContextTarget, type SurfaceSelection } from "./slide-surface";
 import DrawerPages, { type PageAddKind } from "./drawer-pages";
 import DrawerTiles from "./drawer-tiles";
@@ -1365,7 +1366,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     : selectedSlide?.kind === "sheet"
       ? selectedSlide.cells.some((cell) => !!cell?.view.map)
       : false;
-  const layoutIsFigure = selectedSlide?.kind === "tile" && !!(selectedSlide.rose || selectedSlide.mass);
+  const layoutIsFigure = !!selectedSlide && isFigureSlide(selectedSlide);
   const layoutHasSummary = selectedSlide?.kind === "tile"
     ? selectedSlide.style.summary !== false && !(selectedSlide.callout && selectedSlide.callout.page > 0)
     : false;

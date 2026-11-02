@@ -726,10 +726,13 @@ function roundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, width:
   ctx.roundRect(x, y, width, height, radius);
 }
 
+/** 그림 안 범례 칩(아래)·N 표식(오른쪽 위)이 그림 가장자리에서 떨어진 자리(px). 보고서 장은 이 그림을 기하 map 틀 크기로 만들어 칩이 각주 띠 위에 오게 한다. */
+export const MASS_CHROME = { chipBottom: 34, chipH: 24, northInset: 42, northR: 18 } as const;
+
 function drawChip(ctx: CanvasRenderingContext2D, x: number, y: number, text: string, color: string, hatch = false): void {
   ctx.font = "600 12px 'Noto Sans KR', 'Malgun Gothic', sans-serif";
   const width = ctx.measureText(text).width + 30;
-  roundedRect(ctx, x, y, width, 24, 12);
+  roundedRect(ctx, x, y, width, MASS_CHROME.chipH, MASS_CHROME.chipH / 2);
   ctx.fillStyle = "rgba(255,255,255,0.88)";
   ctx.fill();
   ctx.strokeStyle = "rgba(21,23,28,0.12)";
@@ -766,15 +769,15 @@ function drawNoDataBadge(ctx: CanvasRenderingContext2D, x: number, y: number): v
 }
 
 function drawNorth(ctx: CanvasRenderingContext2D, width: number, height: number, camera: MassCamera): void {
-  const x = width - 42;
-  const y = 42;
+  const x = width - MASS_CHROME.northInset;
+  const y = MASS_CHROME.northInset;
   const angle = radians(finiteOr(camera.azimuthDeg, DEFAULT_CAMERA.azimuthDeg));
   const dx = -Math.sin(angle) * 22;
   const dy = -Math.cos(angle) * Math.sin(radians(finiteOr(camera.elevationDeg, DEFAULT_CAMERA.elevationDeg))) * 22;
   const length = Math.hypot(dx, dy) || 1;
   ctx.fillStyle = "rgba(255,255,255,0.9)";
   ctx.beginPath();
-  ctx.arc(x, y, 18, 0, Math.PI * 2);
+  ctx.arc(x, y, MASS_CHROME.northR, 0, Math.PI * 2);
   ctx.fill();
   ctx.strokeStyle = "#15171C";
   ctx.lineWidth = 2;
@@ -815,7 +818,7 @@ function drawMassChrome(canvas: HTMLCanvasElement, input: Mass3dRenderInput): vo
     ] as const;
     let x = 16;
     for (const [label, color, hatch] of items) {
-      drawChip(ctx, x, height - 34, label, color, hatch);
+      drawChip(ctx, x, height - MASS_CHROME.chipBottom, label, color, hatch);
       x += ctx.measureText(label).width + 42;
     }
   } else {
