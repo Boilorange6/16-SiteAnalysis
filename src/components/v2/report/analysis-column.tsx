@@ -145,18 +145,18 @@ export function NotesChip({ notes, rect, panel, unit, styles, growUp = false }: 
   );
 }
 
-export function AnalysisColumn({ styles, frame, charts, view, unit, showNotes, interaction }: { styles: Styles; frame: ReportPageFrame; charts: AnalysisCharts; view: TileView; unit: number; showNotes: boolean; interaction?: HTMLAttributes<HTMLDivElement> & Record<string, unknown> }) {
+export function AnalysisColumn({ styles, frame, charts, view, unit, showNotes, interaction }: { styles: Styles; frame: ReportPageFrame; /** D17 단면 장은 그래프 자료가 없다(그래프 카드 자리는 호출하는 쪽이 단면을 그린다) */ charts: AnalysisCharts | null; view: TileView; unit: number; showNotes: boolean; interaction?: HTMLAttributes<HTMLDivElement> & Record<string, unknown> }) {
   const column = frame.geometry.column;
-  const compShapes = useMemo(() => (frame.chart1 ? compositionShapes(charts.composition, frame.chart1, frame.chartScale, charts.titles.composition) : []), [charts, frame.chart1, frame.chartScale]);
-  const distShapes = useMemo(() => (frame.chart2 ? distanceShapes(charts.distance, charts.radiusM, frame.chart2, frame.chartScale, charts.titles.distance) : []), [charts, frame.chart2, frame.chartScale]);
+  const compShapes = useMemo(() => (charts && frame.chart1 ? compositionShapes(charts.composition, frame.chart1, frame.chartScale, charts.titles.composition) : []), [charts, frame.chart1, frame.chartScale]);
+  const distShapes = useMemo(() => (charts && frame.chart2 ? distanceShapes(charts.distance, charts.radiusM, frame.chart2, frame.chartScale, charts.titles.distance) : []), [charts, frame.chart2, frame.chartScale]);
   if (!column) return null;
   const { rect } = column;
   // 열 왼쪽 위(= 열 상자)를 (0, 0)으로 한 inch
   const rel = (r: Rect): Rect => ({ x: r.x - rect.x, y: r.y - rect.y, w: r.w, h: r.h });
   const at = (r: Rect, extra: React.CSSProperties = {}): React.CSSProperties => ({ position: "absolute", left: (r.x - rect.x) * unit, top: (r.y - rect.y) * unit, width: r.w * unit, height: r.h * unit, ...extra });
   const pct = (item: AnalysisCharts["composition"][number]) => (item.share > 0 && Math.round(item.share * 100) === 0 ? "1% 미만" : `${Math.round(item.share * 100)}%`);
-  const compLabel = `${charts.titles.composition} 막대 그래프. ${charts.composition.map((item) => `${item.label} ${pct(item)}`).join(", ")}`;
-  const distLabel = `${charts.titles.distance} ${charts.distance.kind === "scatter" ? "산점도" : "막대 그래프"}. ${analysisStatLine(charts)}`;
+  const compLabel = charts ? `${charts.titles.composition} 막대 그래프. ${charts.composition.map((item) => `${item.label} ${pct(item)}`).join(", ")}` : "";
+  const distLabel = charts ? `${charts.titles.distance} ${charts.distance.kind === "scatter" ? "산점도" : "막대 그래프"}. ${analysisStatLine(charts)}` : "";
   const card = (r: Rect, key: string, box: ChartBox | null, shapes: ChartShape[], kind: "composition" | "distance", label: string) => (
     <div key={key} className={styles.kfCard} data-part="chart-card" style={at(r, { borderRadius: 0.125 * unit })}>
       {box && <ChartSvg shapes={shapes} box={box} panel={r} unit={unit} kind={kind} label={label} styles={styles} />}
@@ -170,8 +170,8 @@ export function AnalysisColumn({ styles, frame, charts, view, unit, showNotes, i
   return (
     <div className={styles.kfColumn} data-part="analysis-column" data-analysis-column="true" style={{ position: "absolute", left: rect.x * unit, top: rect.y * unit, width: rect.w * unit, height: rect.h * unit }} {...interaction}>
       {fit && frame.figure && <KeyFigureCard styles={styles} view={view} fit={fit} rect={rel(column.key)} unit={unit} />}
-      {column.chart1 && card(column.chart1, "composition", frame.chart1, compShapes, "composition", compLabel)}
-      {column.chart2 && card(column.chart2, "distance", frame.chart2, distShapes, "distance", distLabel)}
+      {charts && column.chart1 && card(column.chart1, "composition", frame.chart1, compShapes, "composition", compLabel)}
+      {charts && column.chart2 && card(column.chart2, "distance", frame.chart2, distShapes, "distance", distLabel)}
       {sentenceLines.length > 0 && (
         <>
           <span className={styles.kfBar} style={at({ x: sentence.x, y: sentence.y, w: BAR_W, h: sentence.h }, { background: view.color })} />

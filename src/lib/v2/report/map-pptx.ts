@@ -626,7 +626,8 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
   const baseLegend = geo ? null : slideLegend(displayModel, !plan.muted, undefined, hasSummary, format, reportFrame?.legend ?? {}).rect;
   const panels = geo ? { title: geo.title, summary: null, legend: geo.legend } : slidePanelRects(style, hasSummary, baseLegend, format);
   const terrainShown = plan.view.code === "D17" && !!plan.view.terrainSections && !!plan.terrainSection;
-  const terrainLayout = terrainShown ? terrainSectionLayout(panels, slideLayout(format), format) : null;
+  // 새 장 배치(geo)의 단면은 열의 그래프 카드 1 자리에 그리므로 지도 틀·피할 자리를 바꾸지 않는다.
+  const terrainLayout = terrainShown && !geo ? terrainSectionLayout(panels, slideLayout(format), format) : null;
   const legend = panels.legend;
   const calloutOverview = !!plan.callout && plan.callout.page === 0;
   const calloutDetail = !!plan.callout && plan.callout.page > 0 ? slideCalloutFrame(4) : null;

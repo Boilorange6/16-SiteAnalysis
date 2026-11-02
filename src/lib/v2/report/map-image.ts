@@ -339,6 +339,8 @@ function pageFrameExtra(p: PlannedSlide & { kind: "tile" }, model: MapModel, pag
     calloutTop: calloutAlignment.calloutTop * ppi,
     ...(calloutAlignment.calloutLeftBottom !== undefined ? { calloutLeftBottom: calloutAlignment.calloutLeftBottom * ppi } : {}),
     pinnedKeys: [...new Set([...(p.pinnedKeys ?? []), ...(frame?.pinnedKeys ?? [])])],
+    // D17 단면 장: 지도에 선택 단면선을 두껍게(선택 상태) 그린다
+    ...(p.view.code === "D17" && p.view.terrainSections && p.terrainSection ? { terrainSection: p.terrainSection } : {}),
     ...frameOptions,
   };
 }

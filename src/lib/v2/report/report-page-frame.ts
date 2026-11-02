@@ -5,7 +5,7 @@
  */
 import type { PlannedSlide } from "./report-plan";
 import type { KeyFigure } from "../tile/types";
-import { slideCharts, type AnalysisCharts } from "./analysis-charts";
+import { slideCharts, slideTerrainSection, type AnalysisCharts } from "./analysis-charts";
 import type { ChartBox } from "./chart-geometry";
 import type { CalloutOverviewFrame } from "./types";
 import { wrapToLines } from "./analysis-column-fit";
@@ -74,10 +74,12 @@ export type ReportPageFrame = {
   chart1: ChartBox | null; chart2: ChartBox | null;
   /** 그래프 글자 배율(요약 pt / 13) */
   chartScale: number;
+  /** D17 단면 장(②): 지형 단면 카드 자리 = 그래프 카드 1(`column.chart1`). 단면 장이 아니거나 자리가 없으면 null. 그래프 카드 2는 없다. */
+  terrain: Rect | null;
 };
 
 /**
- * 새 배치로 그리는 장인가. 설명선 상세 장(`callout.page > 0`, Task 7 뒤)·D17 단면 장(Task 9)·결과 없음 장은 옛 경로다.
+ * 새 배치로 그리는 장인가. 설명선 상세 장(`callout.page > 0`, Task 7 뒤)·결과 없음 장은 옛 경로다.
  * 설명선 개요(A05·A06 `callout.page === 0`)는 새 배치다(spec §4-2·§5).
  */
 export function usesReportPageFrame(slide: PlannedSlide): boolean {
@@ -85,7 +87,6 @@ export function usesReportPageFrame(slide: PlannedSlide): boolean {
   const layout = slide.page?.layout;
   if (layout !== "map-key" && layout !== "map-charts") return false;
   if (slide.body.kind !== "result" || slide.missing || (slide.callout && slide.callout.page > 0)) return false;
-  if (slide.view.code === "D17" && !!slide.view.terrainSections && !!slide.terrainSection) return false;
   return !!slide.map || !!slide.mass || !!slide.rose;
 }
 
@@ -292,7 +293,8 @@ const sameNotes = (slide: TileSlide): string[] => [...new Set([...slide.view.cav
 export function reportPageFrame(slide: TileSlide, charts: AnalysisCharts | null, basemap?: BasemapChoice): ReportPageFrame {
   const format = (slide.format ?? "wide") as SlideFormat;
   const view = slide.view;
-  const layout: PageLayoutKind = slide.page?.layout === "map-charts" && charts ? "map-charts" : "map-key";
+  const terrain = slideTerrainSection(slide);
+  const layout: PageLayoutKind = slide.page?.layout === "map-charts" && (charts || terrain) ? "map-charts" : "map-key";
   const panels = slide.style.panels as PagePanels | undefined;
   const figure = view.keyFigure;
   // 핵심 숫자가 없는 ①은 카드를 두지 않는다(D01·결과 없음). ②는 카드 없이도 그래프 열은 남는다.
@@ -354,7 +356,7 @@ export function reportPageFrame(slide: TileSlide, charts: AnalysisCharts | null,
   const geometry = reportPageGeometry({
     layout, format, panels, summaryDeleted, titleSize,
     keyCardHeight: fit?.height ?? 0, legendSize,
-    chartSlots: layout === "map-charts" && !summaryDeleted ? 2 : 0,
+    chartSlots: layout === "map-charts" && !summaryDeleted ? (terrain ? 1 : 2) : 0,
     sentenceHeight: sentenceInfo?.height ?? 0,
     notes: hasNotes,
   });
@@ -370,5 +372,6 @@ export function reportPageFrame(slide: TileSlide, charts: AnalysisCharts | null,
     charts: layout === "map-charts" ? charts : null,
     chart1: inner(geometry.column?.chart1), chart2: inner(geometry.column?.chart2),
     chartScale: summaryPt / DEFAULT_REPORT_FONT_SIZES.summary,
+    terrain: terrain ? geometry.column?.chart1 ?? null : null,
   };
 }

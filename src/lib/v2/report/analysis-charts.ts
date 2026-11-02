@@ -69,6 +69,11 @@ const median = (sorted: number[]): number => {
 /** 그래프 자료를 셀 수 있는 슬라이드의 모양(PlannedSlide·ReportSlide의 tile). 구조만 읽어 계획 단계와 화면이 같은 함수를 쓴다. */
 export type ChartSlide = { map: MapModel | null; view: { map: MapModel | null }; callout?: { page: number } };
 
+/** D17 지형 단면을 그리는 장인가. 그리는 장은 「지도 + 그래프」의 그래프 카드 1 자리에 단면을 놓는다(그래프 자료 대신). */
+export function slideTerrainSection(slide: { view: { code: string; terrainSections?: unknown }; terrainSection?: unknown }): boolean {
+  return slide.view.code === "D17" && !!slide.view.terrainSections && !!slide.terrainSection;
+}
+
 /**
  * 이 쪽의 그래프 자료. 판정(`pageLayoutForSlide`·`pageWithResolvedLayout`)·레이아웃 창·화면 그래프 카드가 모두 이 함수 하나를 읽는다(Ruling 25).
  * 설명선 개요(`callout.page === 0`)의 `slide.map`은 점 없는 바탕 지도(backdrop, features 비어 있음)라 센 지물이 없으므로

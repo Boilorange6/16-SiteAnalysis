@@ -344,4 +344,42 @@ assert.match(xml, /보간값\(추정\) · 현장 실측 아님/);
 assert.match(xml, /terrain-section/);
 assert.match(xml, /prstDash val="dash"/);
 
+// ── Task 9: 새 쪽 기본은 지도 + 그래프(②), 단면은 그래프 카드 1 자리(column.chart1)에 그린다. 그래프 카드 2는 없다.
+{
+  const { createElement } = await import("react");
+  const { renderToStaticMarkup } = await import("react-dom/server");
+  const { EMPTY_REPORT_DOC } = await import("../../lib/v2/report/report-doc.ts");
+  const { planReportDoc, recommendedPages } = await import("../../lib/v2/report/report-doc-plan.ts");
+  const { pageFrameFor } = await import("../../lib/v2/report/report-page-frame.ts");
+  const { SlideSurface } = await import("../../components/v2/report/slide-surface.tsx");
+  const views = new Map([[d17.tileId, view]]);
+  const ctx = { summary: toSummaryView(GODEOK_SUMMARY, [d17]), analysisDate: "2026-10-19", views };
+  const page = recommendedPages(EMPTY_REPORT_DOC, views, initBoard([d17]), ctx).find((candidate) => candidate.kind === "tile");
+  assert.ok(page, "추천 구성에 D17 쪽");
+  assert.equal(page.layout, "map-charts", "D17(단면 있음) 새 쪽 기본은 map-charts");
+  const slide = planReportDoc({ ...EMPTY_REPORT_DOC, pages: [page] }, views, ctx).find((candidate) => candidate.kind === "tile");
+  assert.equal(slide.page.layout, "map-charts");
+  const frame = pageFrameFor(slide);
+  assert.ok(frame, "단면 장도 새 기하로 그린다");
+  const column = frame.geometry.column;
+  assert.ok(column?.chart1 && column.chart2 === null, "그래프 카드 1 자리만 있다");
+  const near = (a, b, message) => assert.ok(Math.abs(a - b) <= 0.01, `${message}: ${a} ≈ ${b}`);
+  assert.deepEqual(frame.terrain, column.chart1, "단면 사각형 = column.chart1");
+  // 화면: SSR은 1 inch = 1 px
+  const markup = renderToStaticMarkup(createElement(SlideSurface, { slide, basemap: "none", mode: "edit" }));
+  const tag = /<section[^>]*aria-label="[^"]*보고서 미리보기"[^>]*>/.exec(markup)?.[0];
+  assert.ok(tag, "화면에 단면이 있다");
+  const px = (prop) => Number(new RegExp(`[; "]${prop}:(-?[\\d.]+(?:e-?\\d+)?)(?:px)?[;"]`).exec(tag)?.[1] ?? NaN);
+  for (const [prop, key] of [["left", "x"], ["top", "y"], ["width", "w"], ["height", "h"]]) near(px(prop), column.chart1[key], `화면 단면 ${key}`);
+  assert.equal(/data-chart="/.test(markup), false, "단면 장에는 구성비·거리 그래프가 없다");
+  // PPT: 같은 사각형
+  const slideXml = await (await JSZip.loadAsync(await renderReportPptx([slide]))).file("ppt/slides/slide1.xml").async("string");
+  const blocks = [...slideXml.matchAll(/<p:(?:sp|cxnSp)>[\s\S]*?<\/p:(?:sp|cxnSp)>/g)].map((match) => match[0]);
+  const plate = blocks.find((block) => block.includes('name="GRP|terrain-section|A|plate"'));
+  assert.ok(plate, "PPT 단면 카드");
+  const rect = xmlRect(plate);
+  for (const key of ["x", "y", "w", "h"]) near(rect[key], column.chart1[key], `PPT 단면 ${key}`);
+  assert.equal(/name="GRP\|chart-(?:composition|distance)-/.test(slideXml), false, "PPT에도 구성비·거리 그래프 도형이 없다");
+}
+
 console.log(`✓ v2 topo section PPT XML (${outputPath})`);

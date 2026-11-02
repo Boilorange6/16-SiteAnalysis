@@ -8,6 +8,8 @@ import { SENTENCE_BAR, BAR_W } from "./key-figure-fit";
 import { drawKeyFigureCard } from "./key-figure-pptx";
 import { addDots } from "./map-pptx";
 import { FONT, INK, hex, type Slide } from "./pptx-kit";
+import { drawTerrainSectionPptx } from "./terrain-section-pptx";
+import type { TerrainSections } from "../tile-result";
 import type { ReportPageFrame } from "./report-page-frame";
 import type { Rect } from "../ui/overlay-layout";
 import type { TileView } from "../ui/tile-view";
@@ -57,10 +59,12 @@ export type AnalysisColumnInput = {
   page: { w: number };
   /** 핵심 숫자 카드 그룹 이름: 부위를 받아 `GRP|panel-summary|핵심 숫자|부위` */
   cardTag: (part: string) => string;
+  /** D17 단면 장: 그래프 카드 1 자리(`frame.terrain`)에 선택 단면을 그린다. 그래프 카드는 없다. */
+  terrain?: { sections: TerrainSections; selected: "A" | "B"; facilityCount: number | null };
 };
 
 /** 열 바탕 띠 → 핵심 숫자 카드 → 그래프 카드 둘(구성비·거리) → 열 맨 아래 해석 한 줄. 모든 사각형은 `frame`이 준다. */
-export function drawAnalysisColumn(s: Slide, { frame, view, page, cardTag }: AnalysisColumnInput): void {
+export function drawAnalysisColumn(s: Slide, { frame, view, page, cardTag, terrain }: AnalysisColumnInput): void {
   const { column, map } = frame.geometry;
   if (!column) return;
   s.addShape("rect", { x: map.w, y: 0, w: page.w - map.w, h: map.h, fill: { color: "F0EFE9" }, line: { color: "F0EFE9", width: 0 }, objectName: "GRP|column-band|열 바탕|band" });
@@ -74,8 +78,16 @@ export function drawAnalysisColumn(s: Slide, { frame, view, page, cardTag }: Ana
     s.addShape("roundRect", { ...rect, rectRadius: 0.125, fill: { color: "FFFFFF" }, line: { color: "E1E4E9", width: 0.75 }, shadow: { type: "outer", color: "15171C", opacity: 0.08, blur: 6, offset: 1.5, angle: 90 }, objectName: `${prefix}card` });
     if (box) addChartShapes(s, shapes, prefix);
   };
-  card(column.chart1, frame.chart1, "composition", "그래프 · 구성비", charts && frame.chart1 ? compositionShapes(charts.composition, frame.chart1, frame.chartScale, charts.titles.composition) : []);
-  card(column.chart2, frame.chart2, "distance", "그래프 · 거리", charts && frame.chart2 ? distanceShapes(charts.distance, charts.radiusM, frame.chart2, frame.chartScale, charts.titles.distance) : []);
+  if (terrain) {
+    // 단면은 그래프 카드와 같은 카드(흰 바탕·1 px #e1e4e9·모서리 0.125 in) 안에 그린다.
+    if (frame.terrain) {
+      s.addShape("roundRect", { ...frame.terrain, rectRadius: 0.125, fill: { color: "FFFFFF" }, line: { color: "E1E4E9", width: 0.75 }, shadow: { type: "outer", color: "15171C", opacity: 0.08, blur: 6, offset: 1.5, angle: 90 }, objectName: `GRP|terrain-section|${terrain.selected}|plate` });
+      drawTerrainSectionPptx(s, terrain.sections, terrain.selected, frame.terrain, terrain.facilityCount, false);
+    }
+  } else {
+    card(column.chart1, frame.chart1, "composition", "그래프 · 구성비", charts && frame.chart1 ? compositionShapes(charts.composition, frame.chart1, frame.chartScale, charts.titles.composition) : []);
+    card(column.chart2, frame.chart2, "distance", "그래프 · 거리", charts && frame.chart2 ? distanceShapes(charts.distance, charts.radiusM, frame.chart2, frame.chartScale, charts.titles.distance) : []);
+  }
 
   // 해석 한 줄: 열 맨 아래, 카드 없음. 왼쪽 3 px 타일 색 막대 + 글(줄 높이 1.25).
   const info = frame.sentence;

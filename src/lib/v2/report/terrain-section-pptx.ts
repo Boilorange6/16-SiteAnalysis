@@ -82,11 +82,11 @@ function ellipsize(value: string, maxChars: number): string {
 }
 
 /** D17 지도 장 위에 선택 단면을 편집 가능한 PPT 도형으로 그린다. */
-export function drawTerrainSectionPptx(slide: Slide, sections: TerrainSections, selected: "A" | "B", rect: Rect, facilityCount: number | null = null): void {
+export function drawTerrainSectionPptx(slide: Slide, sections: TerrainSections, selected: "A" | "B", rect: Rect, facilityCount: number | null = null, withPlate = true): void {
   const section = sections[selected];
   const group = `GRP|terrain-section|${selected}`;
   const bands = terrainSectionBands(rect);
-  plate(slide, rect, 0.12, `${group}|plate`);
+  if (withPlate) plate(slide, rect, 0.12, `${group}|plate`);
   const title = `${SECTION_LABELS[selected]} · 지형 단면`;
   slide.addText(title, { x: bands.header.x, y: bands.header.y, w: bands.header.w, h: bands.header.h, fontFace: FONT, fontSize: fitPt(title, 9.5, bands.header.w, 1, 7), bold: true, color: INK, margin: 0, fit: "shrink", objectName: `${group}|title` });
   drawProfile(slide, section, bands.plot, group);

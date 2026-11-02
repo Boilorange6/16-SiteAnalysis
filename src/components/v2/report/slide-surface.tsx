@@ -1461,11 +1461,12 @@ function ChartPlaceholder({ view, unit }: { view: TileView; unit: number }) {
 
 const TERRAIN_CAVEAT = "보간값(추정) · 현장 실측 아님";
 
-function TerrainSectionPreview({ slide, unit, layout }: { slide: Extract<PlannedSlide, { kind: "tile" }>; unit: number; layout: TerrainSectionLayout | null }) {
+/** `card`: 새 장 배치(②)의 그래프 카드 1 자리. 카드 모양(흰 바탕·1 px #e1e4e9·모서리 0.125 in)은 그래프 카드와 같다. */
+function TerrainSectionPreview({ slide, unit, rect, card = false }: { slide: Extract<PlannedSlide, { kind: "tile" }>; unit: number; rect: Rect | null; card?: boolean }) {
   const styles = useSurfaceStyles();
   const sections = slide.view.terrainSections;
   if (!sections || !slide.terrainSection) return null;
-  if (!layout) return null;
+  if (!rect) return null;
   const section = sections[slide.terrainSection];
   const valid = section.samples.filter((sample): sample is { d: number; z: number } => sample.z !== null && Number.isFinite(sample.z));
   const total = terrainSectionTotal(section);
@@ -1503,7 +1504,7 @@ function TerrainSectionPreview({ slide, unit, layout }: { slide: Extract<Planned
   const format = (value: number | null, suffix: string) => value === null ? "미확인" : `${value.toFixed(1)}${suffix}`;
   const crossings = sortTerrainCrossings(section);
   const visibleCrossings = crossings.slice(0, TERRAIN_SECTION_TABLE_MAX_ROWS);
-  const preview = layout.rect;
+  const preview = rect;
   const bands = terrainSectionBands({ x: 0, y: 0, w: preview.w, h: preview.h });
   const terrainGridStyle: CSSProperties = {
     gridTemplateColumns: `${bands.plot.w * unit}px ${bands.table.w * unit}px`,
@@ -1517,7 +1518,7 @@ function TerrainSectionPreview({ slide, unit, layout }: { slide: Extract<Planned
     rowGap: `${bands.gapY * unit}px`,
   };
   return (
-    <section className={styles.terrainPreview} style={{ ...terrainGridStyle, left: preview.x * unit, top: preview.y * unit, width: preview.w * unit, height: preview.h * unit }} aria-label={`${TERRAIN_SECTION_LABELS[slide.terrainSection]} 보고서 미리보기`}>
+    <section className={styles.terrainPreview} style={{ ...terrainGridStyle, ...(card ? { border: "1px solid #e1e4e9", borderRadius: 0.125 * unit, background: "#fff", boxShadow: "0 1px 2px rgba(21, 23, 28, 0.05), 0 3px 10px rgba(21, 23, 28, 0.05)" } : {}), left: preview.x * unit, top: preview.y * unit, width: preview.w * unit, height: preview.h * unit }} aria-label={`${TERRAIN_SECTION_LABELS[slide.terrainSection]} 보고서 미리보기`}>
       <div className={styles.terrainPreviewHeader}>
         <strong style={fontStyle(9.5, unit)}>{TERRAIN_SECTION_LABELS[slide.terrainSection]} · 지형 단면</strong>
         <span style={fontStyle(7.5, unit)}>대지 음영 · 단차 시설 표식</span>
@@ -2449,7 +2450,8 @@ function TileSurface({ slide, frame: pageFrame = null, unit, basemap, panels, in
   const displayModel = useMemo(() => (model && hiddenLayers ? modelWithHiddenLayers(model, hiddenLayers) : model), [model, hiddenLayers]);
   const chart = !model && !slide.mass && !slide.rose && slide.body.face !== "single";
   const terrainShown = slide.view.code === "D17" && !!slide.view.terrainSections && !!slide.terrainSection;
-  const terrainLayout = terrainShown ? terrainSectionLayout(panels, slideLayout(format), format) : null;
+  // 새 장 배치(②)의 단면 자리는 장 기하의 그래프 카드 1(`pageFrame.terrain`)이다. 옛 경로만 단면 자리 계산을 쓴다.
+  const terrainLayout = terrainShown && !pageFrame ? terrainSectionLayout(panels, slideLayout(format), format) : null;
   const geometry = slideGeometry(format);
   const mapLayout = slide.page?.layout === "numbers-first" || slide.page?.layout === "side-by-side" ? layoutRects(slide.page.layout, format).map : null;
   // 새 장 배치에서 지도·그림을 그리는 장은 그 틀이 기하의 map이다(②에서 카드를 지우면 전체 폭). 그림 장(바람장미·매스)도 같은 틀을 채운다.
@@ -2503,13 +2505,13 @@ function TileSurface({ slide, frame: pageFrame = null, unit, basemap, panels, in
   return (
     <>
        {displayModel ? <div className={styles.mapLayerHost} data-surface-map={mapFrame ? "true" : undefined} data-part={frameMap ? "map" : undefined} style={frameMap ? { position: "absolute", left: 0, top: 0, width: frameMap.w * unit, height: frameMap.h * unit } : mapFrame ? { position: "absolute", left: String(Number((mapLayout!.x * 100).toFixed(2))) + "%", top: String(Number((mapLayout!.y * 100).toFixed(2))) + "%", width: String(Number((mapLayout!.w * 100).toFixed(2))) + "%", height: String(Number((mapLayout!.h * 100).toFixed(2))) + "%" } : undefined}><MapLayer model={displayModel} style={mapStyle} unit={unit} basemap={basemap} panels={calloutPanels} pageGeometry={frameMap ? geo! : undefined} calloutFrame={pageFrame?.calloutOverview ?? undefined} siteX={frameMap ? 0.5 : calloutDetailFrame?.siteX ?? slideSiteX(mapStyle, panels.summary !== null, format)} fill={callout ? mapFill : undefined} callout={callout} pinnedKeys={mapStyle.pinnedKeys} interactive={interactive} pickable={pickable} selectedElementKey={selection?.kind === "mapElement" ? selection.key : null} selectedElementLabelVisible={selection?.kind === "mapElement" ? selection.labelVisible : undefined} selectedLabelKey={selection?.kind === "mapLabel" ? selection.key : null} selectedPanelKey={selection?.kind === "panel" ? selection.key : null} selectedDecorationKey={selection?.kind === "decoration" ? selection.key : null} onMapElementSelect={onMapElementSelect} onMapLabelSelect={onMapLabelSelect} onDecorationSelect={onDecorationSelect} onDecorationDelete={onDecorationDelete} onLabelBoxChange={onLabelBoxChange} onLabelBoxReset={onLabelBoxReset} onDeleteElement={onDeleteElement} onHideLabel={onHideLabel} onShowLabel={onShowLabel} onPanelDelete={onPanelDelete} mapEditEntry={mapEditEntry} onMapMoveActive={onMapMoveActive} thumbnail={thumbnail} onPatch={onPatch} onDirectPatch={onDirectPatch} hoverLegend={hoverLegend} onMapHoverLegend={setHoverLegend} terrainSection={slide.view.code === "D17" ? slide.terrainSection ?? "A" : undefined} terrainLayout={terrainLayout} calloutLegend={resolvedCalloutLegend} calloutTop={calloutAlignment ? calloutAlignment.calloutTop * unit : undefined} calloutLeftBottom={calloutAlignment?.calloutLeftBottom ? calloutAlignment.calloutLeftBottom * unit : undefined} northAvoid={northAvoid} scale={!(slide.callout && slide.callout.page > 0)} frame={mapFrame ?? undefined} format={format} label={slide.view.title + " 지도"} reportFrame={reportFrame} preserveShortCalloutLabels={staticSurface && !thumbnail} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} /></div> : (slide.mass || slide.rose) && !thumbnail ? <FigureLayer slide={slide} width={width} height={height} scene={figureSceneSize(geo ?? { map: { w: geometry.w, h: geometry.h } })} avoid={geo ? reportMapAvoid(geo, geo.scenePxPerInch) : undefined} frame={frameMap} unit={unit} /> : slide.mass ? <VisualPlaceholder title={slide.view.title} message="3D 매스 미리보기는 내보내기와 같은 페이지 위치로 표시됩니다." unit={unit} /> : slide.rose ?<VisualPlaceholder title={slide.view.title} message="바람장미 도판 미리보기" unit={unit} /> : chart ? <ChartPlaceholder view={slide.view} unit={unit} /> : <VisualPlaceholder title={slide.view.title} message={slide.body.kind === "state" ? slide.body.message : "표시할 지도 결과가 없습니다."} unit={unit} />}
-       {terrainShown && <TerrainSectionPreview slide={slide} unit={unit} layout={terrainLayout} />}
+       {terrainShown && <TerrainSectionPreview slide={slide} unit={unit} rect={pageFrame ? pageFrame.terrain : terrainLayout?.rect ?? null} card={!!pageFrame} />}
       {slide.body.kind === "state" && <div className={styles.slidePanel} style={{ left: unit * 4, top: unit * 2.7, width: unit * 5.1, height: unit * 1.15 }}><div className={styles.slideText + " " + styles.slideTextStrong} style={fontStyle(16, unit)}>{slide.body.message}</div></div>}
        {geo && geo.column && frameMap && <div className={styles.kfColumnBand} data-part="column-band" style={{ position: "absolute", left: frameMap.w * unit, top: 0, width: (slideSize(format).w - frameMap.w) * unit, height: frameMap.h * unit }} />}
        {!slide.page?.deletedElementKeys?.includes("title") && (pageFrame && geo
          ? <div onDoubleClick={() => onText?.("title")}><TitleChip frame={pageFrame} color={slide.view.color} rect={geo.title} unit={unit} interaction={panelInteraction?.("title")} /></div>
          : <div onDoubleClick={() => onText?.("title")}><TitlePanel slide={slide} rect={panels.title} unit={unit} interaction={panelInteraction?.("title")} /></div>)}
-       {pageFrame && geo && geo.column && pageFrame.charts && <div onDoubleClick={() => onText?.("summary")}><AnalysisColumn styles={styles} frame={pageFrame} charts={pageFrame.charts} view={slide.view} unit={unit} showNotes={!staticSurface && !thumbnail} interaction={panelInteraction?.("summary")} /></div>}
+       {pageFrame && geo && geo.column && (pageFrame.charts || terrainShown) && <div onDoubleClick={() => onText?.("summary")}><AnalysisColumn styles={styles} frame={pageFrame} charts={pageFrame.charts} view={slide.view} unit={unit} showNotes={!staticSurface && !thumbnail} interaction={panelInteraction?.("summary")} /></div>}
        {pageFrame && geo && !geo.column && geo.keyCard && pageFrame.fit && (
          <div onDoubleClick={() => onText?.("summary")}>
            <KeyFigureCard styles={styles} view={slide.view} fit={pageFrame.fit} rect={geo.keyCard} unit={unit} interaction={panelInteraction?.("summary")} />

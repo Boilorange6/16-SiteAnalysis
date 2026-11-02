@@ -23,6 +23,7 @@ import { badgeTextColor } from "../ui/map-labels";
 import type { PageStyle } from "../ui/board-state";
 import { drawTerrainSectionPptx } from "./terrain-section-pptx";
 import { drawAnalysisColumn } from "./analysis-column-pptx";
+import { slideTerrainSection } from "./analysis-charts";
 import { drawKeyFigureCard } from "./key-figure-pptx";
 import { FOOTER_BOX, TITLE_BOX, pageFrameFor, type LegendFit, type ReportPageFrame } from "./report-page-frame";
 import { pageElementDeleted, TEXT_BOX_DEFAULTS, type MapFrameState, type ReportLayout } from "./report-doc";
@@ -552,7 +553,13 @@ function tileFrame(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, frame: R
 
   if (!pageElementDeleted(p.page, "title")) titleChip(s, frame, v.color);
   const cardTag = (part: string) => panelTag("summary", "핵심 숫자", part);
-  if (geo.column) drawAnalysisColumn(s, { frame, view: v, page: size, cardTag });
+  if (geo.column) {
+    // D17 단면 장: 그래프 카드 1 자리에 단면을 그린다(옛 경로 `tile()`과 같은 단차 시설 수).
+    const stepRow = v.rows.find((row) => row.label === "반경 안 단차 시설 수");
+    const facilityCount = stepRow ? Number.parseInt(stepRow.value.replace(/[^0-9-]/g, ""), 10) : null;
+    const terrain = slideTerrainSection(p) ? { sections: v.terrainSections!, selected: p.terrainSection!, facilityCount: Number.isFinite(facilityCount) ? facilityCount : null } : undefined;
+    drawAnalysisColumn(s, { frame, view: v, page: size, cardTag, terrain });
+  }
   else if (geo.keyCard && frame.fit) drawKeyFigureCard(s, { view: v, fit: frame.fit, rect: geo.keyCard, tag: cardTag });
   // 설명선 개요를 그리는 쪽(wide)은 설명선 범례, 그 밖(A3·A4 개요 포함)은 일반 지도 범례다: 화면과 같은 판정(`frame.calloutOverview`·`frame.legend`).
   if (frame.legend && geo.legend) legendPlate(s, p, true, format, style, { fit: frame.legend, rect: geo.legend });
