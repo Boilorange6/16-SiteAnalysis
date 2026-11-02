@@ -17,6 +17,10 @@
 
 refresh → capture → export → render → PNG를 직접 열어 본다.
 
+## 새 장 배치(지도 + 숫자·지도 + 그래프) 확인
+
+정본 §9-8의 두 배치는 쪽마다 화면 PNG와 PPT 렌더 PNG를 나란히 놓고 본다. 화면은 `capture-pages.mjs <id> <out> --widths 1440,1024 --pages …`(기본 `--layout keep` = 저장된 배치 그대로)로 찍는다. 이 스크립트의 DOM 수치(`mapOverlap`·`outside`·`clipped`)는 ②의 분석 열(`[data-analysis-column]`)만 재므로 ① 쪽은 수치가 비어 나온다 — ①은 PNG로 본다. PNG에서 볼 것: 지도가 장에서 가장 큰 면인가, 방위표·축척·범례 판이 지도 틀 안에 있고 카드·그래프와 겹치지 않는가, 카드와 범례 판에 큰 빈 여백이 없는가, 각주 띠가 한 줄(`출처`로 시작·한계·쪽 번호)인가. PPT는 `export-pptx.mjs`로 내려받아 `render-pptx.ps1`로 같은 쪽을 렌더하고 위치·크기·줄바꿈이 화면과 같은지 본다. A3·A4와 그림 장(D22·S01)은 UI에서 판형을 고른 뒤 같은 창에서 내보낸다. 그래프 자료가 안 나오는 장(옛 `countedCapped` 분석 등)은 ①로 그려지는 것이 맞고 이유는 `probe-charts.mts`로 본다. D17 단면 장은 수치지형도를 올린 분석에서만 실데이터로 확인한다. 마지막에 `export-pdf-png.mjs`로 PDF·PNG를 내보내 `pdf-images.mjs`로 빈 쪽과 잉크를 확인한다.
+
 ## 함정
 
 - 로그인은 IP당 15분에 5회로 제한된다. 저장된 세션이 통하면 다시 로그인하지 않게 `auth.mjs`로만 들어간다. 직접 로그인 코드를 새로 쓰지 말 것.
