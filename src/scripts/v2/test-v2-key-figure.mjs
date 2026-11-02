@@ -4,6 +4,15 @@ import assert from "node:assert/strict";
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
 const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
 const { layerStyle } = await import("../../lib/v2/ui/map-layers.ts");
+const { haText } = await import("../../lib/v2/tile/key-figure.ts");
+
+// haText — 천 단위 쉼표, 1 ha 미만은 소수 두 자리, 아주 작은 값은 `0.00 ha`/`0.0 ha`로 보이지 않게
+assert.equal(haText(64.56), "64.6 ha");
+assert.equal(haText(0.512), "0.51 ha");
+assert.equal(haText(1234.56), "1,234.6 ha");
+assert.equal(haText(12_345_678), "12,345,678.0 ha");
+assert.equal(haText(0.004), "0.01 ha 미만");
+assert.equal(haText(0), "0 ha");
 
 const center = [127.06, 37.49];
 const m = (id, label, value, unit, extra = {}) => ({ id, label, value, unit, formulaVersion: "t@1", numerator: null, denominator: null, status: "observed", ...extra });
@@ -332,9 +341,18 @@ const a07Metrics = [
   assert.equal(kf.sub, "단계가 확인된 11건 중 상위 2");
   assert.deepEqual(kf.stats, [stat("3건", "추진위 단계"), stat("2건", "정비계획 단계"), stat("20곳", "교차 정비구역")]);
   assert.doesNotMatch(JSON.stringify(kf), junk);
+  // 단계가 확인된 사업이 0건이면 「0건 중 상위 2」 보조 줄을 뺀다.
+  const unknownOnly = kfOf(result("A09", "analysis", [
+    m("zones_in_radius", "반경과 교차하는 정비구역", 4, "곳"),
+    m("projects_in_radius", "반경 관련 사업", 6, "건"),
+    m("stage_8", "단계: 미확인", 6, "건"),
+    m("fill_stage_pct", "단계 확인 사업", 0, "%", { numerator: 0, denominator: 6 }),
+  ]));
+  assert.ok(!("sub" in unknownOnly), "단계 확인 0건이면 보조 줄 없음");
+  assert.deepEqual(unknownOnly.stats, [stat("4곳", "교차 정비구역")]);
 }
 
-// A10 — 계획·공사 사업(계획역 거리는 있을 때만, 개통 예정은 엔진이 항상 미확인이라 싣지 않는다)
+// A10— 계획·공사 사업(계획역 거리는 있을 때만, 개통 예정은 엔진이 항상 미확인이라 싣지 않는다)
 {
   const base = [m("planned_projects", "반경 내 계획·공사 사업", 0, "건"), missing("opening_schedule", "개통 예정 시점", "")];
   const kf = kfOf(result("A10", "analysis", [...base, missing("nearest_planned_station_m", "최근접 계획역", "m")]));
@@ -412,6 +430,7 @@ const d05Metrics = (withAssumed = true) => [
   ]));
   assert.equal(kf.question, "반경 수관 면적률");
   assert.deepEqual(kf.answer, { value: "33.8%", kind: "number" });
+  assert.equal(kf.sub, "반경 1km 원 면적 기준");
   assert.deepEqual(kf.stats, [stat("33.5%", "대지 수관 면적률"), stat("13.8%", "OSM 녹지")]);
 }
 
@@ -425,11 +444,20 @@ const d11 = (areas) => result("D11", "diagram", [
   assert.equal(kf.question, "반경 구역·지구 교차면적");
   assert.deepEqual(kf.answer, { pre: "지구단위계획", value: "2.39 km²", kind: "number" });
   assert.deepEqual(kf.stats, [stat("27건", "반경 교차 구역·지구"), stat("2종", "구역·지구 분류")]);
-  for (const areas of [{ 기타: 10567076, 지구단위계획: 2394241 }, { 기타: 10567076 }, { 개발제한: 523000 }]) {
-    const value = kfOf(d11(areas)).answer.value;
-    assert.doesNotMatch(value, /\d{7,}\s*㎡$/, value);
-  }
-  assert.deepEqual(kfOf(d11({ 개발제한: 523000 })).answer, { pre: "개발제한", value: "52.3 ha", kind: "number" }, "1 km² 미만은 ha");
+  assert.deepEqual(kfOf(d11({ 지구단위계획: 523000 })).answer, { pre: "지구단위계획", value: "52.3 ha", kind: "number" }, "1 km² 미만은 ha");
+}
+{
+  // 지구단위계획이 없으면 겹침 합 면적(반경 원보다 클 수 있음)을 쓰지 않고 구역·지구 수가 큰 답이다.
+  const kf = kfOf(d11({ 기타: 10567076, 개발제한: 523000 }));
+  assert.equal(kf.question, "반경 구역·지구");
+  assert.deepEqual(kf.answer, { pre: "구역·지구", value: "27건", kind: "number" });
+  assert.deepEqual(kf.stats, [stat("2종", "구역·지구 분류")]);
+  assert.doesNotMatch(JSON.stringify(kf), /㎡|km²|ha|기타|10\.57|10,567/, "겹침 합 면적이 새지 않는다");
+}
+{
+  // 구역·지구 수도 없으면 카드가 없고 headline(반경 교차면적: 기타 …)으로도 새지 않는다.
+  const view = toTileView(result("D11", "diagram", [m("back_area_기타", "반경 교차면적: 기타", 10567076, "㎡"), missing("fill_code_pct", "유효 구역·지구 코드 채움률", "%")]));
+  assert.equal(view.keyFigure, null);
 }
 
 // D12 — 반경 가장 넓은 시설
@@ -479,8 +507,9 @@ const d11 = (areas) => result("D11", "diagram", [
   ]));
   assert.equal(kf.question, "최대 건물 밀도");
   assert.deepEqual(kf.answer, { value: "3,066동", post: "/㎢", kind: "number" });
-  assert.equal(kf.sub, "건물 수 KDE 최댓값 · 대역폭 100m");
-  assert.deepEqual(kf.stats, [stat("3,257동", "KDE 입력 건물")]);
+  assert.equal(kf.sub, "건물이 가장 몰린 곳의 밀도");
+  assert.deepEqual(kf.stats, [stat("3,257동", "밀도 계산에 쓴 건물(반경 밖 포함)")]);
+  assert.doesNotMatch(JSON.stringify(kf), /KDE|대역폭/, "기술 용어를 쓰지 않는다");
 }
 
 // D17 — 대지 표고
@@ -587,16 +616,31 @@ const s01Metrics = () => [
   assert.deepEqual(kf.stats, [stat("6.5시간", "춘분 평균 일조"), stat("50.7%", "동지 연속 2시간 확보")]);
 }
 
-// S03·S04 — 정의 없음: 결과가 없는(pending) 동안 카드도 없다
-for (const [code, type] of [["S03", "simulation"], ["S04", "simulation"]]) {
-  assert.equal(toTileView(result(code, type, [], {}, { status: "pending" })).keyFigure, null, code);
+// S03·S04 — 정의 없음: 결과가 없는(pending) 동안 카드도 없고, 결과가 있으면 headline 카드(첫 지표가 미확인이면 값 있는 다음 지표)
+for (const [code, missingId, valuedId, value] of [["S03", "urel_median_annual", "share_wind_3_annual", 12.5], ["S04", "utci_median_summer_h14", "shade_pct_summer_h14", 41.2]]) {
+  assert.equal(toTileView(result(code, "simulation", [], {}, { status: "pending" })).keyFigure, null, code);
+  const kf = kfOf(result(code, "simulation", [missing(missingId, missingId, ""), m(valuedId, `${valuedId} 라벨`, value, "%")]));
+  assert.ok(kf, `${code}: 값 있는 다음 지표로 카드를 만든다`);
+  assert.equal(kf.question, `${valuedId} 라벨`, code);
+  assert.match(kf.answer.value, new RegExp(`^${value}`), code);
+  assert.doesNotMatch(JSON.stringify(kf), junk, code);
 }
 
 // 값이 없는 지표는 줄을 뺀다: 큰 답이 없으면 정의 대신 헤드라인 카드로(미확인 글자 없이)
 {
-  for (const [code, type, ids] of [["A07", "analysis", ["median_price_per_m2"]], ["D12", "diagram", []], ["D29", "diagram", ["svf_site_median"]], ["D22", "diagram", ["prevailing_dir_deg"]]]) {
-    const metrics = ids.map((id) => missing(id, id, ""));
-    const view = toTileView(result(code, type, metrics));
+  // 값 있는 다음 지표가 있으면 그 지표로 카드를 만든다 — 빈 검사가 되지 않게 카드가 실제로 있는지 단언한다.
+  let cards = 0;
+  for (const [code, type, ids, next] of [["A07", "analysis", ["median_price_per_m2"], m("valid_trades", "유효 거래", 342, "건")], ["D29", "diagram", ["svf_site_median"], m("svf_median", "반경 하늘열림 중앙값", 0.81, "")]]) {
+    const view = toTileView(result(code, type, [...ids.map((id) => missing(id, id, "")), next]));
+    assert.ok(view.keyFigure, `${code}: 다음 값 있는 지표로 카드`);
+    assert.equal(view.keyFigure.question, next.label, code);
+    assert.doesNotMatch(JSON.stringify(view.keyFigure), junk, code);
+    cards += 1;
+  }
+  assert.equal(cards, 2, "headline 카드 경로를 실제로 검사했다");
+  // 값이 있는 지표가 하나도 없으면 카드가 없다(미확인 글자도 없다).
+  for (const [code, type, ids] of [["A07", "analysis", ["median_price_per_m2", "valid_trades"]], ["D12", "diagram", []], ["D29", "diagram", ["svf_site_median"]], ["D22", "diagram", ["prevailing_dir_deg"]]]) {
+    const view = toTileView(result(code, type, ids.map((id) => missing(id, id, ""))));
     assert.doesNotMatch(JSON.stringify(view.keyFigure), junk, code);
   }
 }

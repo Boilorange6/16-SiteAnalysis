@@ -1,5 +1,5 @@
 import type { TileResult } from "../../tile-result";
-import { metricPercent, statList } from "../key-figure";
+import { metricPercent, radiusLabel, statList } from "../key-figure";
 import type { KeyFigure, TileClientModule } from "../types";
 
 function d10KeyFigure(result: TileResult): KeyFigure | null {
@@ -8,6 +8,7 @@ function d10KeyFigure(result: TileResult): KeyFigure | null {
   return {
     question: "반경 수관 면적률",
     answer: { value: canopy, kind: "number" },
+    sub: `반경 ${radiusLabel(result.conditions.radiusM)} 원 면적 기준`,
     stats: statList([[metricPercent(result, "canopy_site_pct"), "대지 수관 면적률"], [metricPercent(result, "osm_green_pct"), "OSM 녹지"]]),
   };
 }

@@ -18,7 +18,7 @@ function a09KeyFigure(result: TileResult): KeyFigure | null {
   return {
     question: "반경 정비사업",
     answer: { value: projects, kind: "number" },
-    ...(known == null ? {} : { sub: `단계가 확인된 ${countText(known, "건")} 중 상위 2` }),
+    ...(!known ? {} : { sub: `단계가 확인된 ${countText(known, "건")} 중 상위 2` }),
     stats: statList([
       ...stages.map((stage) => [countText(stage.count, "건"), `${stage.name} 단계`] as const),
       [metricCount(result, "zones_in_radius", "곳"), "교차 정비구역"],

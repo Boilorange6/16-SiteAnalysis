@@ -1,17 +1,16 @@
 import type { TileResult } from "../../tile-result";
-import { metricCount, metricText, statList } from "../key-figure";
-import type { KeyFigure, TileClientModule, TileHeadlineHelpers } from "../types";
+import { metricCount, statList } from "../key-figure";
+import type { KeyFigure, TileClientModule } from "../types";
 
 /** 대지 밀도는 엔진이 내지 않아 싣지 않는다. */
-function d16KeyFigure(result: TileResult, helpers: TileHeadlineHelpers): KeyFigure | null {
+function d16KeyFigure(result: TileResult): KeyFigure | null {
   const density = metricCount(result, "dens_max", "동");
   if (density === null) return null;
-  const bandwidth = metricText(result, "kde_bandwidth_m", helpers);
   return {
     question: "최대 건물 밀도",
     answer: { value: density, post: "/㎢", kind: "number" },
-    sub: `건물 수 KDE 최댓값${bandwidth === null ? "" : ` · 대역폭 ${bandwidth}`}`,
-    stats: statList([[metricCount(result, "buildings_input", "동"), "KDE 입력 건물"]]),
+    sub: "건물이 가장 몰린 곳의 밀도",
+    stats: statList([[metricCount(result, "buildings_input", "동"), "밀도 계산에 쓴 건물(반경 밖 포함)"]]),
   };
 }
 

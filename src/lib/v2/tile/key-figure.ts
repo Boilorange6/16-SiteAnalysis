@@ -39,8 +39,13 @@ export const metricPercent = (result: TileResult, id: string): string | null => 
   return value === null ? null : percentText(value);
 };
 
-/** ha 값 표기: 1 ha 미만은 소수 두 자리(`0.51 ha`), 그 이상은 한 자리(`64.6 ha`). */
-export const haText = (ha: number): string => `${ha.toFixed(ha < 1 ? 2 : 1)} ha`;
+/** ha 값 표기: 천 단위 쉼표, 1 ha 미만은 소수 두 자리(`0.51 ha`), 그 이상은 한 자리(`1,234.6 ha`). 0.01 ha 미만은 `0.01 ha 미만`. */
+export const haText = (ha: number): string => {
+  if (ha === 0) return "0 ha";
+  if (ha < 0.01) return "0.01 ha 미만";
+  const digits = ha < 1 ? 2 : 1;
+  return `${ha.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits })} ha`;
+};
 
 /** ㎡ 값을 ha로(`450365` → `45.0 ha`). */
 export const m2ToHaText = (m2: number): string => haText(m2 / 10_000);
