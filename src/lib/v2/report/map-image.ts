@@ -31,7 +31,7 @@ import { mapFrameScaleOptions, scaleOptionsForFrame, zoomForScale, type ReportSc
 import { DEFAULT_REPORT_FONT_SIZES, frameSiteMarks, type MapFrameState } from "./report-doc";
 import { fontSizeForStyle } from "./pptx-kit";
 import { NORTH_INSET, NORTH_RADIUS, northArrowBox, scaleBarBox, scaleFontScaleForPt } from "../ui/map-scene";
-import { frameChromeUnit } from "../ui/report-page-layout";
+import { PAGE_EDGE, frameChromeUnit } from "../ui/report-page-layout";
 import { figureSceneSize, pageFrameFor, reportMapAvoid, type PixelBox, type ReportPageFrame } from "./report-page-frame";
 import type { Rect } from "../ui/overlay-layout";
 
@@ -41,7 +41,7 @@ const VIEW_H = 540;
 const OUT_W = 1920;
 const OUT_H = 1080;
 const PX_PER_INCH = VIEW_W / SLIDE.w;
-type Extra = Partial<Pick<MapFigureProps, "muted" | "siteX" | "avoid" | "fill" | "siteY" | "calloutTop" | "calloutLeftBottom" | "scale" | "legend" | "bare" | "baseTheme" | "transparent" | "pinnedKeys" | "hiddenKeys" | "deletedElementKeys" | "labelBoxes" | "showAutomaticLabels" | "north" | "credit" | "label" | "rightInset" | "backgroundOnly" | "terrainSection" | "layoutUnit" | "siteMarks" | "northX" | "scaleX" | "scaleY" | "scaleBoxOverride">> & {
+type Extra = Partial<Pick<MapFigureProps, "muted" | "siteX" | "avoid" | "fill" | "siteY" | "calloutTop" | "calloutLeftBottom" | "calloutEdge" | "scale" | "legend" | "bare" | "baseTheme" | "transparent" | "pinnedKeys" | "hiddenKeys" | "deletedElementKeys" | "labelBoxes" | "showAutomaticLabels" | "north" | "credit" | "label" | "rightInset" | "backgroundOnly" | "terrainSection" | "layoutUnit" | "siteMarks" | "northX" | "scaleX" | "scaleY" | "scaleBoxOverride">> & {
   size?: { width: number; height: number };
   bottomInset?: number;
   style?: PageStyle;
@@ -337,6 +337,7 @@ function pageFrameExtra(p: PlannedSlide & { kind: "tile" }, model: MapModel, pag
     size: { width: VIEW_W, height },
     style, highlightLabel, legendFocus: highlightLabel,
     calloutTop: calloutAlignment.calloutTop * ppi,
+    calloutEdge: PAGE_EDGE * ppi,
     ...(calloutAlignment.calloutLeftBottom !== undefined ? { calloutLeftBottom: calloutAlignment.calloutLeftBottom * ppi } : {}),
     pinnedKeys: [...new Set([...(p.pinnedKeys ?? []), ...(frame?.pinnedKeys ?? [])])],
     // D17 단면 장: 지도에 선택 단면선을 두껍게(선택 상태) 그린다

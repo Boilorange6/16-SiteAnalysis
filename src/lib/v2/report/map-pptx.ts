@@ -13,7 +13,7 @@ import type { PlannedSlide } from "./report-plan";
 import type { PageStyle } from "../ui/board-state";
 import { metersPerPixel, slideViewport, type BasemapChoice } from "../ui/map-projection";
 import { scaleOptionsForFrame, zoomForScale } from "../ui/report-scale";
-import { frameChromeUnit, type ReportPageGeometry } from "../ui/report-page-layout";
+import { PAGE_EDGE, frameChromeUnit, type ReportPageGeometry } from "../ui/report-page-layout";
 import { DEFAULT_REPORT_FONT_SIZES, frameSiteMarks, type MapFrameState, type PagePanelRect, type ReportLayout } from "./report-doc";
 import { reportMapAvoid } from "./report-page-frame";
 
@@ -684,6 +684,7 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
   const scene = buildMapScene({
     rightInset,
     ...(calloutDetail ? {} : { calloutTop: calloutTopPx }),
+    ...(geo ? { calloutEdge: PAGE_EDGE * ppi } : {}),
     ...(calloutAlignment?.calloutLeftBottom !== undefined
       ? { calloutLeftBottom: calloutAlignment.calloutLeftBottom * ppi }
       : terrainLayout?.calloutLeftBottom !== undefined ? { calloutLeftBottom: terrainLayout.calloutLeftBottom * activePxPerInch } : {}),

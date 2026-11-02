@@ -30,7 +30,7 @@ import { labelBoxFramePatch, labelFramePatch, mapLabelSwitchState, reportPageMap
 import { placeActionBar, type ActionBarPixelBox } from "@/lib/v2/report/report-geometry";
 import { slideCharts } from "@/lib/v2/report/analysis-charts";
 import { FOOTER_BOX, TITLE_BOX, figureSceneSize, framePanelRule, reportMapAvoid, reportPageFrame, usesReportPageFrame, type LegendFit, type PixelBox, type ReportPageFrame } from "@/lib/v2/report/report-page-frame";
-import { frameChromeUnit, type ReportPageGeometry } from "@/lib/v2/ui/report-page-layout";
+import { PAGE_EDGE, frameChromeUnit, type ReportPageGeometry } from "@/lib/v2/ui/report-page-layout";
 import type { CalloutOverviewFrame } from "@/lib/v2/report/types";
 import { AnalysisColumn, NotesChip } from "./analysis-column";
 import { KeyFigureCard } from "./key-figure-card";
@@ -938,6 +938,7 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
         scaleFontScale={scaleFontScaleForPt(fontSizeForStyle(style, "scale"))}
         siteMarks={frameSiteMarks(reportFrame)}
         calloutTop={calloutTop}
+        calloutEdge={pageGeometry ? PAGE_EDGE * unit : undefined}
         calloutLeftBottom={calloutLeftBottom ?? (terrainLayout?.calloutLeftBottom ? terrainLayout.calloutLeftBottom * unit : undefined)}
          showAutomaticLabels={reportFrame?.labelRule !== "off"}
          labelScale={fontSizeForStyle(style, "labels") / DEFAULT_REPORT_FONT_SIZES.labels}

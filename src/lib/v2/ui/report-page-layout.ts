@@ -41,6 +41,8 @@ type GeometryInput = {
 
 /** 가장자리 24 px */
 const EDGE = 0.25;
+/** 지도 위 설명선 상자가 지도 틀 가장자리에서 떨어지는 거리도 장 가장자리 규칙이다(화면·PPT·그림이 같다). */
+export const PAGE_EDGE = EDGE;
 /** 각주 띠 28 px */
 const FOOTER_H = 0.29;
 const PAGE_NO_W = 1;

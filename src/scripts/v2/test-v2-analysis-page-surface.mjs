@@ -227,6 +227,20 @@ const frameOf = (slide) => reportPageFrame(slide, slideChartsOf(slide, slide.pag
   assert.equal(overlapsCard(placed).length, 0, "설명선 카드·지시선이 숫자 카드와 겹치지 않는다");
   const slideSurfaceSource = readFileSync(new URL("../../components/v2/report/slide-surface.tsx", import.meta.url), "utf8");
   assert.match(slideSurfaceSource, /reportMapAvoid\(/, "MapLayer가 같은 avoid를 쓴다");
+
+  // N2: 설명선 상자는 지도 틀 가장자리에서 장 가장자리(0.25 in) 안쪽에 선다. 화면·PPT·지도 그림이 같은 값(calloutEdge)을 넘긴다.
+  const edge = 0.25 * unit;
+  const sceneWith = (calloutEdge) => buildMapScene({ model, width: W, height: H, activeLayer: "white", scale: true, north: 30, avoid: reportMapAvoid(frame.geometry, unit), calloutTop: 24, calloutLeftBottom: H - 24, ...(calloutEdge === undefined ? {} : { calloutEdge }), pinnedKeys: placed.labels.map((l) => l.key) });
+  const minLeft = (s) => Math.min(...s.labelPlacements.map((p) => p.box.x0));
+  const maxRight = (s) => Math.max(...s.labelPlacements.map((p) => p.box.x1));
+  assert.ok(minLeft(sceneWith()) < edge - 1, `전제: 옛 가장자리(4u)는 ${minLeft(sceneWith()).toFixed(1)} px로 장 가장자리에 붙는다`);
+  const edged = sceneWith(edge);
+  assert.ok(edged.labelPlacements.length >= 3, "가장자리를 띄워도 설명선이 그려진다");
+  assert.ok(minLeft(edged) >= edge - 1e-6, `왼쪽 상자 x0 ${minLeft(edged).toFixed(1)} ≥ ${edge}`);
+  assert.ok(maxRight(edged) <= W - edge + 1e-6, `오른쪽 상자 x1 ${maxRight(edged).toFixed(1)} ≤ ${W - edge}`);
+  const pptxSource = readFileSync(new URL("../../lib/v2/report/map-pptx.ts", import.meta.url), "utf8");
+  const imageSource = readFileSync(new URL("../../lib/v2/report/map-image.ts", import.meta.url), "utf8");
+  for (const [name, source] of [["MapLayer", slideSurfaceSource], ["map-pptx", pptxSource], ["map-image", imageSource]]) assert.match(source, /calloutEdge/, `${name}가 calloutEdge를 넘긴다`);
 }
 
 // ── 화면: 그래프 SVG·주석 칩·배지

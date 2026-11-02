@@ -625,6 +625,8 @@ export type MapSceneOptions = {
   /** 슬라이드처럼 지도 밖 판이 있을 때 말풍선 칸 위 끝·왼쪽 칸 아래 끝(px). */
   calloutTop?: number;
   calloutLeftBottom?: number;
+  /** 말풍선 칸이 지도 틀 좌우 가장자리에서 떨어진 거리(px). 생략하면 4u. 보고서 새 틀 장은 장 가장자리(0.25 in)를 넘긴다. */
+  calloutEdge?: number;
   path?: Array<[number, number]>;
   north?: number | false;
   /** 저장된 방위표 중심 x(px). 생략하면 오른쪽 기본 위치. */
@@ -1482,6 +1484,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     avoid = [],
     calloutTop: calloutTopOpt,
     calloutLeftBottom,
+    calloutEdge,
     path = [],
     north: northOpt,
     northX,
@@ -1661,7 +1664,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
   // 외부 제목 칩·컨트롤은 occupiedBoxes에만 남겨 두면 콜아웃 배치가 이미
   // 그 위를 지난 뒤라서 의미가 없다. 좌우 카드 칸과 실제로 겹치는 상단
   // 오버레이만 먼저 예약해 카드와 설명선의 시작점을 함께 아래로 내린다.
-  const provisionalFrame = calloutFrame({ W, H, m: calloutMetrics, edge: 4 * u, top: naturalCalloutTop, bottom: H, ...(calloutLeftBottom !== undefined ? { leftBottom: Math.max(naturalCalloutTop, calloutLeftBottom) } : {}), rightInset, perSide: 100, rows: 3, variant: "compact", maxFill: 0.8 });
+  const provisionalFrame = calloutFrame({ W, H, m: calloutMetrics, edge: calloutEdge ?? 4 * u, top: naturalCalloutTop, bottom: H, ...(calloutLeftBottom !== undefined ? { leftBottom: Math.max(naturalCalloutTop, calloutLeftBottom) } : {}), rightInset, perSide: 100, rows: 3, variant: "compact", maxFill: 0.8 });
   const calloutColumns = [provisionalFrame.left, provisionalFrame.right];
   const overlayCalloutTop = calloutAvoid
     .filter((box) => box.y0 < naturalCalloutTop + provisionalFrame.cardH && box.y1 > naturalCalloutTop && calloutColumns.some((column) => box.x0 < column.x1 && column.x0 < box.x1))
@@ -1671,7 +1674,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
   // 축척 판은 occupiedBoxes에만 기록하면 이미 배치된 콜아웃과 겹칠 수 있다.
   // 콜아웃 하단을 축척 판 위로 먼저 제한해 조판 셀에서도 카드가 축척을 가리지 않게 한다.
   const calloutBottom = Math.min(naturalCalloutBottom, scale ? scaleBox.y0 - 6 * u : H);
-  const calloutFrameModel = calloutFrame({ W, H, m: calloutMetrics, edge: 4 * u, top: calloutTop, bottom: Math.max(calloutTop, calloutBottom), ...(calloutLeftBottom !== undefined ? { leftBottom: Math.max(calloutTop, calloutLeftBottom) } : {}), rightInset, perSide: 100, rows: 3, variant: "compact", maxFill: 0.8 });
+  const calloutFrameModel = calloutFrame({ W, H, m: calloutMetrics, edge: calloutEdge ?? 4 * u, top: calloutTop, bottom: Math.max(calloutTop, calloutBottom), ...(calloutLeftBottom !== undefined ? { leftBottom: Math.max(calloutTop, calloutLeftBottom) } : {}), rightInset, perSide: 100, rows: 3, variant: "compact", maxFill: 0.8 });
   const hasTerrainSupplement = (model.lines ?? []).some((line) => ["retaining_wall", "cut_fill", "fence"].includes(line.layer));
   const protectTerrainLabel = (layerName: string) => hasTerrainSupplement && (layerName === "contour" || layerName === "retaining_wall" || layerName === "cut_fill" || layerName === "fence" || layerName === "terrain_section_a" || layerName === "terrain_section_b");
   const placementFor = (placed: Placed, entry: MapSceneLabel, text: MapCalloutTextLayout): MapSceneLabelPlacement => {
