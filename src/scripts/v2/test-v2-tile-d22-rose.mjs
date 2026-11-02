@@ -276,6 +276,15 @@ assert.match(slide, /정온/);
     const legacyCells = compare.cells.map(({ cutCell: _cut, ...cell }) => cell);
     const legacy = restoreReportDoc({ ...EMPTY_REPORT_DOC, pages: imported.map((page) => (page.kind === "compare" ? { ...page, cells: legacyCells } : page)) }, new Set([d22Result.tileId]));
     assert.ok(legacy.pages.find((page) => page.kind === "compare").cells.every((cell) => cell.cutCell === undefined), "컷 정보 없는 옛 compare 장은 지금처럼 읽힌다");
+    // M-5: 컷 정보가 없는 옛 compare 장도 칸이 모두 같은 컷 타일이고 칸 수가 컷 시트의 칸 수와 같으면 순서대로 컷 칸을 채워 그린다(장미 4개).
+    const legacyPlan = planReportDoc(legacy, docViews, docContext);
+    const legacySheet = legacyPlan.find((slide) => slide.kind === "sheet");
+    assert.deepEqual(legacySheet.cells.map((cell) => cell.roseSeason), ["spring", "summer", "autumn", "winter"], "옛 compare 장도 칸 4개에 계절");
+    assert.ok(legacySheet.cells.every((cell) => cell.rose), "옛 compare 장도 칸 4개에 장미");
+    const legacyScreen = renderToStaticMarkup(React.createElement(SlideSurface, { slide: legacySheet, basemap: "none", mode: "export" }));
+    assert.equal((legacyScreen.match(/data-wind-rose-chrome=/g) ?? []).length, 4, "옛 compare 장 화면에 장미 4개");
+    const mixed = { ...legacy, pages: legacy.pages.map((page) => (page.kind === "compare" ? { ...page, cells: [page.cells[0], page.cells[1], page.cells[2], null] } : page)) };
+    assert.ok(planReportDoc(mixed, docViews, docContext).find((slide) => slide.kind === "sheet").cells.every((cell) => !cell?.rose), "칸이 비어 있거나 수가 어긋나면 추론하지 않는다");
     const plan = planReportDoc({ ...EMPTY_REPORT_DOC, pages: imported }, docViews, docContext);
     const sheet = plan.find((slide) => slide.kind === "sheet");
     assert.deepEqual(sheet.cells.map((cell) => cell.roseSeason), ["spring", "summer", "autumn", "winter"], "칸 4개에 계절");

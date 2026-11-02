@@ -699,13 +699,20 @@ export function planReportDoc(doc: ReportDoc, views: ReadonlyMap<string, TileVie
     }
     if (page.kind === "compare") {
       const style = pageStyleFor(doc, page);
+      // 컷 정보가 없는 옛 조판 장(M-5): 칸이 모두 같은 컷 타일이고 칸 수가 그 컷 계획 시트의 칸 수와 같으면 순서대로 컷 칸으로 읽는다.
+      const first = page.cells[0];
+      const firstView = first ? views.get(first.tileId) : undefined;
+      const inferredSheet = first && firstView && CUT_CODES.has(firstView.code) && page.cells.length > 1 && page.cells.every((cell) => cell && !cell.cutCell && cell.tileId === first.tileId)
+        ? tileSlides(first.tileId, firstView, first.settings, viewContext).filter((candidate) => candidate.kind === "sheet").findIndex((candidate) => candidate.kind === "sheet" && candidate.cells.length === page.cells.length)
+        : -1;
       const cells = page.cells.map((cell, index) => {
         if (!cell) return null;
         const view = views.get(cell.tileId);
         if (!view) return null;
         // 컷 조판에서 온 칸은 그 타일 컷 계획(`tileSlides`)의 같은 칸으로 view·그림(장미)·계절·래스터를 다시 만든다.
-        const cutSlide = cell.cutCell ? tileSlides(cell.tileId, view, cell.settings, viewContext).filter((candidate) => candidate.kind === "sheet")[cell.cutCell.sheet] : undefined;
-        const cut = cutSlide?.kind === "sheet" ? cutSlide.cells[cell.cutCell!.index] : null;
+        const cutCell = cell.cutCell ?? (inferredSheet >= 0 ? { sheet: inferredSheet, index } : undefined);
+        const cutSlide = cutCell ? tileSlides(cell.tileId, view, cell.settings, viewContext).filter((candidate) => candidate.kind === "sheet")[cutCell.sheet] : undefined;
+        const cut = cutSlide?.kind === "sheet" ? cutSlide.cells[cutCell!.index] : null;
         return {
           ...(cut ? { rose: cut.rose, roseSeason: cut.roseSeason, mass: cut.mass } : {}),
           view: cut?.view ?? view,
