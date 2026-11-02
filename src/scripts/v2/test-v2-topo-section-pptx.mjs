@@ -380,6 +380,16 @@ assert.match(xml, /prstDash val="dash"/);
   const rect = xmlRect(plate);
   for (const key of ["x", "y", "w", "h"]) near(rect[key], column.chart1[key], `PPT 단면 ${key}`);
   assert.equal(/name="GRP\|chart-(?:composition|distance)-/.test(slideXml), false, "PPT에도 구성비·거리 그래프 도형이 없다");
+  // 키 큰 카드는 표를 그래프 아래에 쌓고, 칸들은 겹치지 않으며 카드 안이다
+  const stacked = terrainSectionBands(column.chart1);
+  assert.equal(stacked.stacked, true, "열 카드는 키가 커서 표를 아래에 쌓는다");
+  const names = ["header", "plot", "axis", "table", "footer"];
+  for (const name of names) {
+    const b = stacked[name];
+    assert.ok(b.x >= column.chart1.x - 1e-9 && b.y >= column.chart1.y - 1e-9 && b.x + b.w <= column.chart1.x + column.chart1.w + 1e-9 && b.y + b.h <= column.chart1.y + column.chart1.h + 1e-9, `${name}이 카드 안`);
+  }
+  for (let i = 0; i < names.length; i += 1) for (let j = i + 1; j < names.length; j += 1) assert.equal(intersects(stacked[names[i]], stacked[names[j]]), false, `${names[i]}↔${names[j]} 겹침`);
+  assert.ok(stacked.plot.h >= 1.2 && stacked.plot.w > stacked.plot.h * 0.8, "그래프가 세로로 늘어나지 않는다");
 }
 
 console.log(`✓ v2 topo section PPT XML (${outputPath})`);

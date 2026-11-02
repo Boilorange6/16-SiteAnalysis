@@ -1507,8 +1507,10 @@ function TerrainSectionPreview({ slide, unit, rect, card = false }: { slide: Ext
   const preview = rect;
   const bands = terrainSectionBands({ x: 0, y: 0, w: preview.w, h: preview.h });
   const terrainGridStyle: CSSProperties = {
-    gridTemplateColumns: `${bands.plot.w * unit}px ${bands.table.w * unit}px`,
-    gridTemplateRows: `${bands.header.h * unit}px ${bands.table.h * unit}px ${bands.footer.h * unit}px`,
+    gridTemplateColumns: bands.stacked ? `${bands.plot.w * unit}px` : `${bands.plot.w * unit}px ${bands.table.w * unit}px`,
+    gridTemplateRows: bands.stacked
+      ? `${bands.header.h * unit}px ${(bands.plot.h + bands.gapY + bands.axis.h) * unit}px ${bands.table.h * unit}px ${bands.footer.h * unit}px`
+      : `${bands.header.h * unit}px ${bands.table.h * unit}px ${bands.footer.h * unit}px`,
     columnGap: `${bands.gapX * unit}px`,
     rowGap: `${bands.gapY * unit}px`,
     padding: `${bands.paddingTop * unit}px ${bands.paddingX * unit}px ${bands.paddingBottom * unit}px`,
@@ -1554,7 +1556,7 @@ function TerrainSectionPreview({ slide, unit, rect, card = false }: { slide: Ext
           </div>
         </div>
       </div>
-      <table className={styles.terrainPreviewTable} aria-label="단면 시설 표">
+      <table className={styles.terrainPreviewTable} style={bands.stacked ? { gridColumn: 1, gridRow: 3, minWidth: 0 } : undefined} aria-label="단면 시설 표">
         <caption className={styles.srOnly}>단면 시설 표</caption>
         <tbody>
           {visibleCrossings.map((crossing, index) => <tr key={`${crossing.d}-${crossing.kind}-${index}`}><td>{TERRAIN_CROSSING_LABELS[crossing.kind]}</td><td className={styles.terrainPosition}>{terrainSectionPosition(section, crossing.d)}</td><td>{crossing.heightM === null ? "높이 미확인" : `${crossing.heightM.toFixed(1)}m`}</td></tr>)}

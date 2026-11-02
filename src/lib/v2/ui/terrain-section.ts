@@ -31,7 +31,14 @@ export type TerrainSectionBands = {
   paddingBottom: number;
   gapX: number;
   gapY: number;
+  /** 키 큰 카드(②의 그래프 카드 자리)는 단차 표를 그래프 아래로 내려 그래프가 세로로 늘어나지 않게 한다. */
+  stacked: boolean;
 };
+
+/** 이 높이(inch) 이상이면 표를 그래프 아래에 쌓는다. 옛 경로의 단면 판(2.45 in)은 옆에 둔다. */
+const STACKED_MIN_H = 3.4;
+/** 쌓을 때 표 칸 높이: 머리 0.2 + 행 4 × 0.2 + 주의 문구 0.16 + 여유 */
+const STACKED_TABLE_H = 1.3;
 
 /** preview/PPT가 공유하는 단면 도판의 비겹침 band 계약. */
 export function terrainSectionBands(rect: TerrainSectionRect): TerrainSectionBands {
@@ -49,10 +56,16 @@ export function terrainSectionBands(rect: TerrainSectionRect): TerrainSectionBan
   const header = { x: rect.x + paddingX, y: rect.y + paddingTop, w: innerW, h: headerH };
   const bodyY = header.y + header.h + gapY;
   const footer = { x: rect.x + paddingX, y: rect.y + rect.h - paddingBottom - footerH, w: innerW, h: footerH };
+  if (rect.h >= STACKED_MIN_H) {
+    const table = { x: header.x, y: footer.y - gapY - STACKED_TABLE_H, w: innerW, h: STACKED_TABLE_H };
+    const axis = { x: header.x, y: table.y - gapY - axisH, w: innerW, h: axisH };
+    const plot = { x: header.x, y: bodyY, w: innerW, h: Math.max(0.35, axis.y - bodyY - gapY) };
+    return { header, plot, axis, table, footer, paddingX, paddingTop, paddingBottom, gapX, gapY, stacked: true };
+  }
   const axis = { x: header.x, y: footer.y - gapY - axisH, w: plotW, h: axisH };
   const plot = { x: header.x, y: bodyY, w: plotW, h: Math.max(0.35, axis.y - bodyY - gapY) };
   const table = { x: header.x + plotW + gapX, y: bodyY, w: tableW, h: Math.max(0.35, axis.y + axis.h - bodyY) };
-  return { header, plot, axis, table, footer, paddingX, paddingTop, paddingBottom, gapX, gapY };
+  return { header, plot, axis, table, footer, paddingX, paddingTop, paddingBottom, gapX, gapY, stacked: false };
 }
 
 /** 단면 도판이 요약 열을 차지할 때 낮은 우선순위 메모를 먼저 줄인다. */
