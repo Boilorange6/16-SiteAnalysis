@@ -304,7 +304,7 @@ export function reportPageFrame(slide: TileSlide, charts: AnalysisCharts | null,
   const baseNotes = cardDeleted ? [] : sameNotes(slide);
   const summaryPt = fontSizeForStyle(slide.style, "summary");
   const titlePt = fontSizeForStyle(slide.style, "title") * (15.75 / DEFAULT_REPORT_FONT_SIZES.title);
-  const callout = slide.callout && format === "wide" ? slide.callout : null;
+  const callout = slide.callout ?? null; // 새 틀 장은 판형과 상관없이 설명선 개요를 그린다(Ruling 39)
   const titleKind = [view.kindLabel, callout ? calloutPageTitleTail(callout.model.complexes, callout.page, callout.model.unit, callout.shownKeys, callout.numberStart ?? 1) : null].filter(Boolean).join(" · ");
   const titleText = slide.page?.titleOverride ?? view.title;
   const titleSize = titleChipSize(titleText, titleKind, titlePt);

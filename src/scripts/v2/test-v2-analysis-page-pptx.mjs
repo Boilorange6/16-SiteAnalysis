@@ -331,22 +331,27 @@ assert.ok(charts.blocks.some((b) => textsOf(b).includes("1~4층")) && charts.blo
     assert.ok(legend, `${code}: 설명선 범례`);
     assert.ok(legend.x >= map.x - 0.01 && legend.y + legend.h <= map.y + map.h + 0.01 && legend.x + legend.w <= map.x + map.w + 0.01, `${code}: 범례는 지도 틀 안`);
     if (code === "A05") assert.ok(deck.blocks.some((b) => textsOf(b).join("") === f.fit.filterLines.join("")), "A05 필터 줄이 카드 안에 있다");
-    // A3·A4: 화면은 설명선을 wide에서만 그리고 일반 지도 범례를 그린다. PPT도 같은 판정(frame.calloutOverview)으로 범례 그룹 1개·번호 점 0개.
+    // A3·A4(Ruling 39): 새 틀 장은 판형과 상관없이 설명선 개요를 그린다. PPT 번호 점 = 화면 번호 점, 설명선 범례 1개, 반경 원 0.72.
     if (code === "A05") {
       for (const format of ["a3", "a4"]) {
         const sized = planReportDoc({ ...EMPTY_REPORT_DOC, format, pages: pages.map((p) => ({ ...p })) }, cViews, cCtx).find((s) => s.kind === "tile" && s.callout?.page === 0);
         assert.ok(sized, `${format}: 개요 슬라이드`);
         const sf = pageFrameFor(sized);
-        assert.equal(sf.calloutOverview, null, `${format}: 설명선 개요 틀 없음(화면은 설명선을 wide에서만 그린다)`);
-        assert.ok(sf.legend, `${format}: 일반 지도 범례 판`);
+        assert.ok(sf.calloutOverview, `${format}: 설명선 개요 틀`);
+        assert.equal(sf.legend, null, `${format}: 일반 지도 범례 판 없음(설명선 범례)`);
         const sd = await deckOf(sized);
         assert.equal(sd.groups.filter((g) => g.name === "범례").length, 1, `${format}: 범례 그룹 1개`);
-        assert.equal(sd.blocks.filter((b) => isDot(nameOf(b))).length, 0, `${format}: 번호 점 없음`);
+        const sizedOps = [];
+        const sizedRecorder = { addShape: (type, o) => { sizedOps.push({ type, o }); return sizedRecorder; }, addText: () => sizedRecorder };
+        a05ReportModule.report.render({ slide: sizedRecorder, planned: sized, part: "overview", overviewFrame: sf.calloutOverview });
+        const sizedScreen = sizedOps.filter((op) => isDot(op.o.objectName)).map((op) => key(op.o)).sort();
+        const sizedPpt = sd.blocks.filter((b) => isDot(nameOf(b))).map((b) => key(rectOf(b))).sort();
+        assert.ok(sizedScreen.length > 0, `${format}: 번호 점이 있다(전제)`);
+        assert.deepEqual(sizedPpt, sizedScreen, `${format}: PPT 번호 점 = 화면 번호 점`);
         const lg = sd.groups.find((g) => g.name === "범례");
         for (const k of ["x", "y", "w", "h"]) near(lg[k], sf.geometry.legend[k], 0.02, `${format}: 범례 판 ${k} = 기하 legend`);
-        // 지도 채움: 화면은 설명선을 그리는 장(wide)만 0.72, 그 밖은 0.8이다. 반경 원 지름 = 채움 × 틀 짧은 변.
         const ring = sd.groups.find((g) => g.name === "반경");
-        near(ring.w, 0.8 * Math.min(sf.geometry.map.w, sf.geometry.map.h), 0.15, `${format}: 반경 원 지름 = 0.8 × 틀 짧은 변`);
+        near(ring.w, 0.72 * Math.min(sf.geometry.map.w, sf.geometry.map.h), 0.15, `${format}: 반경 원 지름 = 0.72 × 틀 짧은 변`);
       }
     }
     // 상세 장은 옛 경로 그대로(쪽 전체)

@@ -2463,7 +2463,7 @@ function TileSurface({ slide, frame: pageFrame = null, unit, basemap, panels, in
   const width = Math.max(1, Math.round((mapFrame?.w ?? geometry.w) * unit));
   const height = Math.max(1, Math.round((mapFrame?.h ?? geometry.h) * unit));
   // 설명선(A05·A06) 점·카드는 16:9 전체 지도 장 기준으로만 그린다(PPT 렌더러와 같은 전제)
-  const callout = slide.callout && slide.body.kind === "result" && format === "wide" && (!mapFrame || frameMap) ? slide : undefined;
+  const callout = slide.callout && slide.body.kind === "result" && (frameMap || (format === "wide" && !mapFrame)) ? slide : undefined;
   // 설명선 장의 지도 프레임은 PPT(map-pptx)와 같게: 개요는 SLIDE_OVERVIEW_FILL, 설명표 장은 두 칸 사이 프레임
   const calloutDetailFrame = callout && callout.callout!.page > 0 ? slideCalloutFrame(4) : null;
   const mapFill = terrainLayout?.mapFill ?? calloutDetailFrame?.fill ?? (callout ? SLIDE_OVERVIEW_FILL : 0.8);

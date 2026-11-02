@@ -758,6 +758,16 @@ for (const format of ["wide", "a3", "a4"]) {
       assert.match(render(detail), /data-callout-overlay="[a-z]+"/);
       assert.match(render(detail), /<svg viewBox="0 0 13\.333 7\.5"[^>]*data-callout-overlay/, `${code}: 상세 장 viewBox는 쪽 전체`);
     }
+    // Ruling 39: A3·A4 개요도 화면에 설명선 그림 층(번호 점·범례)이 있고 viewBox = 그 판형의 지도 틀이다.
+    for (const format of ["a3", "a4"]) {
+      const sized = planReportDoc({ ...EMPTY_REPORT_DOC, format, pages: pages.map((p) => ({ ...p })) }, cViews, cCtx).find((s) => s.kind === "tile" && s.callout?.page === 0);
+      const sizedFrame = frameOf(sized);
+      assert.ok(sizedFrame.calloutOverview, `${code} ${format}: 설명선 개요 틀`);
+      const sm = render(sized);
+      const sizedOverlays = [...sm.matchAll(/<svg viewBox="([^"]+)"[^>]*data-callout-overlay="([a-z]+)"/g)];
+      assert.ok(sizedOverlays.length >= 1, `${code} ${format}: 화면에 설명선 그림 층이 있다`);
+      for (const [, box] of sizedOverlays) assert.equal(box, `0 0 ${sizedFrame.geometry.map.w} ${sizedFrame.geometry.map.h}`, `${code} ${format}: 그림 층 viewBox = 지도 틀`);
+    }
   }
 }
 
