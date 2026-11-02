@@ -1306,8 +1306,8 @@ function TitleChip({ frame, color, rect, unit, interaction }: { frame: ReportPag
   return (
     <div className={styles.kfTitle} data-part="title-chip" style={{ ...rectStyle(rect, unit), padding: `0 ${TITLE_BOX.padX * unit}px`, gap: TITLE_BOX.gap * unit }} {...interaction}>
       <span className={styles.titleDot} style={{ background: color, width: TITLE_BOX.dot * unit, height: TITLE_BOX.dot * unit }} aria-hidden="true" />
-      <h3 className={styles.slideTitle} style={fontStyle(pt, unit, { fontWeight: 900, whiteSpace: "nowrap" })}>{text}</h3>
-      {kind && <span className={styles.kfKind} style={fontStyle(kindPt, unit, { padding: `${TITLE_BOX.kindPadY * unit}px ${TITLE_BOX.kindPadX * unit}px`, borderRadius: TITLE_BOX.kindRadius * unit })}>{kind}</span>}
+      <h3 className={styles.slideTitle} title={frame.title.titleClipped ? frame.title.fullText : undefined} style={fontStyle(pt, unit, { fontWeight: 900, whiteSpace: "nowrap" })}>{text}</h3>
+      {kind && <span className={styles.kfKind} title={frame.title.kindClipped ? frame.title.fullKind : undefined} style={fontStyle(kindPt, unit, { padding: `${TITLE_BOX.kindPadY * unit}px ${TITLE_BOX.kindPadX * unit}px`, borderRadius: TITLE_BOX.kindRadius * unit })}>{kind}</span>}
     </div>
   );
 }

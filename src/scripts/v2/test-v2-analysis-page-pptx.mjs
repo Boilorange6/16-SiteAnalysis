@@ -579,4 +579,21 @@ assert.ok(charts.blocks.some((b) => textsOf(b).includes("1~4층")) && charts.blo
   assert.match(by("t-right"), /wrap="none"/, "줄바꿈 없음");
 }
 
+// M-7: 긴 제목은 한 줄로 잘려 제목 칩 안에 있고, PPT는 화면과 같은 자른 글을 그린다(종류 칩도 칩 밖으로 나가지 않는다).
+{
+  const long = "서울특별시 강남구 대치동 503번지 일대 매매 실거래가 분포와 단지별 평균·중앙값 비교 분석 결과";
+  const slide = base.planOf({ ...base.tilePage, layout: "map-key", titleOverride: long });
+  const f = pageFrameFor(slide);
+  assert.ok(f.title.titleClipped && f.title.text.endsWith("…"), "전제: 제목이 잘린다");
+  const deck = await deckOf(slide);
+  const part = (name) => deck.blocks.find((b) => nameOf(b) === `GRP|panel-title|제목|${name}`);
+  const plate = rectOf(part("plate"));
+  const title = part("text");
+  assert.deepEqual(textsOf(title), [f.title.text], "PPT 제목 글 = 화면이 그리는 자른 글");
+  const kind = rectOf(part("kind-bg"));
+  const text = rectOf(title);
+  assert.ok(text.x + text.w <= plate.x + plate.w + 0.01 && kind.x + kind.w <= plate.x + plate.w + 0.01, "제목 글·종류 칩이 제목 칩 안");
+  assert.ok(text.x + text.w <= kind.x + 0.01, "제목 글이 종류 칩을 덮지 않는다");
+}
+
 console.log("✓ v2 analysis page pptx");

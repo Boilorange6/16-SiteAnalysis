@@ -188,6 +188,28 @@ const frameOf = (slide) => reportPageFrame(slide, slideChartsOf(slide, slide.pag
   assert.ok(m.includes(">제3종일반주거<") && m.includes(">24.9%<"), "항목 이름(지역 줄임)과 몫");
 }
 
+// ── M-7: 긴 제목은 한 줄로 잘라(…) 제목 칩 안에 둔다. 화면은 title에 전문을 달고 화면·PPT가 자른 글을 그대로 그린다. 종류 칩은 칩 밖으로 나가지 않는다.
+{
+  const { textIn } = await import("../../lib/v2/report/pptx-kit.ts");
+  const { TITLE_BOX } = await import("../../lib/v2/report/report-page-frame.ts");
+  const long = "서울특별시 강남구 대치동 503번지 일대 매매 실거래가 분포와 단지별 평균·중앙값 비교 분석 결과";
+  const slide = planOf({ ...tilePage, layout: "map-key", titleOverride: long });
+  const f = frameOf(slide);
+  assert.ok(f.title.titleClipped && f.title.text.endsWith("…") && f.title.text.length < long.length, "긴 제목은 …로 잘린다");
+  assert.equal(f.title.fullText, long);
+  assert.ok(f.geometry.title.w <= 6.5 + 1e-6, `제목 칩 폭 ${f.geometry.title.w} ≤ 6.5`);
+  const kindW = textIn(f.title.kind, f.title.kindPt) + 2 * TITLE_BOX.kindPadX;
+  const textX = TITLE_BOX.padX + TITLE_BOX.dot + TITLE_BOX.gap;
+  const titleW = textIn(f.title.text, f.title.pt) * 1.04;
+  assert.ok(textX + titleW + TITLE_BOX.gap + kindW <= f.geometry.title.w - TITLE_BOX.padX + 1e-6, "제목 글과 종류 칩이 제목 칩 안");
+  const m = render(slide);
+  const h3 = /<h3[^>]*>[^<]*<\/h3>/.exec(m.slice(m.indexOf('data-part="title-chip"')))?.[0];
+  assert.ok(h3 && h3.includes(f.title.text) && h3.includes(`title="${long}"`), "화면은 자른 글을 그리고 title에 전문을 단다");
+  const shortFrame = frameOf(planOf({ ...tilePage, layout: "map-key" }));
+  assert.equal(shortFrame.title.titleClipped, false, "짧은 제목은 그대로");
+  assert.doesNotMatch(render(planOf({ ...tilePage, layout: "map-key" })).slice(0, 1e9), /<h3[^>]*title=/, "안 잘린 제목에는 title이 없다");
+}
+
 // ── 설명선(장면 라벨) 카드·지시선이 ① 숫자 카드를 가리지 않는다: 카드는 지도 avoid에 들어간다(실제 지도 크기 1280 px)
 {
   const { buildMapScene } = await import("../../lib/v2/ui/map-scene.ts");

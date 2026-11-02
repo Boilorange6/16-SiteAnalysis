@@ -59,7 +59,8 @@ export type ReportPageFrame = {
    * 카드가 없는 ②는 사용자가 고친 요약도 그리도록 따로 센 값이고, 해석이 없거나 ① 카드 없음이면 null이다.
    */
   sentence: { lines: string[]; pt: number; height: number } | null;
-  title: { text: string; kind: string; pt: number; kindPt: number };
+  /** 제목 칩에 그리는 글(한 줄, 넘치면 …)과 전문. 화면은 잘렸을 때 전문을 title로 단다. */
+  title: { text: string; fullText: string; titleClipped: boolean; kind: string; fullKind: string; kindClipped: boolean; pt: number; kindPt: number };
   /** 지도 범례 판(설명선 개요가 아닐 때) */
   legend: LegendFit | null;
   /** 설명선 개요(A05·A06)의 범례 판 크기와 줄바꿈 폭 */
@@ -107,10 +108,24 @@ export const FOOTER_BOX = { padX: 0.25, gap: 0.2, pagePt: 8.25 } as const;
 
 const titleKindPt = (titlePt: number) => titlePt * (9 / 15.75);
 
-/** 제목 칩 폭: 여백 + 색 점 + 제목 + 종류 칩. 글자 폭 어림은 pptx-kit의 textIn이다. */
-function titleChipSize(text: string, kind: string, titlePt: number): { w: number; h: number } {
-  const kindW = kind ? textIn(kind, titleKindPt(titlePt)) + 2 * TITLE_BOX.kindPadX + TITLE_BOX.gap : 0;
-  return { w: Math.min(6.5, 2 * TITLE_BOX.padX + TITLE_BOX.dot + TITLE_BOX.gap + textIn(text, titlePt) * 1.04 + kindW), h: TITLE_CHIP_H };
+/** 제목 칩 최대 폭과, 종류 칩이 길어도 제목 글에 남기는 최소 폭 */
+const TITLE_CHIP_MAX_W = 6.5;
+const TITLE_TEXT_MIN_W = 1;
+
+/**
+ * 제목 칩 크기와 그리는 글: 여백 + 색 점 + 제목 + 종류 칩. 글자 폭 어림은 pptx-kit의 textIn이다.
+ * 제목은 한 줄로 최대 폭 안에 자르고(…) 종류 칩이 너무 길면 그것도 자른다. 화면과 PPT는 자른 글을 그대로 그린다.
+ */
+function titleChipFit(text: string, kind: string, titlePt: number): { w: number; h: number; text: string; kind: string; titleClipped: boolean; kindClipped: boolean } {
+  const kindPt = titleKindPt(titlePt);
+  const chrome = 2 * TITLE_BOX.padX + TITLE_BOX.dot + TITLE_BOX.gap;
+  const kindExtra = 2 * TITLE_BOX.kindPadX + TITLE_BOX.gap;
+  let kindText = kind;
+  if (kind && chrome + textIn(kind, kindPt) + kindExtra + TITLE_TEXT_MIN_W > TITLE_CHIP_MAX_W) kindText = oneLine(kind, kindPt, TITLE_CHIP_MAX_W - chrome - kindExtra - TITLE_TEXT_MIN_W);
+  const kindW = kindText ? textIn(kindText, kindPt) + kindExtra : 0;
+  const room = (TITLE_CHIP_MAX_W - chrome - kindW) / 1.04;
+  const titleText = oneLine(text, titlePt, room);
+  return { w: Math.min(TITLE_CHIP_MAX_W, chrome + textIn(titleText, titlePt) * 1.04 + kindW), h: TITLE_CHIP_H, text: titleText, kind: kindText, titleClipped: titleText !== text, kindClipped: kindText !== kind };
 }
 
 /** 범례 판: 내용 크기. 6개 이상이면 2열, 항목은 왼쪽에서 오른쪽으로 채운다. */
@@ -307,7 +322,8 @@ export function reportPageFrame(slide: TileSlide, charts: AnalysisCharts | null,
   const callout = slide.callout ?? null; // 새 틀 장은 판형과 상관없이 설명선 개요를 그린다(Ruling 39)
   const titleKind = [view.kindLabel, callout ? calloutPageTitleTail(callout.model.complexes, callout.page, callout.model.unit, callout.shownKeys, callout.numberStart ?? 1) : null].filter(Boolean).join(" · ");
   const titleText = slide.page?.titleOverride ?? view.title;
-  const titleSize = titleChipSize(titleText, titleKind, titlePt);
+  const titleFit = titleChipFit(titleText, titleKind, titlePt);
+  const titleSize = { w: titleFit.w, h: titleFit.h };
   // 설명선 개요(A05·A06)의 범례는 지도 범례가 아니라 설명선 범례(준공 연대·크기)다. 같은 범례 자리를 쓰고 그 판은 설명선 그림이 그린다.
   const legendScale = fontSizeForStyle(slide.style, "legend") / DEFAULT_REPORT_FONT_SIZES.legend;
   const legendOptions = slide.page?.kind === "tile" ? slide.page.frame.legend : undefined;
@@ -368,7 +384,7 @@ export function reportPageFrame(slide: TileSlide, charts: AnalysisCharts | null,
   const footerWidth = geometry.footer.w - 2 * FOOTER_BOX.padX - geometry.pageNo.w - FOOTER_BOX.gap;
   return {
     layout, geometry, fit, figure: cardDeleted ? null : figure, summaryPt, sentence: sentenceInfo,
-    title: { text: titleText, kind: titleKind, pt: titlePt, kindPt: titleKindPt(titlePt) },
+    title: { text: titleFit.text, fullText: titleText, titleClipped: titleFit.titleClipped, kind: titleFit.kind, fullKind: titleKind, kindClipped: titleFit.kindClipped, pt: titlePt, kindPt: titleKindPt(titlePt) },
     legend, calloutLegend,
     calloutOverview: callout && callout.page === 0 ? { map: geometry.map, legend: calloutLegend ? geometry.legend : null, legendMaxW: calloutLegend?.maxW ?? 0 } : null,
     notes,
