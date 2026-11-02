@@ -6,7 +6,7 @@
 import PptxGenJS from "pptxgenjs";
 import { groupTaggedShapes } from "../../pptx-shape-group";
 import { calloutPageTitleTail } from "../ui/callout-layout";
-import { legendItemsOf, modelWithHiddenLayers, STRIP_COLORS } from "../ui/map-layers";
+import { legendItemsOf, STRIP_COLORS } from "../ui/map-layers";
 import { SLIDE, SLIDE_LEGEND, layoutRects, slideGeometry, slideLayout, slideLegend, slideLegendGeometry, slidePanelRects, slidePanelScale, slideSize, terrainSectionLayout, type Rect, type SlideFormat, type SlideLegendOptions } from "../ui/overlay-layout";
 import type { Badge, TileView } from "../ui/tile-view";
 import type { RoseModel } from "../ui/wind-rose";
@@ -22,8 +22,9 @@ import type { BaseThemeRef } from "../ui/map-theme";
 import { badgeTextColor } from "../ui/map-labels";
 import type { PageStyle } from "../ui/board-state";
 import { drawTerrainSectionPptx } from "./terrain-section-pptx";
-import { analysisCharts } from "./analysis-charts";
 import { drawAnalysisColumn } from "./analysis-column-pptx";
+import { drawKeyFigureCard } from "./key-figure-pptx";
+import { FOOTER_BOX, TITLE_BOX, pageFrameFor, type LegendFit, type ReportPageFrame } from "./report-page-frame";
 import { pageElementDeleted, TEXT_BOX_DEFAULTS, type MapFrameState, type ReportLayout } from "./report-doc";
 
 /** 지도 이미지(PNG/JPEG data URL) — 키는 report-plan의 mapKeyOf */
@@ -52,13 +53,15 @@ function titleTextFit(title: string, kind: string, box: { w: number; h: number }
   return { titlePt, metaPt };
 }
 
-function background(s: Slide, image: string | undefined, tint?: string, format: SlideFormat = "wide") {
+function background(s: Slide, image: string | undefined, tint?: string, format: SlideFormat = "wide", frame?: Rect) {
   const size = slideSize(format);
   const edge = slideGeometry(format).edge;
-  if (image) s.addImage({ data: image, x: 0, y: 0, w: size.w, h: size.h });
+  // 새 장 배치는 그림이 쪽 전체가 아니라 지도 틀(`frame`) 안에만 놓인다.
+  const box = frame ?? { x: 0, y: 0, w: size.w, h: size.h };
+  if (image) s.addImage({ data: image, x: box.x, y: box.y, w: box.w, h: box.h });
   else {
-    s.addShape("rect", { x: 0, y: 0, w: size.w, h: size.h, fill: { color: tint ?? "F2F2EF" }, line: { color: tint ?? "F2F2EF", width: 0 } });
-    if (!tint) s.addText("지도 이미지를 만들지 못했습니다", { x: edge, y: size.h / 2 - 0.2, w: 5, h: 0.4, fontFace: FONT, fontSize: 11, color: MUTED, margin: 0 });
+    s.addShape("rect", { x: box.x, y: box.y, w: box.w, h: box.h, fill: { color: tint ?? "F2F2EF" }, line: { color: tint ?? "F2F2EF", width: 0 } });
+    if (!tint) s.addText("지도 이미지를 만들지 못했습니다", { x: box.x + edge, y: box.y + box.h / 2 - 0.2, w: Math.min(5, box.w - 2 * edge), h: 0.4, fontFace: FONT, fontSize: 11, color: MUTED, margin: 0 });
   }
 }
 
@@ -182,6 +185,35 @@ function titlePlate(s: Slide, color: string, title: string, kind: string, maxW: 
     ],
     { x: textX, y: r.y, w: textBox.w, h: r.h, valign: "middle", fontFace: FONT, margin: 0, objectName: panelTag("title", "제목", "text") },
   );
+}
+
+/** 새 장 배치의 제목 칩(spec §3-1): 둥근 흰 칩 + 타일 색 점 + 제목 + 종류 칩. 칩 크기·글자는 `reportPageFrame`이 정한 값이다(화면 TitleChip과 같다). */
+function titleChip(s: Slide, frame: ReportPageFrame, color: string) {
+  const r = frame.geometry.title;
+  const { text, kind, pt, kindPt } = frame.title;
+  const tag = (part: string) => panelTag("title", "제목", part);
+  s.addShape("roundRect", { x: r.x, y: r.y, w: r.w, h: r.h, rectRadius: 0.125, fill: { color: "FFFFFF", transparency: 6 }, line: { color: INK, width: 0.75, transparency: 88 }, shadow: { type: "outer", color: "15171C", opacity: 0.08, blur: 6, offset: 1.5, angle: 90 }, objectName: tag("plate") });
+  s.addShape("ellipse", { x: r.x + TITLE_BOX.padX, y: r.y + (r.h - TITLE_BOX.dot) / 2, w: TITLE_BOX.dot, h: TITLE_BOX.dot, fill: { color: hex(color) }, line: { color: hex(color), width: 0 }, objectName: tag("mark") });
+  const textX = r.x + TITLE_BOX.padX + TITLE_BOX.dot + TITLE_BOX.gap;
+  const titleW = textIn(text, pt) * 1.04;
+  s.addText(text, { x: textX, y: r.y, w: titleW, h: r.h, valign: "middle", fontFace: FONT, fontSize: pt, bold: true, color: INK, margin: 0, wrap: false, objectName: tag("text") });
+  if (!kind) return;
+  const kindW = textIn(kind, kindPt) + 2 * TITLE_BOX.kindPadX;
+  const kindH = (kindPt * 1.2) / 72 + 2 * TITLE_BOX.kindPadY;
+  const kind0 = { x: textX + titleW + TITLE_BOX.gap, y: r.y + (r.h - kindH) / 2, w: kindW, h: kindH };
+  s.addShape("roundRect", { ...kind0, rectRadius: TITLE_BOX.kindRadius, fill: { color: "EFEFEB" }, line: { color: "EFEFEB", width: 0 }, objectName: tag("kind-bg") });
+  s.addText(kind, { ...kind0, align: "center", valign: "middle", fontFace: FONT, fontSize: kindPt, bold: true, color: MUTED, margin: 0, wrap: false, objectName: tag("kind") });
+}
+
+/** 새 장 배치의 각주 띠(spec §3-1): 바탕 `#f2f2ef`, 글은 `footnoteText`(화면 SlideFooter와 같은 문자열·pt), 쪽 번호는 오른쪽. 띠 자리는 기하(footer)다. */
+function footerBand(s: Slide, p: PlannedSlide, frame: ReportPageFrame) {
+  const { footer, pageNo } = frame.geometry;
+  s.addShape("rect", { x: footer.x, y: footer.y, w: footer.w, h: footer.h, fill: { color: "F2F2EF" }, line: { color: "F2F2EF", width: 0 } });
+  s.addShape("line", { x: footer.x, y: footer.y, w: footer.w, h: 0, line: { color: INK, width: 0.75, transparency: 92 } });
+  if (!pageElementDeleted(p.page, "source")) {
+    s.addText(frame.footer.text, { x: footer.x + FOOTER_BOX.padX, y: footer.y, w: footer.w - 2 * FOOTER_BOX.padX - pageNo.w - FOOTER_BOX.gap, h: footer.h, valign: "middle", fontFace: FONT, fontSize: frame.footer.pt, color: "80858E", margin: 0, wrap: false });
+  }
+  s.addText(`${p.no} / ${p.total}`, { ...pageNo, align: "right", valign: "middle", fontFace: FONT, fontSize: FOOTER_BOX.pagePt, bold: true, color: MUTED, margin: 0, wrap: false });
 }
 
 /** 배지 줄바꿈 배치. draw=false면 높이만 잰다 */
@@ -312,28 +344,31 @@ function rowItems(s: Slide, rows: TileView["rows"], box: InfoBox, scale = 1): It
 }
 
 /** 왼쪽 아래 범례 판 (지도 레이어 색) */
-function legendPlate(s: Slide, p: PlannedSlide & { kind: "tile" }, hasSummary = true, format: SlideFormat = "wide", style: PageStyle = p.style ?? {}) {
+function legendPlate(s: Slide, p: PlannedSlide & { kind: "tile" }, hasSummary = true, format: SlideFormat = "wide", style: PageStyle = p.style ?? {}, frame?: { fit: LegendFit; rect: Rect }) {
   const model = p.map;
   if (!model) return;
-  const { items, notes, rect: r } = slideLegend(model, !p.muted, style, hasSummary, format, frameLegendOptions(frameOf(p)));
+  // 새 장 배치(`frame`): 판 자리는 기하의 legend, 칸·줄·글은 `legendFit`이 정한 값이고 여기서는 그 자리에 그리기만 한다(화면 LegendPanel fit과 같다).
+  const fit = frame?.fit;
+  const { items, notes, rect: r } = frame ? { items: frame.fit.items, notes: frame.fit.notes, rect: frame.rect } : slideLegend(model, !p.muted, style, hasSummary, format, frameLegendOptions(frameOf(p)));
   if (!r) return;
-  const scale = slidePanelScale(style.legendScale);
+  const scale = fit ? fit.scale : slidePanelScale(style.legendScale);
   const legendPt = fontSizeForStyle(style, "legend");
   const focus = style.legendFocus ? legendItemsOf(model).find((item) => item.key === style.legendFocus)?.label ?? style.legendFocus : null;
   const group = panelTag("legend", "범례", "plate");
-  plate(s, r, 0.12, group);
+  if (fit) s.addShape("roundRect", { x: r.x, y: r.y, w: r.w, h: r.h, fill: { color: "FFFFFF", transparency: 7 }, line: { color: INK, width: 0.75, transparency: 88 }, rectRadius: 0.104, shadow: { type: "outer", color: "15171C", opacity: 0.08, blur: 6, offset: 1.5, angle: 90 }, objectName: group });
+  else plate(s, r, 0.12, group);
   const topPad = Math.min(SLIDE_LEGEND.padding * scale, Math.max(0, r.h));
   const bottomPad = Math.min(SLIDE_LEGEND.padding * scale, Math.max(0, r.h - topPad));
   const nominalRowH = SLIDE_LEGEND.row * scale;
   const nominalNoteH = SLIDE_LEGEND.note * scale;
   const wantedH = items.length * nominalRowH + notes.length * nominalNoteH;
-  const compression = wantedH > 0 ? Math.min(1, Math.max(0, (r.h - topPad - bottomPad) / wantedH)) : 1;
+  const compression = !fit && wantedH > 0 ? Math.min(1, Math.max(0, (r.h - topPad - bottomPad) / wantedH)) : 1;
   const rowH = nominalRowH * compression;
   const noteH = nominalNoteH * compression;
   const iconScale = scale * compression;
   const iconDy = (SLIDE_LEGEND.row - 0.3) * iconScale / 2;
   const legendGeometry = slideLegendGeometry(r, scale);
-  const iconXFor = (width: number) => legendGeometry.contentX + Math.max(0, (legendGeometry.iconColumn - width) / 2);
+  const pageIconXFor = (width: number) => legendGeometry.contentX + Math.max(0, (legendGeometry.iconColumn - width) / 2);
   const confine = <T extends object>(options: T | undefined): T | null => {
     if (!options) return null;
     const box = options as T & { x?: number; y?: number; w?: number; h?: number };
@@ -362,13 +397,16 @@ function legendPlate(s: Slide, p: PlannedSlide & { kind: "tile" }, hasSummary = 
     },
   } as Slide;
   items.forEach((it, i) => {
-    const y = r.y + topPad + i * rowH;
+    // 새 장 배치는 항목마다 칸(`itemRects`)이 있다: 아이콘은 칸 세로 가운데, 글은 칸 높이를 쓰고 접은 줄은 `\n`으로 잇는다.
+    const slot = fit?.itemRects[i];
+    const y = slot ? r.y + slot.y + (slot.h - SLIDE_LEGEND.row * iconScale) / 2 : r.y + topPad + i * rowH;
+    const iconXFor = slot ? (width: number) => r.x + slot.x + Math.max(0, (fit!.iconW - width) / 2) : pageIconXFor;
     const focused = !it.site && focus !== null && it.label === focus;
     const dimmed = focus !== null && !it.site && !focused;
     const fade = dimmed ? 65 : 0;
-    const labelX = legendGeometry.labelX;
-    const labelW = Math.max(0.01, legendGeometry.labelW);
-    const labelPt = fitBlock([it.label], { w: labelW, h: Math.max(0.01, rowH) }, legendPt, 7);
+    const labelX = slot ? r.x + slot.x + fit!.iconW + fit!.iconGap : legendGeometry.labelX;
+    const labelW = Math.max(0.01, slot ? slot.w - fit!.iconW - fit!.iconGap : legendGeometry.labelW);
+    const labelPt = fit ? fit.labelPt : fitBlock([it.label], { w: labelW, h: Math.max(0.01, rowH) }, legendPt, 7);
     if (it.site) {
       target.addShape("diamond", { x: iconXFor(0.16 * iconScale), y: y + iconDy + 0.04 * iconScale, w: 0.16 * iconScale, h: 0.16 * iconScale, fill: { color: "FFFFFF", transparency: fade }, line: { color: "111111", width: 0.8, transparency: fade } });
       target.addShape("ellipse", { x: iconXFor(0.04 * iconScale), y: y + iconDy + 0.1 * iconScale, w: 0.04 * iconScale, h: 0.04 * iconScale, fill: { color: "111111", transparency: fade }, line: { color: "111111", width: 0, transparency: fade } });
@@ -409,8 +447,15 @@ function legendPlate(s: Slide, p: PlannedSlide & { kind: "tile" }, hasSummary = 
       const pointSize = 0.13 * iconScale;
       target.addShape("ellipse", { x: iconXFor(pointSize), y: y + iconDy + 0.06 * iconScale, w: pointSize, h: pointSize, fill: { color: hex(it.color), transparency: fade }, line: { color: "FFFFFF", width: 0.75, transparency: fade } });
     }
-    target.addText(it.label, { x: labelX, y, w: labelW, h: Math.max(0.01, rowH), valign: "middle", fontFace: FONT, fontSize: labelPt, bold: focused, color: dimmed ? "8C919B" : INK, margin: 0 });
+    target.addText(fit ? fit.labels[i]! : it.label, { x: labelX, y: slot ? r.y + slot.y : y, w: labelW, h: Math.max(0.01, slot ? slot.h : rowH), valign: "middle", fontFace: FONT, fontSize: labelPt, bold: focused, color: dimmed ? "8C919B" : INK, margin: 0, ...(fit ? { wrap: false, lineSpacing: fit.labelLineH * 72 } : {}) });
   });
+  if (fit) {
+    notes.forEach((_, i) => {
+      const at = fit.noteRects[i]!;
+      target.addText(fit.noteLines[i]!.map((line, li, all) => ({ text: line, options: { breakLine: li < all.length - 1 } })), { x: r.x + at.x, y: r.y + at.y, w: at.w, h: at.h, valign: "top", fontFace: FONT, fontSize: fit.notePt, lineSpacing: fit.noteH * 72, color: MUTED, margin: 0, wrap: false });
+    });
+    return;
+  }
   notes.forEach((n, i) => {
       const noteX = legendGeometry.noteX;
       const noteW = Math.max(0.01, legendGeometry.noteW);
@@ -459,7 +504,61 @@ function cover(pptx: PptxGenJS, p: PlannedSlide & { kind: "cover" }, images: Map
   strip(s, p, !!p.map, format, look.basemap);
 }
 
+/**
+ * 새 장 배치(지도 + 숫자 · 지도 + 그래프)의 쪽. 지도는 기하의 지도 틀 안에만 그리고, 제목 칩·핵심 숫자 카드·분석 열·범례·각주 띠는
+ * 모두 `pageFrameFor`가 준 기하·맞춤 값이다(화면 TileSurface와 같은 순서). 배치 숫자를 여기서 새로 정하지 않는다.
+ * 각주 전체(한계·메모·접힌 배지)는 쪽 위에 칩이 없으므로 발표자 노트로 간다.
+ */
+function tileFrame(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, frame: ReportPageFrame, images: MapImages, mapDrawing: PptxMapDrawing, look: PptxMapLook) {
+  const v = p.view;
+  const format = formatOf(p);
+  const geo = frame.geometry;
+  const size = slideSize(format);
+  const s = pptx.addSlide();
+  const style = p.style ?? {};
+  const mapStatus = p.map ? nativeMapStatus(p.map) : null;
+  const mapLayer = p.map ? exportBasemap(p.map, look.basemap, frameOf(p)) : null;
+  // 그림 만들기(buildMapImages)와 같은 판정: 무엇이 바탕 도형이고, 그림은 어떤 종류이며, 주제 도형을 그리는지.
+  const draw = p.map && mapStatus && mapLayer ? mapDrawPlan(mapStatus, mapLayer, mapDrawing) : null;
+  const mapImage = images[mapKeyOf(p) ?? v.tileId];
+  // 지도 장의 그림은 지도 틀 안에만 놓인다. 그림 장(바람장미·매스)은 아직 쪽 전체다(Task 8).
+  const imageRect = p.map ? geo.map : { x: 0, y: 0, w: size.w, h: size.h };
+  const fallbackNotes: string[] = [];
+  if (!draw || draw.image === "full" || draw.image === "background") background(s, mapImage, undefined, format, imageRect);
+  if (draw?.thematicShapes && p.map) {
+    addEditableMap(s, p, p.map, {
+      style, format, frame: geo.map, pageGeometry: geo, reportFrame: frameOf(p), layout: frame.layout,
+      basemap: mapLayer ?? undefined,
+      baseTheme: look.baseTheme,
+      underlay: draw.image === "transparent" && mapImage ? () => { s.addImage({ data: mapImage, x: geo.map.x, y: geo.map.y, w: geo.map.w, h: geo.map.h }); } : undefined,
+    });
+    // 값 래스터가 있어야 하는데 그림이 오지 못했으면 조용히 빠지지 않게 예전 전체 그림 경로와 같은 자리표시를 둔다.
+    if (draw.image === "transparent" && !mapImage) s.addText("지도 이미지를 만들지 못했습니다", { x: geo.map.x + 0.25, y: geo.map.y + geo.map.h / 2 - 0.2, w: Math.min(5, geo.map.w - 0.5), h: 0.4, fontFace: FONT, fontSize: 11, color: MUTED, margin: 0, fill: { color: "FFFFFF", transparency: 25 } });
+    if (mapStatus?.denseLayers.length || mapStatus?.rasterValues.length) fallbackNotes.push(nativeMapFallbackNote(p.map));
+  } else if (p.map) fallbackNotes.push(nativeMapFallbackNote(p.map));
+  // 설명선 개요(A05·A06): 번호 점·범례·빈 상태 판을 지도 틀에 그린다(화면 recordCalloutOps와 같은 틀 투영).
+  if (p.callout && p.callout.page === 0 && frame.calloutOverview) tileReportModuleFor(v.code)?.report.render({ slide: s, planned: p, part: "overview", overviewFrame: frame.calloutOverview });
+
+  if (!pageElementDeleted(p.page, "title")) titleChip(s, frame, v.color);
+  const cardTag = (part: string) => panelTag("summary", "핵심 숫자", part);
+  if (geo.column) drawAnalysisColumn(s, { frame, view: v, page: size, cardTag });
+  else if (geo.keyCard && frame.fit) drawKeyFigureCard(s, { view: v, fit: frame.fit, rect: geo.keyCard, tag: cardTag });
+  if (frame.legend && geo.legend && !p.callout) legendPlate(s, p, true, format, style, { fit: frame.legend, rect: geo.legend });
+  footerBand(s, p, frame);
+
+  pageTextBoxes(s, p, format);
+  pageNotes(s, p, [...new Set([
+    ...fallbackNotes,
+    ...frame.notes,
+    ...[...v.caveats, ...v.notes],
+    ...(p.mass ? ["DXF·GLB는 내보내기에서"] : []),
+    ...(p.rose ? [roseSummary(p.rose), `바람장미 선택 계절 · ${ROSE_SEASON_LABEL[p.roseSeason ?? "annual"]}`] : []),
+  ])]);
+}
+
 function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapImages, mapDrawing: PptxMapDrawing, look: PptxMapLook) {
+  const pageFrame = pageFrameFor(p, look.basemap);
+  if (pageFrame) return tileFrame(pptx, p, pageFrame, images, mapDrawing, look);
   const v = p.view;
   const format = formatOf(p);
   const g = slideGeometry(format);
@@ -481,8 +580,6 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
   const terrainShown = v.code === "D17" && !!v.terrainSections && !!p.terrainSection;
   const terrainLayout = terrainShown ? terrainSectionLayout(panels, layout, format) : null;
   const summaryRect = terrainLayout?.summary ?? panels.summary;
-  // 「지도 + 그래프」 그래프 열: 화면(slide-surface)과 같은 판정·같은 모델(끈 레이어 반영). 설명선 상세 장·요약 칸 없는 장·그래프 자료가 없는 쪽은 map-summary 그대로.
-  const columnCharts = p.page?.layout === "map-charts" && hasSummary && summaryRect && p.map ? analysisCharts(modelWithHiddenLayers(p.map, frameOf(p)?.hiddenLayers ?? [])) : null;
   const summaryX = summaryRect?.x ?? g.w;
   const contentBox = summaryRect ? innerInfoBox(summaryRect, summaryScale) : { x: g.edge, w: Math.max(0.2, g.w - 2 * g.edge), h: 0.2 };
   const calloutReport = tileReportModuleFor(v.code)?.report;
@@ -584,18 +681,9 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
   } else if (co) calloutReport?.render({ slide: s, planned: p, part: "overview" });
   else legendPlate(s, p, hasSummary, format, style);
 
-  if (columnCharts && summaryRect) {
-    // 「지도 + 그래프」: 같은 요약 판 위에 화면과 같은 칸 배치로 그린다. 각주(주의·메모)는 장 본문 대신 발표자 노트에 둔다.
-    const summaryGroup = panelTag("summary", "요약", "plate");
-    plate(s, summaryRect, 0.16, summaryGroup);
-    drawAnalysisColumn(s, { charts: columnCharts, view: v, sentence: summaryText, rect: summaryRect, summaryPt, panel: summaryGroup });
-    pageTextBoxes(s, p, format);
-    pageNotes(s, p, [...new Set([...fallbackNotes, ...notes])]);
-  } else {
-    infoPanel(s, items, summaryRect, summaryScale);
-    pageTextBoxes(s, p, format);
-    pageNotes(s, p, fallbackNotes);
-  }
+  infoPanel(s, items, summaryRect, summaryScale);
+  pageTextBoxes(s, p, format);
+  pageNotes(s, p, fallbackNotes);
   strip(s, p, !chart, format, look.basemap);
 }
 

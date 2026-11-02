@@ -37,7 +37,7 @@ assert.match(mapPptx, /const u = scene\.northUnit/, "PPT 방위표가 미리보�
 assert.match(mapPptx, /const chrome = scene\.scaleChromeScale/, "PPT 축척 막대가 미리보기와 같은 크롬 배율을 쓴다");
 assert.match(mapPptx, /bar\.px/, "축척 막대 길이는 지도 축척 계산값을 그대로 쓴다");
 assert.match(surface, /panelBasis === "frame" && frame/, "조판 칸은 frame 기준의 지도 장식 단위를 쓴다");
-assert.match(mapPptx, /mapLayoutUnitForFrame\(activeFrame\.h \* activePxPerInch\)/, "PPT 조판 칸도 같은 frame 높이 단위를 쓴다");
+assert.match(mapPptx, /frameChromeUnit\(activeFrame\.w, activeFrame\.h\)/, "PPT 조판 칸은 칸 장면(폭 960 px)의 높이로 정한 부속 단위 frameChromeUnit을 쓴다(O-2)");
 assert.match(mapImage, /layoutUnit: mapLayoutUnitForFrame\(cellHeight\)/, "조판 칸 이미지도 같은 frame 높이 단위를 쓴다");
 
 const { buildMapScene, scaleChromeScaleForBox } = await import("../../lib/v2/ui/map-scene.ts");

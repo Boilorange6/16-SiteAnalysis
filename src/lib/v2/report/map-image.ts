@@ -32,6 +32,8 @@ import { DEFAULT_REPORT_FONT_SIZES, frameSiteMarks, type MapFrameState } from ".
 import { fontSizeForStyle } from "./pptx-kit";
 import { NORTH_INSET, NORTH_RADIUS, northArrowBox, scaleBarBox, scaleFontScaleForPt } from "../ui/map-scene";
 import { mapLayoutUnitForFrame } from "./report-geometry";
+import { pageFrameFor, reportMapAvoid, type ReportPageFrame } from "./report-page-frame";
+import type { Rect } from "../ui/overlay-layout";
 
 // 슬라이드 비율(16:9)로 그린다: 지도가 슬라이드 전체이고 오버레이는 pptx 도형이 얹는다
 const VIEW_W = 960;
@@ -39,7 +41,7 @@ const VIEW_H = 540;
 const OUT_W = 1920;
 const OUT_H = 1080;
 const PX_PER_INCH = VIEW_W / SLIDE.w;
-type Extra = Partial<Pick<MapFigureProps, "muted" | "siteX" | "avoid" | "fill" | "siteY" | "calloutTop" | "calloutLeftBottom" | "scale" | "legend" | "bare" | "baseTheme" | "transparent" | "pinnedKeys" | "hiddenKeys" | "deletedElementKeys" | "labelBoxes" | "showAutomaticLabels" | "north" | "credit" | "label" | "rightInset" | "backgroundOnly" | "terrainSection" | "layoutUnit" | "siteMarks">> & {
+type Extra = Partial<Pick<MapFigureProps, "muted" | "siteX" | "avoid" | "fill" | "siteY" | "calloutTop" | "calloutLeftBottom" | "scale" | "legend" | "bare" | "baseTheme" | "transparent" | "pinnedKeys" | "hiddenKeys" | "deletedElementKeys" | "labelBoxes" | "showAutomaticLabels" | "north" | "credit" | "label" | "rightInset" | "backgroundOnly" | "terrainSection" | "layoutUnit" | "siteMarks" | "northX" | "scaleX" | "scaleY" | "scaleBoxOverride">> & {
   size?: { width: number; height: number };
   bottomInset?: number;
   style?: PageStyle;
@@ -285,8 +287,61 @@ export async function rasterizeRose(model: RoseModel, width = VIEW_W, height = V
   return toJpeg(svgOfRose(model, width, height, season));
 }
 
-/** 슬라이드마다 다른 오버레이 자리를 피하게 한다 (표지·출처는 지도 가운데, 타일은 오른쪽 정보 판을 뺀 영역) */
-function extraFor(p: PlannedSlide, model: MapModel): Extra {
+/**
+ * 새 장 배치(지도 + 숫자·지도 + 그래프)의 지도 틀 그림 인자. 그림은 폭 960 px·틀 모양이고(1 in = scenePxPerInch px),
+ * 방위표·축척·피할 자리·축척 폭이 모두 장 기하(`reportPageGeometry`) 값이다. 화면 MapLayer·PPT sceneFor와 같은 식이다.
+ */
+function pageFrameExtra(p: PlannedSlide & { kind: "tile" }, model: MapModel, pageFrame: ReportPageFrame): Extra {
+  const geo = pageFrame.geometry;
+  const ppi = geo.scenePxPerInch;
+  const height = (VIEW_W * geo.map.h) / geo.map.w;
+  const format = p.format ?? "wide";
+  const box = (r: Rect) => ({ x0: r.x * ppi, y0: r.y * ppi, x1: (r.x + r.w) * ppi, y1: (r.y + r.h) * ppi });
+  const frame = p.page?.kind === "tile" ? p.page.frame : undefined;
+  const baseStyle = p.style ?? {};
+  const overview = p.callout?.page === 0;
+  const fill = overview ? SLIDE_OVERVIEW_FILL : 0.8;
+  const calloutEntries = overview ? calloutLegendEntries(p.callout!.model, frame?.legend) : [];
+  const calloutAlignment = slideCalloutAvoidance({ title: geo.title, summary: null, legend: geo.legend }, calloutEntries, slideLayout(format), format, fontSizeForStyle(baseStyle, "legend") / DEFAULT_REPORT_FONT_SIZES.legend);
+  const calloutLegend = overview ? geo.legend : null;
+  const dims = { width: VIEW_W, height, siteX: 0.5, siteY: 0.5, fill };
+  const scaleOptions = frame ? mapFrameScaleOptions(format, pageFrame.layout, dims, { summaryDeleted: pageFrame.layout === "map-charts" && !geo.column }) : null;
+  const style = frame && scaleOptions ? reportFrameStyle(frame, baseStyle, model, scaleOptions) : baseStyle;
+  const highlightLabel = legendLabelOf(model, style.legendFocus);
+  const north = box(geo.north);
+  const scale = box(geo.scaleBar);
+  const frameOptions = frame
+    ? {
+        hiddenKeys: [...new Set([...(style.hiddenKeys ?? []), ...frame.hiddenLabelKeys])],
+        deletedElementKeys: frame.deletedElementKeys,
+        labelBoxes: frame.labelBoxes,
+        showAutomaticLabels: frame.labelRule !== "off",
+        north: frame.decorations.north ? (north.y0 + north.y1) / 2 : (false as const),
+        northX: (north.x0 + north.x1) / 2,
+        scale: frame.decorations.scaleBar,
+        scaleBoxOverride: scale,
+        scaleX: scale.x0 + 6 * geo.unit,
+        scaleY: scale.y1 - 8 * geo.unit,
+        siteMarks: frameSiteMarks(frame),
+      }
+    : {};
+  return {
+    muted: p.muted, siteX: 0.5, siteY: 0.5, fill, rightInset: 0,
+    avoid: [...reportMapAvoid(geo, ppi), ...(calloutLegend ? [box(calloutLegend)] : [])],
+    bottomInset: calloutLegend ? (calloutLegend.h + 0.18) * ppi : 0,
+    viewport: slideViewport(model, style, dims),
+    size: { width: VIEW_W, height },
+    style, highlightLabel, legendFocus: highlightLabel,
+    calloutTop: calloutAlignment.calloutTop * ppi,
+    ...(calloutAlignment.calloutLeftBottom !== undefined ? { calloutLeftBottom: calloutAlignment.calloutLeftBottom * ppi } : {}),
+    pinnedKeys: [...new Set([...(p.pinnedKeys ?? []), ...(frame?.pinnedKeys ?? [])])],
+    ...frameOptions,
+  };
+}
+
+/** 슬라이드마다 다른 오버레이 자리를 피하게 한다 (표지·출처는 지도 가운데, 타일은 오른쪽 정보 판을 뺀 영역). 새 장 배치(`pageFrame`)는 지도 틀 기하를 쓴다. */
+function extraFor(p: PlannedSlide, model: MapModel, pageFrame?: ReportPageFrame | null): Extra {
+  if (p.kind === "tile" && pageFrame) return pageFrameExtra(p, model, pageFrame);
   if (p.kind !== "tile") {
     const style = p.style ?? {};
     return {
@@ -430,7 +485,7 @@ export async function buildMapImages(plan: PlannedSlide[], layer?: BasemapChoice
     const model = p.map;
     if (!model) continue;
     try {
-      const extra = extraFor(p, model);
+      const extra = extraFor(p, model, pageFrameFor(p, layer));
       const status = nativeMapStatus(model);
       const frame = p.kind === "tile" && p.page?.kind === "tile" ? p.page.frame : undefined;
       const drawn = exportBasemap(model, layer, frame);

@@ -366,4 +366,39 @@ const draw = (reportFrame) => {
   assert.ok(labelsSeen > 0, "칸 화면에 바탕 라벨이 그려진다(검증이 비어 있지 않다)");
 }
 
+// O-2: 조판 칸 PPT — 저장한 방위표 자리가 화면과 같은 칸 비율 자리에 오고, 기본 방위표 지름은 46 × frameChromeUnit(칸) × 칸 폭 / 960 인치다.
+// (칸 장면은 폭 960 px이라 1 in = 960 / 칸 폭 px다. 예전에는 쪽 기준 72 px/in로 비율을 환산해 저장 자리가 0.45배 어긋났다.)
+{
+  const { frameChromeUnit, reportPageGeometry } = await import("../../lib/v2/ui/report-page-layout.ts");
+  const deco = { ...defaultFrame(), decorations: { north: true, scaleBar: true, locator: false } };
+  const cellNorth = (cell, style) => {
+    const { slide, calls } = stub();
+    addEditableMap(slide, null, plan.map, { mode: "cell", frame: cell, style, format: "wide", reportFrame: deco });
+    return calls.map((c) => c.args[1]).find((a) => typeof a?.objectName === "string" && a.objectName.includes("|방위표|bg"));
+  };
+  for (const cell of [{ x: 0.5, y: 0.5, w: 6.3, h: 3.4 }, { x: 0.5, y: 4.2, w: 4.2, h: 3.4 }, { x: 1, y: 1, w: 9, h: 3 }]) {
+    const label = `${cell.w}×${cell.h} in 칸`;
+    const north = cellNorth(cell, {});
+    near(north.w, (2 * NORTH_RADIUS * frameChromeUnit(cell.w, cell.h) * cell.w) / 960, `${label} 방위표 지름`, 0.01);
+    const panel = { x: 0.7, y: 0.1, w: 0.1, h: 0.18 };
+    const saved = cellNorth(cell, { panels: { north: panel } });
+    near(saved.x + saved.w / 2 - cell.x, (panel.x + panel.w / 2) * cell.w, `${label} 저장 방위표 중심 x는 칸 비율 자리`, 0.01);
+    near(saved.y + saved.h / 2 - cell.y, (panel.y + panel.h / 2) * cell.h, `${label} 저장 방위표 중심 y는 칸 비율 자리`, 0.01);
+    assert.ok(saved.w <= Math.min(panel.w * cell.w, panel.h * cell.h) + 0.01, `${label} 저장 방위표 원은 저장 상자 안`);
+  }
+
+  // 새 장 배치(pageGeometry): PPT 방위표·축척 상자가 기하의 사각형과 같다(화면 MapLayer와 같은 자리). 지도 틀 = frame이다.
+  for (const layout of ["map-key", "map-charts"]) {
+    const geometry = reportPageGeometry({ layout, format: "wide", summaryDeleted: false, titleSize: { w: 3, h: 0.5 }, keyCardHeight: 2.6, legendSize: { w: 2.2, h: 1.1 }, chartSlots: layout === "map-charts" ? 2 : 0, sentenceHeight: 0.4, notes: false });
+    const { slide, calls } = stub();
+    addEditableMap(slide, plan, plan.map, { style: plan.style, format: "wide", frame: geometry.map, pageGeometry: geometry, reportFrame: deco });
+    const rect = (part) => calls.map((c) => c.args[1]).find((a) => typeof a?.objectName === "string" && a.objectName.includes(part));
+    for (const [part, expected] of [["|방위표|bg", geometry.north], ["|축척|bg", geometry.scaleBar]]) {
+      const shape = rect(part);
+      assert.ok(shape, `${layout} ${part}`);
+      for (const key of ["x", "y", "w", "h"]) near(shape[key], expected[key], `${layout} ${part} ${key} = 기하`, 0.01);
+    }
+  }
+}
+
 console.log("v2 map chrome (§9-12) contracts passed");

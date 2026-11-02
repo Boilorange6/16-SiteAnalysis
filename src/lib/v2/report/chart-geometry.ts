@@ -54,7 +54,7 @@ const textMaker = (box: ChartBox, prefix: string) => (name: string, text: string
   return { kind: "text", x: clamp(x0, box.x, box.x + box.w - w), y: clamp(y, box.y, box.y + box.h - h), w, h, text, pt, bold, color, align, name: `${prefix}-${name}` };
 };
 
-const TITLE_PT = AXIS_PT * 1.15;
+const TITLE_PT = 9.4; // 시안 그래프 카드 제목 9.4 pt(spec §4-1, F1 요약 13 pt일 때)
 
 /** 제목은 box 맨 위 왼쪽에 굵게 한 줄. 차트는 그 아래 남은 칸에 그린다. 제목이 빈 글이면 box 전부를 차트에 쓴다. */
 function withTitle(box: ChartBox, scale: number, title: string, prefix: string, draw: (rest: ChartBox) => ChartShape[]): ChartShape[] {

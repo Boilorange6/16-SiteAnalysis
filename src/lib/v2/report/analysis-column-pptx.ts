@@ -1,14 +1,15 @@
 /**
- * 「지도 + 그래프」 요약 열을 PPT 도형으로 그린다. 화면(analysis-column.tsx)과 같은 칸(chartsColumnLayout)·같은 맞춤 값(analysis-column-fit)·
- * 같은 그래프 기하(chart-geometry)를 쓰므로 둘의 모양이 같다. 요약 판(plate)과 각주는 부르는 쪽(render-pptx)이 맡는다.
+ * 「지도 + 그래프」 오른쪽 분석 열을 PPT 도형으로 그린다(spec 2026-10-30 §3-3). 화면 analysis-column.tsx와 같은 장 기하(`column`)·
+ * 같은 카드 맞춤(`keyFigureFit`)·같은 그래프 기하(chart-geometry)를 `ReportPageFrame`에서 받아 그리기만 한다.
+ * 열 바탕 띠 + 핵심 숫자 카드 + 그래프 카드 둘 + 열 맨 아래 해석 한 줄이다. 각주(한계·메모)는 쪽 위에 칩이 없으므로 발표자 노트로 간다(부르는 쪽).
  */
-import { analysisStatLine, type AnalysisCharts } from "./analysis-charts";
-import { analysisColumnFit } from "./analysis-column-fit";
 import { RECT_STROKE_PT, compositionShapes, distanceShapes, type ChartShape } from "./chart-geometry";
+import { SENTENCE_BAR, BAR_W } from "./key-figure-fit";
+import { drawKeyFigureCard } from "./key-figure-pptx";
 import { addDots } from "./map-pptx";
-import { CHIP, FONT, INK, MUTED, hex, type Slide } from "./pptx-kit";
-import { DEFAULT_REPORT_FONT_SIZES } from "./report-doc";
-import { chartsColumnLayout, type Rect } from "../ui/overlay-layout";
+import { FONT, INK, hex, type Slide } from "./pptx-kit";
+import type { ReportPageFrame } from "./report-page-frame";
+import type { Rect } from "../ui/overlay-layout";
 import type { TileView } from "../ui/tile-view";
 
 /**
@@ -49,51 +50,41 @@ export function addChartShapes(s: Slide, shapes: readonly ChartShape[], namePref
 }
 
 export type AnalysisColumnInput = {
-  charts: AnalysisCharts;
+  /** 이 쪽의 계산 묶음(`pageFrameFor`). `geometry.column`이 있는 ②여야 한다. */
+  frame: ReportPageFrame;
   view: TileView;
-  sentence: string | null;
-  /** 요약 판 자리(inch) */
-  rect: Rect;
-  summaryPt: number;
-  /** 배지·큰 숫자·통계·해석 문장이 속할 도형 그룹 이름(요약 판과 같은 그룹) */
-  panel: string;
+  /** 장 크기(inch). 열 바탕 띠가 지도 틀 오른쪽 끝에서 장 오른쪽 끝까지 그려진다. */
+  page: { w: number };
+  /** 핵심 숫자 카드 그룹 이름: 부위를 받아 `GRP|panel-summary|핵심 숫자|부위` */
+  cardTag: (part: string) => string;
 };
 
-/** 배지 줄 → 큰 숫자 → 한 줄 통계(+필터 줄) → 구성비 → 거리 → 해석 문장. 주석 칩 자리는 비워 두고 각주는 발표자 노트로 간다. */
-export function drawAnalysisColumn(s: Slide, { charts, view, sentence, rect, summaryPt, panel }: AnalysisColumnInput): void {
-  const scale = summaryPt / DEFAULT_REPORT_FONT_SIZES.summary;
-  const col = chartsColumnLayout(rect, scale);
-  const statText = analysisStatLine(charts);
-  const fit = analysisColumnFit({ col, scale, summaryPt, badges: view.badges, headline: view.headline, statText, filterLine: view.filterLine, sentence });
-  const { e } = fit;
-  const hr = col.headline;
+/** 열 바탕 띠 → 핵심 숫자 카드 → 그래프 카드 둘(구성비·거리) → 열 맨 아래 해석 한 줄. 모든 사각형은 `frame`이 준다. */
+export function drawAnalysisColumn(s: Slide, { frame, view, page, cardTag }: AnalysisColumnInput): void {
+  const { column, map } = frame.geometry;
+  if (!column) return;
+  s.addShape("rect", { x: map.w, y: 0, w: page.w - map.w, h: map.h, fill: { color: "F0EFE9" }, line: { color: "F0EFE9", width: 0 }, objectName: "GRP|column-band|열 바탕|band" });
 
-  // 배지: 화면 칩과 같은 폭·줄바꿈. 칩 높이는 글자 줄 높이(1.2배) + 위아래 안쪽 여백.
-  const chipPt = Math.max(7, 9 * e);
-  const chipH = (chipPt * 1.2) / 72 + 0.06 * e;
-  const rowGap = 0.06 * e;
-  for (const chip of fit.chips) {
-    const box = { x: hr.x + chip.x, y: hr.y + chip.row * (chipH + rowGap), w: chip.w, h: chipH };
-    s.addShape("roundRect", { ...box, fill: { color: CHIP[chip.tone].fill }, line: { color: CHIP[chip.tone].fill }, rectRadius: Math.min(0.15 * e, chipH / 2), objectName: panel });
-    s.addText(chip.text, { ...box, align: "center", valign: "middle", fontFace: FONT, fontSize: chipPt, bold: true, color: CHIP[chip.tone].color, margin: 0, wrap: false, objectName: panel });
+  if (frame.fit && frame.figure) drawKeyFigureCard(s, { view, fit: frame.fit, rect: column.key, tag: cardTag });
+
+  const charts = frame.charts;
+  const card = (rect: Rect | null, box: Rect | null, key: string, display: string, shapes: ChartShape[]) => {
+    if (!rect) return;
+    const prefix = `GRP|chart-${key}-${view.code}|${display}|`;
+    s.addShape("roundRect", { ...rect, rectRadius: 0.125, fill: { color: "FFFFFF" }, line: { color: "E1E4E9", width: 0.75 }, shadow: { type: "outer", color: "15171C", opacity: 0.08, blur: 6, offset: 1.5, angle: 90 }, objectName: `${prefix}card` });
+    if (box) addChartShapes(s, shapes, prefix);
+  };
+  card(column.chart1, frame.chart1, "composition", "그래프 · 구성비", charts && frame.chart1 ? compositionShapes(charts.composition, frame.chart1, frame.chartScale, charts.titles.composition) : []);
+  card(column.chart2, frame.chart2, "distance", "그래프 · 거리", charts && frame.chart2 ? distanceShapes(charts.distance, charts.radiusM, frame.chart2, frame.chartScale, charts.titles.distance) : []);
+
+  // 해석 한 줄: 열 맨 아래, 카드 없음. 왼쪽 3 px 타일 색 막대 + 글(줄 높이 1.25).
+  const info = frame.sentence;
+  if (info && info.lines.length > 0) {
+    const r = column.sentence;
+    const group = "GRP|column-sentence|해석 줄|";
+    s.addShape("roundRect", { x: r.x, y: r.y, w: BAR_W, h: r.h, rectRadius: BAR_W / 2, fill: { color: hex(view.color) }, line: { color: hex(view.color), width: 0 }, objectName: `${group}bar` });
+    s.addText(info.lines.map((line, i) => ({ text: line, options: { breakLine: i < info.lines.length - 1 } })), {
+      x: r.x + SENTENCE_BAR, y: r.y, w: r.w - SENTENCE_BAR, h: r.h, valign: "top", fontFace: FONT, fontSize: info.pt, lineSpacing: info.pt * 1.25, bold: true, color: INK, margin: 0, wrap: false, objectName: `${group}text`,
+    });
   }
-  const badgesH = fit.chipRows ? fit.chipRows * chipH + (fit.chipRows - 1) * rowGap + 0.04 * e : 0;
-  const headline = view.headline;
-  if (headline && fit.labelPt !== null && fit.valuePt !== null) {
-    const labelH = 0.24 * e;
-    s.addText(headline.label, { x: hr.x, y: hr.y + badgesH, w: hr.w, h: labelH, valign: "top", fontFace: FONT, fontSize: fit.labelPt, bold: true, color: MUTED, margin: 0, fit: "shrink", objectName: panel });
-    s.addText(headline.value, { x: hr.x, y: hr.y + badgesH + labelH, w: hr.w, h: 0.66 * e, valign: "middle", fontFace: FONT, fontSize: fit.valuePt, bold: true, color: INK, margin: 0, fit: "shrink", objectName: panel });
-  }
-
-  // 한 줄 통계 + 필터 줄: 한 글상자 두 문단
-  // 통계·필터 줄·해석 문장은 fit이 줄 수에 맞게 자른 글을 그대로 쓴다(PowerPoint의 shrink는 편집할 때만 적용돼 믿을 수 없다).
-  s.addText(
-    [{ text: fit.statText, options: { breakLine: !!fit.filterLine } }, ...(fit.filterLine ? [{ text: fit.filterLine, options: {} }] : [])],
-    { ...col.stat, valign: "top", fontFace: FONT, fontSize: fit.statPt, color: INK, margin: 0, objectName: panel },
-  );
-
-  addChartShapes(s, compositionShapes(charts.composition, col.composition, scale, charts.titles.composition), `GRP|chart-composition-${view.code}|그래프 · 구성비|`);
-  addChartShapes(s, distanceShapes(charts.distance, charts.radiusM, col.distance, scale, charts.titles.distance), `GRP|chart-distance-${view.code}|그래프 · 거리|`);
-
-  if (fit.sentence) s.addText(fit.sentence, { ...col.sentence, valign: "top", fontFace: FONT, fontSize: fit.sentPt, bold: true, color: INK, margin: 0, objectName: panel });
 }

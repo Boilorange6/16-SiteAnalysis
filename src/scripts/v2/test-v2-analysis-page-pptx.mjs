@@ -1,4 +1,7 @@
-/** 「지도 + 그래프」 PPT: 그래프가 편집 가능한 도형 그룹이고, 화면과 같은 글자·글자 크기·건물 수를 쓴다. */
+/**
+ * 보고서 타일 장 PPT(지도 + 숫자 · 지도 + 그래프): 모든 사각형·카드 안·그래프가 화면과 같은 장 기하(`reportPageFrame`)·카드 맞춤(`keyFigureFit`)·
+ * 그래프 기하(chart-geometry)에서 오고, 그래프는 편집 가능한 도형 그룹이며 화면과 같은 글자·글자 크기·건물 수를 쓴다.
+ */
 import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -11,12 +14,11 @@ const { toSummaryView, toTileView, viewWithLayer } = await import("../../lib/v2/
 const { EMPTY_REPORT_DOC, defaultFrame } = await import("../../lib/v2/report/report-doc.ts");
 const { planReportDoc, recommendedPages } = await import("../../lib/v2/report/report-doc-plan.ts");
 const { mapKeyOf } = await import("../../lib/v2/report/report-plan.ts");
-const { analysisCharts, analysisStatLine } = await import("../../lib/v2/report/analysis-charts.ts");
+const { analysisCharts } = await import("../../lib/v2/report/analysis-charts.ts");
 const { compositionShapes, distanceShapes } = await import("../../lib/v2/report/chart-geometry.ts");
-const { chartsColumnLayout, slidePanelRects } = await import("../../lib/v2/ui/overlay-layout.ts");
 const { modelWithHiddenLayers } = await import("../../lib/v2/ui/map-layers.ts");
-const { analysisColumnFit } = await import("../../lib/v2/report/analysis-column-fit.ts");
 const { addChartShapes } = await import("../../lib/v2/report/analysis-column-pptx.ts");
+const { pageFrameFor } = await import("../../lib/v2/report/report-page-frame.ts");
 const { renderReportPptx } = await import("../../lib/v2/report/render-pptx.ts");
 const { SlideSurface } = await import("../../components/v2/report/slide-surface.tsx");
 
@@ -50,6 +52,13 @@ function fixture(count) {
     badges: [{ text: "일부 자료만 집계", tone: "limit" }],
     headline: { value: "4층", label: "층수 중앙값" },
     sentence: "낮은 층 건물이 대부분이고 높은 건물은 일부다",
+    // 핵심 숫자 카드(화면 surface 테스트와 같은 표본)
+    keyFigure: {
+      question: "가장 많은 층수대",
+      answer: { value: "1~4층", post: " 건물", kind: "number" },
+      sub: "층수가 확인된 12동 기준",
+      stats: [{ value: "100%", label: "층수 확인률" }, { value: "0%", label: "1층 가정 비율" }, { value: "12동", label: "반경 건물" }],
+    },
   };
   const board = initBoard([result]);
   const views = new Map([[result.tileId, view]]);
@@ -62,18 +71,29 @@ function fixture(count) {
 // 1x1 PNG: 지도 배경 그림 수를 세는 용도
 const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
+const EMU = 914400;
 const unescapeXml = (s) => s.replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&quot;", '"').replaceAll("&apos;", "'").replaceAll("&#x27;", "'").replaceAll("&amp;", "&");
 const shapeBlocks = (xml) => [...xml.matchAll(/<p:sp>[\s\S]*?<\/p:sp>/g)].map((m) => m[0]);
 const nameOf = (block) => block.match(/<p:cNvPr id="\d+" name="([^"]*)"/)?.[1] ?? "";
 const textsOf = (block) => [...block.matchAll(/<a:t>([^<]*)<\/a:t>/g)].map((m) => unescapeXml(m[1]));
 const picCount = (xml) => (xml.match(/<p:pic>/g) ?? []).length;
+const rectOf = (block) => {
+  const off = block.match(/<a:off x="(-?\d+)" y="(-?\d+)"\/>/);
+  const ext = block.match(/<a:ext cx="(\d+)" cy="(\d+)"\/>/);
+  return { x: Number(off[1]) / EMU, y: Number(off[2]) / EMU, w: Number(ext[1]) / EMU, h: Number(ext[2]) / EMU };
+};
+/** 도형 그룹 이름 → 그룹 상자(inch). 그룹 상자는 자식 도형을 모두 감싼다. */
+const groupsOf = (xml) => [...xml.matchAll(/<p:grpSp><p:nvGrpSpPr><p:cNvPr id="\d+" name="([^"]*)"\/>[\s\S]*?<p:grpSpPr>([\s\S]*?)<\/p:grpSpPr>/g)].map((m) => ({ name: m[1], ...rectOf(m[2]) }));
+const pictures = (xml) => [...xml.matchAll(/<p:pic>[\s\S]*?<\/p:pic>/g)].map((m) => rectOf(m[0]));
+const near = (actual, expected, tol, label) => assert.ok(Math.abs(actual - expected) <= tol, `${label}: ${actual} ≈ ${expected} (±${tol})`);
+const szOf = (block) => Number(block.match(/sz="(\d+)"/)[1]);
 
-async function deckOf(slide, images = {}) {
-  const zip = await JSZip.loadAsync(await renderReportPptx([slide], images));
+async function deckOf(slide, images = {}, options = {}) {
+  const zip = await JSZip.loadAsync(await renderReportPptx([slide], images, options));
   const xml = await zip.file("ppt/slides/slide1.xml").async("string");
   const noteNames = Object.keys(zip.files).filter((name) => /^ppt\/notesSlides\/notesSlide\d+\.xml$/.test(name));
   const notes = (await Promise.all(noteNames.map((name) => zip.file(name).async("string")))).join("|");
-  return { xml, notes, blocks: shapeBlocks(xml) };
+  return { xml, notes, blocks: shapeBlocks(xml), groups: groupsOf(xml) };
 }
 
 const render = (slide) => renderToStaticMarkup(createElement(SlideSurface, { slide, basemap: "none", mode: "edit" }));
@@ -81,80 +101,172 @@ const render = (slide) => renderToStaticMarkup(createElement(SlideSurface, { sli
 // ── 12동 D05: 기본 계획
 const base = fixture(12);
 const chartsSlide = base.planOf({ ...base.tilePage, layout: "map-charts" });
-const summarySlide = base.planOf({ ...base.tilePage, layout: "map-summary" });
+const summarySlide = base.planOf({ ...base.tilePage, layout: "map-summary" }); // 저장된 옛 값은 ①(map-key)로 그린다
 assert.equal(chartsSlide.page.layout, "map-charts");
+assert.equal(summarySlide.page.layout, "map-key");
 const images = { [mapKeyOf(chartsSlide) ?? chartsSlide.view.tileId]: PNG };
 const charts = await deckOf(chartsSlide, images);
 const plain = await deckOf(summarySlide, images);
+// PPT가 읽는 같은 장 계산 묶음(화면 SlidePreview와 같은 함수 `reportPageFrame`이 만든다)
+const frame = pageFrameFor(chartsSlide);
+const plainFrame = pageFrameFor(summarySlide);
+assert.equal(frame.layout, "map-charts");
+assert.ok(frame.geometry.column && frame.fit && frame.chart1 && frame.chart2, "② 열·카드·그래프 카드 둘(전제)");
+assert.equal(plainFrame.layout, "map-key");
+assert.ok(plainFrame.geometry.keyCard && !plainFrame.geometry.column && plainFrame.fit, "① 카드(전제)");
+const geo = frame.geometry;
 
 // 그래프는 편집 가능한 도형 그룹: 구성비·거리 각각 한 그룹
 assert.match(charts.xml, /name="GRP\|chart-composition-D05\|그래프 · 구성비\|chart-composition-/, "구성비 도형 이름");
 assert.match(charts.xml, /name="GRP\|chart-distance-D05\|그래프 · 거리\|chart-distance-/, "거리 도형 이름");
-const groupNames = [...charts.xml.matchAll(/<p:grpSp><p:nvGrpSpPr><p:cNvPr id="\d+" name="([^"]*)"/g)].map((m) => m[1]);
+const groupNames = charts.groups.map((g) => g.name);
 assert.ok(groupNames.includes("그래프 · 구성비") && groupNames.includes("그래프 · 거리"), `그래프마다 그룹 하나: ${groupNames.join(",")}`);
 assert.equal(groupNames.filter((n) => n === "그래프 · 구성비").length, 1);
 assert.equal(groupNames.filter((n) => n === "그래프 · 거리").length, 1);
-assert.doesNotMatch(plain.xml, /GRP\|chart-/, "map-summary에는 그래프 도형이 없다");
+assert.doesNotMatch(plain.xml, /GRP\|chart-/, "① 지도 + 숫자에는 그래프 도형이 없다");
 
-// 그래프용 그림이 없다: 그림 수는 map-summary와 같다(지도 배경 그림만)
-assert.ok(picCount(plain.xml) >= 1, "이 픽스처에는 지도 배경 그림이 있다(비교의 전제)");
-assert.equal(picCount(charts.xml), picCount(plain.xml), "그래프는 그림을 더하지 않는다");
+// ② 핵심 숫자 카드: 그룹 「핵심 숫자」 = 기하의 column.key(±0.01 in), 숫자 run 글자 크기 = keyFigureFit의 valuePt
+{
+  const group = charts.groups.find((g) => g.name === "핵심 숫자");
+  assert.ok(group, "「핵심 숫자」 그룹");
+  for (const k of ["x", "y", "w", "h"]) near(group[k], geo.column.key[k], 0.01, `② 핵심 숫자 그룹 ${k}`);
+  assert.equal(frame.fit.height, geo.column.key.h, "카드 높이는 keyFigureFit이 정하고 기하가 그대로 받는다");
+  const answer = charts.blocks.find((b) => textsOf(b).includes("1~4층"));
+  assert.ok(answer, "큰 답 글상자");
+  assert.deepEqual(textsOf(answer), ["1~4층", " 건물"], "큰 답은 상자 하나에 run(숫자·뒷말)");
+  assert.ok(new RegExp(`sz="${Math.round(frame.fit.valuePt * 100)}"`).test(answer), `숫자 run 글자 크기 = valuePt ${frame.fit.valuePt}`);
+  assert.ok(new RegExp(`sz="${Math.round(frame.fit.postPt * 100)}"`).test(answer), "뒷말 run 글자 크기 = postPt");
+  assert.doesNotMatch(answer, /normAutofit|spAutoFit/, "큰 답은 자동 맞춤에 기대지 않는다");
+  assert.match(answer, /<a:bodyPr[^>]*wrap="none"/, "큰 답은 줄바꿈하지 않는다");
+  // 카드 안 글: 질문·보조 줄·보조 숫자 셋이 모두 카드 상자 안에 있다
+  for (const phrase of ["가장 많은 층수대", "층수가 확인된 12동 기준", "100%", "층수 확인률", "12동", "반경 건물"]) {
+    const block = charts.blocks.find((b) => textsOf(b).includes(phrase));
+    assert.ok(block, `카드 글 「${phrase}」`);
+    const r = rectOf(block);
+    assert.ok(r.x >= group.x - 0.01 && r.y >= group.y - 0.01 && r.x + r.w <= group.x + group.w + 0.01 && r.y + r.h <= group.y + group.h + 0.01, `「${phrase}」는 카드 안`);
+  }
+  assert.ok(charts.blocks.some((b) => textsOf(b).includes("일부 자료만 집계")), "상태 배지");
+}
 
-// 각주는 장 본문에 없고 발표자 노트에 있다(중복은 한 번)
-for (const phrase of ["표본 한계 문구 가나다", "보조 메모 라마바"]) {
+// ① 핵심 숫자 카드: 기하의 keyCard, 카드 맨 아래 해석 줄 포함
+{
+  const group = plain.groups.find((g) => g.name === "핵심 숫자");
+  assert.ok(group, "① 「핵심 숫자」 그룹");
+  for (const k of ["x", "y", "w", "h"]) near(group[k], plainFrame.geometry.keyCard[k], 0.01, `① 핵심 숫자 그룹 ${k}`);
+  assert.ok(plain.blocks.some((b) => textsOf(b).join("\n") === plainFrame.fit.sentenceLines.join("\n")), "① 해석 줄은 카드 안에 fit이 나눈 줄 그대로");
+  assert.ok(!plain.groups.some((g) => g.name === "열 바탕"), "① 에는 열이 없다");
+}
+
+// 지도 그림은 쪽 전체가 아니라 기하의 지도 틀 안에만(① 전체 폭, ② 0.68 폭)
+{
+  assert.ok(picCount(plain.xml) >= 1, "이 픽스처에는 지도 배경 그림이 있다(비교의 전제)");
+  assert.equal(picCount(charts.xml), picCount(plain.xml), "그래프는 그림을 더하지 않는다");
+  for (const [deck, f, label] of [[plain, plainFrame, "①"], [charts, frame, "②"]]) {
+    const pic = pictures(deck.xml)[0];
+    for (const k of ["x", "y", "w", "h"]) near(pic[k], f.geometry.map[k], 0.01, `${label} 지도 그림 ${k} = 기하 map`);
+  }
+  assert.ok(geo.map.w < plainFrame.geometry.map.w - 1, "② 지도 틀은 ①보다 좁다(비교가 헛돌지 않는다)");
+  // 「이미지 한 장」도 같다
+  const whole = await deckOf(chartsSlide, images, { mapDrawing: "image" });
+  const pic = pictures(whole.xml)[0];
+  for (const k of ["x", "y", "w", "h"]) near(pic[k], geo.map[k], 0.01, `이미지 한 장 지도 그림 ${k}`);
+}
+
+// 열 바탕 띠: 지도 틀 오른쪽 끝에서 장 오른쪽 끝까지
+{
+  const band = charts.blocks.find((b) => nameOf(b) === "GRP|column-band|열 바탕|band");
+  assert.ok(band, "열 바탕 띠");
+  const r = rectOf(band);
+  near(r.x, geo.map.w, 0.01, "열 바탕 x");
+  near(r.x + r.w, 13.333, 0.01, "열 바탕 오른쪽 끝 = 장 오른쪽 끝");
+  assert.match(band, /<a:srgbClr val="F0EFE9"/, "열 바탕 색");
+}
+
+// 각주 띠: 글은 `출처 `로 시작하고 첫 한계를 포함한다(화면 각주와 같은 문자열), 출처 9 pt일 때 7.5 pt
+{
+  const foot = charts.blocks.find((b) => textsOf(b)[0]?.startsWith("출처 "));
+  assert.ok(foot, "각주 글");
+  assert.equal(textsOf(foot)[0], frame.footer.text, "화면 각주와 같은 문자열");
+  assert.ok(frame.footer.text.includes(chartsSlide.view.caveats[0]), "첫 한계가 각주에 있다");
+  assert.equal(szOf(foot), 750, "출처 9 pt일 때 각주 7.5 pt");
+  assert.match(foot, /<a:bodyPr[^>]*wrap="none"/, "각주는 줄바꿈하지 않는다");
+  const r = rectOf(foot);
+  near(r.y, geo.footer.y, 0.01, "각주 글 y");
+  assert.ok(r.x + r.w <= geo.pageNo.x + 0.01, "각주 글은 쪽 번호 앞에서 끝난다");
+  assert.ok(charts.blocks.some((b) => textsOf(b).includes("1 / 1") || textsOf(b).some((t) => /^\d+ \/ \d+$/.test(t))), "쪽 번호");
+}
+
+// 첫 한계 밖의 각주(메모)는 장 본문에 없고 발표자 노트에 있다(중복은 한 번)
+{
+  const phrase = "보조 메모 라마바";
   assert.ok(!charts.blocks.some((b) => textsOf(b).some((t) => t.includes(phrase))), `${phrase}는 장 본문에 없다`);
   assert.ok(charts.notes.includes(phrase), `${phrase}는 발표자 노트에 있다`);
-  assert.ok(plain.blocks.some((b) => textsOf(b).some((t) => t.includes(phrase))), `map-summary는 ${phrase}를 본문에 그린다(위 판정이 헛돌지 않는다)`);
+  assert.ok(plain.notes.includes(phrase), "① 도 같다");
+  assert.ok(charts.notes.includes("표본 한계 문구 가나다"), "한계 전체는 노트에 있다");
+  assert.equal(charts.notes.split("표본 한계 문구 가나다").length - 1, 1, "중복 각주는 노트에 한 번");
+  assert.ok(!charts.blocks.some((b) => textsOf(b).some((t) => /^주석 \d/.test(t))), "PPT에는 주석 칩이 없다");
 }
-assert.equal(charts.notes.split("표본 한계 문구 가나다").length - 1, 1, "중복 각주는 노트에 한 번");
-assert.ok(!charts.blocks.some((b) => textsOf(b).some((t) => /^주석 \d/.test(t))), "PPT에는 주석 칩이 없다");
 
-// 화면 그래프 글자 = PPT 그래프 글자(같은 기하)
+// 화면 그래프 글자 집합 = PPT 그래프 글자 집합(같은 기하)
+const mapCharts = analysisCharts(modelWithHiddenLayers(chartsSlide.map, []));
 const svgTexts = [...render(chartsSlide).matchAll(/<svg[^>]*data-chart="[^"]*"[^>]*>([\s\S]*?)<\/svg>/g)].flatMap((m) => [...m[1].matchAll(/<text[^>]*>([\s\S]*?)<\/text>/g)].map((t) => unescapeXml(t[1])));
 const pptTexts = charts.blocks.filter((b) => nameOf(b).startsWith("GRP|chart-")).flatMap(textsOf);
 assert.ok(svgTexts.length > 8, "화면 그래프 글자가 충분하다");
-// 화면(Task 6)은 새 배치의 그래프 카드 칸에 그리고 PPT는 Task 7까지 옛 열 칸에 그린다. 두 글자 집합이 같다는 비교는 Task 7에서 되살린다.
-assert.ok(pptTexts.length > 8, "PPT 그래프 글자가 충분하다");
+assert.deepEqual([...pptTexts].sort(), [...svgTexts].sort(), "화면 그래프 글자 = PPT 그래프 글자");
 
-// 글자는 줄바꿈하지 않고, 크기·자리는 기하 그대로
-const EMU = 914400;
-const summaryRect = slidePanelRects({}, true, undefined, "wide").summary;
-const col = chartsColumnLayout(summaryRect, 1);
-const mapCharts = analysisCharts(modelWithHiddenLayers(chartsSlide.map, []));
-const geometry = [...compositionShapes(mapCharts.composition, col.composition, 1, mapCharts.titles.composition), ...distanceShapes(mapCharts.distance, mapCharts.radiusM, col.distance, 1, mapCharts.titles.distance)];
+// 글자는 줄바꿈하지 않고, 크기·자리는 그래프 카드 안쪽 칸 기하 그대로
+const geometry = [...compositionShapes(mapCharts.composition, frame.chart1, frame.chartScale, mapCharts.titles.composition), ...distanceShapes(mapCharts.distance, mapCharts.radiusM, frame.chart2, frame.chartScale, mapCharts.titles.distance)];
 for (const shape of geometry.filter((s) => s.kind === "text")) {
   const block = charts.blocks.find((b) => nameOf(b).endsWith(`|${shape.name}`));
   assert.ok(block, `${shape.name} 글상자`);
   assert.match(block, /<a:bodyPr[^>]*wrap="none"/, `${shape.name}: 줄바꿈 없음`);
   assert.doesNotMatch(block, /normAutofit|spAutoFit/, `${shape.name}: 자동 맞춤 없음`);
   assert.match(block, new RegExp(`sz="${Math.round(shape.pt * 100)}"`), `${shape.name}: 글자 크기 그대로`);
-  const off = block.match(/<a:off x="(-?\d+)" y="(-?\d+)"\/>/);
-  const ext = block.match(/<a:ext cx="(\d+)" cy="(\d+)"\/>/);
-  assert.ok(Math.abs(Number(off[1]) - shape.x * EMU) <= 1 && Math.abs(Number(off[2]) - shape.y * EMU) <= 1, `${shape.name}: 자리`);
-  assert.ok(Math.abs(Number(ext[1]) - shape.w * EMU) <= 1 && Math.abs(Number(ext[2]) - shape.h * EMU) <= 1, `${shape.name}: 크기`);
+  const r = rectOf(block);
+  assert.ok(Math.abs(r.x * EMU - shape.x * EMU) <= 1 && Math.abs(r.y * EMU - shape.y * EMU) <= 1, `${shape.name}: 자리`);
+  assert.ok(Math.abs(r.w * EMU - shape.w * EMU) <= 1 && Math.abs(r.h * EMU - shape.h * EMU) <= 1, `${shape.name}: 크기`);
 }
 for (const shape of geometry.filter((s) => s.kind === "rect")) {
   assert.equal(charts.blocks.some((b) => nameOf(b).endsWith(`|${shape.name}`)), shape.h > 0, `${shape.name}: 높이 0 사각형은 그리지 않는다`);
 }
+// 그래프 카드는 기하의 column.chart1·chart2 칸이다
+for (const [key, rect] of [["composition", geo.column.chart1], ["distance", geo.column.chart2]]) {
+  const card = charts.blocks.find((b) => nameOf(b).endsWith(`|card`) && nameOf(b).includes(`chart-${key}-`));
+  assert.ok(card, `${key} 그래프 카드`);
+  const r = rectOf(card);
+  for (const k of ["x", "y", "w", "h"]) near(r[k], rect[k], 0.01, `${key} 그래프 카드 ${k}`);
+}
+// 구성비 이름은 같은 앞말을 뗀 이름(G1)이고, 그래프 카드 제목은 9.4 pt다(화면과 같은 상수)
+assert.equal(szOf(charts.blocks.find((b) => nameOf(b).endsWith("|chart-composition-title"))), 940, "그래프 카드 제목 9.4 pt");
 
-// 화면과 PPT가 같은 맞춤 값을 쓴다: 한 줄 통계·해석 문장 pt
+// 해석 줄: 열 맨 아래, fit이 나눈 줄 그대로·같은 pt·열 안. 화면과 pt 비가 같다(keyFigureFit 값 비교로 대신한다)
 {
-  const fit = analysisColumnFit({ col, scale: 1, summaryPt: 13, badges: chartsSlide.view.badges, headline: chartsSlide.view.headline, statText: analysisStatLine(mapCharts), filterLine: chartsSlide.view.filterLine, sentence: chartsSlide.view.sentence });
-  const sz = (text) => {
-    const block = charts.blocks.find((b) => textsOf(b).includes(text));
-    assert.ok(block, `${text} 글상자`);
-    return Number(block.match(/sz="(\d+)"/)[1]);
-  };
-  assert.equal(sz(analysisStatLine(mapCharts)), Math.round(fit.statPt * 100), "통계 pt: PPT = 맞춤 함수");
-  assert.equal(sz(chartsSlide.view.sentence), Math.round(fit.sentPt * 100), "해석 문장 pt: PPT = 맞춤 함수");
-  // 화면의 해석·통계 글자 크기 비교(옛 열)는 Task 6에서 화면이 keyFigureFit의 새 카드·해석 줄로 바뀌어 없앤다. 화면 = PPT 비교는 Task 7에서 새 맞춤 값으로 되살린다.
+  const info = frame.sentence;
+  assert.ok(info && info.lines.length > 0, "해석 줄(전제)");
+  const group = charts.groups.find((g) => g.name === "해석 줄");
+  assert.ok(group, "「해석 줄」 그룹");
+  near(group.y + group.h, geo.column.sentence.y + geo.column.sentence.h, 0.01, "해석 줄은 열 맨 아래");
+  const block = charts.blocks.find((b) => nameOf(b).endsWith("|text") && nameOf(b).includes("column-sentence"));
+  assert.deepEqual(textsOf(block), info.lines, "PPT 해석 줄 = fit이 나눈 줄");
+  assert.equal(szOf(block), Math.round(info.pt * 100), "해석 pt = keyFigureFit 값");
+  assert.equal(info.pt, frame.fit.sentencePt, "해석 pt는 카드 맞춤 값 그대로");
+  const html = render(chartsSlide);
+  const px = (part) => Number(new RegExp(`data-part="${part}"[^>]*style="[^"]*font-size:([\\d.]+)px`).exec(html)?.[1]);
+  const question = charts.blocks.find((b) => textsOf(b).includes("가장 많은 층수대"));
+  assert.ok(px("column-sentence") > 0 && px("key-question") > 0, "화면 해석 줄·카드 질문 글자 크기를 읽었다(전제)");
+  near(px("column-sentence") / px("key-question"), szOf(block) / szOf(question), 0.01, "화면 해석/질문 글자 비 = PPT 해석/질문 글자 비");
 }
 
-// 필터 줄은 통계 칸의 둘째 줄(같은 글상자), 글자 크기 24 pt에서도 같은 맞춤 값(고덕 A05)
+// 배지·큰 숫자는 같은 카드 칸에
+assert.ok(charts.blocks.some((b) => textsOf(b).includes("일부 자료만 집계")), "배지");
+assert.ok(charts.blocks.some((b) => textsOf(b).includes("1~4층")) && charts.blocks.some((b) => textsOf(b).includes("가장 많은 층수대")), "큰 답·질문");
+
+// 필터 줄은 카드 안(줄은 keyFigureFit이 나눈 대로), 글자 크기 24 pt에서도 같은 맞춤 값(고덕 A05)
 {
   const { GODEOK_RESULTS } = await import("../../lib/v2/ui/fixtures/godeok.ts");
   const a05 = GODEOK_RESULTS.find((result) => result.tileCode === "A05");
-  const a05View = { ...toTileView(a05, null, null, { distance: { max: 900 } }), callout: null };
+  const rawA05 = toTileView(a05, null, null, { distance: { max: 900 } });
+  const a05View = { ...rawA05, callout: null, keyFigure: rawA05.keyFigure ?? { question: "반경 확인 세대", answer: { value: "21,549세대", kind: "number" }, stats: [{ value: "1곳", label: "아파트 단지" }] } };
   assert.ok(a05View.filterLine, "A05 필터 줄(전제)");
   const a05Views = new Map([[a05.tileId, a05View]]);
   const a05Ctx = { summary: toSummaryView(GODEOK_SUMMARY, [a05]), analysisDate: "2026-10-27", views: a05Views };
@@ -162,83 +274,83 @@ for (const shape of geometry.filter((s) => s.kind === "rect")) {
   assert.equal(a05Page.layout, "map-charts");
   for (const fontSizes of [undefined, { summary: 24 }]) {
     const slide = planReportDoc({ ...EMPTY_REPORT_DOC, pages: [{ ...a05Page, ...(fontSizes ? { fontSizes } : {}) }] }, a05Views, a05Ctx).find((s) => s.kind === "tile");
-    const a05Charts = analysisCharts(slide.map);
+    const f = pageFrameFor(slide);
+    assert.ok(f.fit && f.fit.filterLines.length > 0, `필터 줄이 카드에 있다 (${fontSizes ? "24 pt" : "기본"})`);
     const deck = await deckOf(slide);
-    const block = deck.blocks.find((b) => textsOf(b).includes(a05View.filterLine));
-    assert.ok(block, `필터 줄이 장에 있다 (${fontSizes ? "24 pt" : "기본"})`);
-    assert.deepEqual(textsOf(block), [analysisStatLine(a05Charts), a05View.filterLine], "통계 줄 아래 필터 줄, 한 글상자");
-    const summaryPt = fontSizes ? 24 : 13;
-    const fit = analysisColumnFit({ col: chartsColumnLayout(slidePanelRects(slide.style, true, undefined, "wide").summary, summaryPt / 13), scale: summaryPt / 13, summaryPt, badges: slide.view.badges, headline: slide.view.headline, statText: analysisStatLine(a05Charts), filterLine: a05View.filterLine, sentence: slide.page?.summaryOverride ?? slide.view.sentence });
-    assert.equal(Number(block.match(/sz="(\d+)"/)[1]), Math.round(fit.statPt * 100), "필터 줄이 있어도 통계 pt는 맞춤 함수 값");
+    const block = deck.blocks.find((b) => textsOf(b).join("") === f.fit.filterLines.join(""));
+    assert.ok(block, `PPT 필터 줄 = fit이 나눈 줄 (${fontSizes ? "24 pt" : "기본"}): ${f.fit.filterLines.join(" / ")}`);
+    assert.deepEqual(textsOf(block), f.fit.filterLines, "줄은 fit이 나눈 그대로");
+    assert.equal(szOf(block), Math.round(f.fit.subPt * 100), "필터 줄 pt = 맞춤 함수 값");
+    const group = deck.groups.find((g) => g.name === "핵심 숫자");
+    const r = rectOf(block);
+    assert.ok(r.y + r.h <= group.y + group.h + 0.01, "필터 줄은 카드 안");
+    if (fontSizes) assert.ok(f.fit.subPt > 9.4 + 1e-9, "요약 24 pt면 필터 줄 글자가 시안 9.4 pt보다 크다(비교가 헛돌지 않는다)");
   }
 }
 
 // 해석 문장: 고친 요약이 있으면 그것
 {
+  // 해석 줄은 폭에 맞게 줄이 나뉘므로 공백을 뺀 글로 비교한다.
+  const squash = (value) => value.replace(/\s+/g, "");
+  const sentenceBlock = (deck, text) => deck.blocks.find((b) => nameOf(b).includes("column-sentence") && squash(textsOf(b).join("")) === squash(text));
   const edited = await deckOf(base.planOf({ ...base.tilePage, layout: "map-charts", summaryOverride: "사용자가 고친 요약 문장" }), images);
-  assert.ok(edited.blocks.some((b) => textsOf(b).includes("사용자가 고친 요약 문장")), "고친 요약을 해석 자리에");
-  assert.ok(!edited.blocks.some((b) => textsOf(b).includes(base.view.sentence)), "고친 요약이 있으면 view.sentence는 없다");
-  assert.ok(charts.blocks.some((b) => textsOf(b).includes(base.view.sentence)), "기본은 view.sentence 그대로");
+  assert.ok(sentenceBlock(edited, "사용자가 고친 요약 문장"), "고친 요약을 해석 자리에");
+  assert.ok(!sentenceBlock(edited, base.view.sentence), "고친 요약이 있으면 view.sentence는 없다");
+  assert.ok(sentenceBlock(charts, base.view.sentence), "기본은 view.sentence 그대로");
 }
 
-// I3: 아주 긴 고친 요약(600자, 24 pt) — 화면과 PPT가 줄 수에 맞게 자른 똑같은 글을 그리고, PPT 글상자는 요약 판 밖으로 나가지 않는다.
+// I3: 아주 긴 고친 요약(600자, 24 pt) — 화면과 PPT가 줄 수에 맞게 자른 똑같은 글을 그리고, PPT 글상자는 열 밖으로 나가지 않는다.
 {
   const long = "낮은 층 건물이 대부분이고 높은 건물은 일부이며 반경 안 분포는 대지 가까이에 몰려 있다 ".repeat(12).slice(0, 600);
   assert.equal(long.length, 600);
   const slide = base.planOf({ ...base.tilePage, layout: "map-charts", summaryOverride: long, fontSizes: { summary: 24 } });
-  const plate = slidePanelRects(slide.style, true, undefined, "wide").summary;
-  const scale = 24 / 13;
-  const colLong = chartsColumnLayout(plate, scale);
-  const longCharts = analysisCharts(slide.map);
-  const fitLong = analysisColumnFit({ col: colLong, scale, summaryPt: 24, badges: slide.view.badges, headline: slide.view.headline, statText: analysisStatLine(longCharts), filterLine: slide.view.filterLine, sentence: long });
-  assert.ok(fitLong.sentence.length < long.length && fitLong.sentence.endsWith("…") && long.startsWith(fitLong.sentence.slice(0, -1).trimEnd()), "줄 수에 맞게 자르고 …로 닫는다");
+  const f = pageFrameFor(slide);
+  const lines = f.sentence.lines;
+  const squashed = (value) => value.replace(/\s+/g, "");
+  assert.ok(lines.length <= 3 && lines.at(-1).endsWith("…") && squashed(long).startsWith(squashed(lines.join("")).slice(0, -1)), "최대 3줄로 자르고 …로 닫는다");
   const deck = await deckOf(slide, images);
-  const block = deck.blocks.find((b) => textsOf(b).includes(fitLong.sentence));
+  const block = deck.blocks.find((b) => textsOf(b).join("") === lines.join(""));
   assert.ok(block, "PPT는 자른 글 그대로를 그린다");
-  assert.ok(!deck.blocks.some((b) => textsOf(b).includes(long)), "PPT에 600자 원문이 없다");
+  assert.deepEqual(textsOf(block), lines, "줄은 fit이 나눈 그대로");
+  assert.ok(!deck.blocks.some((b) => textsOf(b).join("").includes(long.slice(0, 200))), "PPT에 600자 원문이 없다");
   assert.doesNotMatch(block, /normAutofit|spAutoFit/, "PPT 해석 문장은 자동 맞춤에 기대지 않는다");
-  const off = block.match(/<a:off x="(-?\d+)" y="(-?\d+)"\/>/);
-  const ext = block.match(/<a:ext cx="(\d+)" cy="(\d+)"\/>/);
-  assert.ok(Number(off[2]) + Number(ext[2]) <= (plate.y + plate.h) * EMU + 1, "해석 문장 글상자 아래 ≤ 요약 판 아래");
-  // 통계 줄도 마찬가지: 아주 긴 통계는 줄 수에 맞게 잘리고 PPT와 화면이 같다
-  const longStat = `${analysisStatLine(longCharts)} · ${"꼬리표 ".repeat(120)}`;
-  const fitStat = analysisColumnFit({ col: colLong, scale, summaryPt: 24, badges: [], headline: null, statText: longStat, filterLine: "적용 필터: 가나다 ".repeat(20), sentence: null });
-  assert.ok(fitStat.statText.endsWith("…") && fitStat.statText.length < longStat.length, "통계 줄 자름");
-  assert.ok(fitStat.filterLine.endsWith("…"), "필터 줄은 한 줄로 자름");
-  // 기본 크기(13 pt)의 평소 판단 문장(~80자)은 fitBlock이 맞는다고 본 대로 자르지 않는다
-  const routine = "반경 안 건물 1,734동 중 지상층수 확인 68.4%, 1층 가정(추정) 548동 → 확인·추정·미상을 분리해 표시 → 건축물대장 층수 확인 필요";
-  const colBase = chartsColumnLayout(summaryRect, 1);
-  const fitRoutine = analysisColumnFit({ col: colBase, scale: 1, summaryPt: 13, badges: slide.view.badges, headline: slide.view.headline, statText: analysisStatLine(longCharts), filterLine: null, sentence: routine });
-  assert.equal(fitRoutine.sentence, routine, "평소 문장은 잘리지 않는다");
-  // 두 줄이 되는 한 줄 통계는 「 · 」 자리에서만 끊는다(「548\n동」·「만원/\n㎡」처럼 숫자와 단위가 갈라지지 않게)
-  const twoLineStat = "반경 1 km 안 건물 1,734동 · 중앙값 4층 · 최고 69층 · 1층 가정·미상 548동";
-  const fitTwo = analysisColumnFit({ col: colBase, scale: 1, summaryPt: 13, badges: [], headline: null, statText: twoLineStat, filterLine: null, sentence: null });
-  assert.ok(fitTwo.statText.includes(" ·\n"), `구분점에서 줄바꿈: ${JSON.stringify(fitTwo.statText)}`);
-  assert.equal(fitTwo.statText.replace(" ·\n", " · "), twoLineStat, "글자는 그대로");
-  assert.ok(fitTwo.statText.split("\n").every((line) => /(동|층|m)$/.test(line.replace(/ ·$/, ""))), "각 줄은 값+단위로 끝난다");}
-
-// 배지·큰 숫자는 화면과 같은 칸에
-assert.ok(charts.blocks.some((b) => textsOf(b).includes("일부 자료만 집계")), "배지");
-assert.ok(charts.blocks.some((b) => textsOf(b).includes("4층")) && charts.blocks.some((b) => textsOf(b).includes("층수 중앙값")), "큰 숫자·라벨");
-assert.ok(charts.blocks.some((b) => textsOf(b).some((t) => t.includes(analysisStatLine(mapCharts)))), "한 줄 통계");
+  const r = rectOf(block);
+  const col = f.geometry.column.rect;
+  assert.ok(r.y + r.h <= col.y + col.h + 0.01 && r.x + r.w <= col.x + col.w + 0.01, "해석 글상자는 열 밖으로 나가지 않는다");
+  assert.equal(szOf(block), Math.round(f.sentence.pt * 100), "해석 pt = 맞춤 값");
+}
 
 // 끈 레이어: 그래프 합계는 걸러진 모델(10동)
 {
-  const hidden = await deckOf(base.planOf({ ...base.tilePage, layout: "map-charts", frame: { ...defaultFrame(), hiddenLayers: ["floors_9_14"] } }), images);
-  const filteredModel = modelWithHiddenLayers(chartsSlide.map, ["floors_9_14"]);
-  const expected = analysisCharts(filteredModel);
+  const hiddenSlide = base.planOf({ ...base.tilePage, layout: "map-charts", frame: { ...defaultFrame(), hiddenLayers: ["floors_9_14"] } });
+  const hidden = await deckOf(hiddenSlide, images);
+  const hf = pageFrameFor(hiddenSlide);
+  const expected = analysisCharts(modelWithHiddenLayers(chartsSlide.map, ["floors_9_14"]));
   assert.equal(expected.total, 10);
-  assert.ok(hidden.blocks.some((b) => textsOf(b).some((t) => t.includes(analysisStatLine(expected)))), "PPT 통계 = 걸러진 모델의 통계");
-  assert.ok(!hidden.blocks.some((b) => textsOf(b).some((t) => t.includes("건물 12동"))), "12동이 아니다");
+  assert.equal(hf.charts.total, 10, "장 계산 묶음의 그래프 자료 = 걸러진 모델");
+  const textsFor = (c, f2) => [...compositionShapes(c.composition, f2.chart1, f2.chartScale, c.titles.composition), ...distanceShapes(c.distance, c.radiusM, f2.chart2, f2.chartScale, c.titles.distance)].filter((s) => s.kind === "text").map((s) => s.text).sort();
+  const pptHidden = hidden.blocks.filter((b) => nameOf(b).startsWith("GRP|chart-")).flatMap(textsOf).sort();
+  assert.deepEqual(pptHidden, textsFor(expected, hf), "PPT 그래프 글자 = 걸러진 모델의 그래프 글자");
+  assert.notDeepEqual(textsFor(expected, hf), textsFor(mapCharts, frame), "걸러진 모델과 걸러지지 않은 모델의 그래프가 다르다(비교가 헛돌지 않는다)");
 }
 
-// 그래프 자료가 없는 map-charts 쪽은 map-summary 그대로(표 줄·각주를 본문에)
+// 그래프 자료가 없는 map-charts 쪽은 ①로(빈 그래프 카드를 남기지 않는다): 그래프 도형 0개, 핵심 숫자 카드 1개
 {
   const empty = { ...base.view, map: { ...base.view.map, features: [], polygons: [], total: 0 } };
   const views = new Map([[base.result.tileId, empty]]);
   const lost = await deckOf(base.planOf({ ...base.tilePage, layout: "map-charts" }, views), images);
   assert.doesNotMatch(lost.xml, /GRP\|chart-/, "자료가 없으면 그래프 도형이 없다");
-  assert.ok(lost.blocks.some((b) => textsOf(b).some((t) => t.includes("표본 한계 문구 가나다"))), "자료가 없으면 각주를 본문에");
+  assert.equal(lost.groups.filter((g) => g.name === "핵심 숫자").length, 1, "핵심 숫자 카드는 1개");
+  assert.ok(!lost.groups.some((g) => g.name === "열 바탕"), "열도 없다");
+  // 저장된 map-charts 쪽의 그래프 자료가 계획 뒤에 사라진 경우도 같다(PPT가 스스로 ①로 내린다)
+  const stale = { ...chartsSlide, map: { ...chartsSlide.map, features: [], polygons: [], total: 0 }, view: empty };
+  assert.equal(stale.page.layout, "map-charts", "저장 판정은 map-charts(전제)");
+  const staleDeck = await deckOf(stale, images);
+  assert.doesNotMatch(staleDeck.xml, /GRP\|chart-/, "그래프 도형 0개");
+  assert.equal(staleDeck.groups.filter((g) => g.name === "핵심 숫자").length, 1, "핵심 숫자 카드 1개");
+  const f = pageFrameFor(stale);
+  near(pictures(staleDeck.xml)[0].w, f.geometry.map.w, 0.01, "지도는 전체 폭");
+  near(f.geometry.map.w, 13.333, 0.01, "전체 폭(전제)");
 }
 
 // ── 점 2,000개: 거리 산점도의 dots 도형 수 = 색 수

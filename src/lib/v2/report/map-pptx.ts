@@ -1,7 +1,7 @@
 import PptxGenJS from "pptxgenjs";
 import { buildingStyleForRaster, isBuildingLayer, layerStyle, legendItems, legendItemsForModel, legendLabelOf, modelLayerStyle, polygonPaint, polygonTone, type MapModel } from "../ui/map-layers";
 import { isSiteParcelLayer } from "../ui/site-parcel";
-import { calloutLegendEntries, SLIDE, slideCalloutAvoidance, slideGeometry, slideLayout, slideLegend, slidePanelRects, slideReserved, slideSiteX, terrainSectionLayout, type SlideFormat } from "../ui/overlay-layout";
+import { calloutLegendEntries, SLIDE, slideCalloutAvoidance, slideGeometry, slideLayout, slideLegend, slidePanelRects, slideReserved, slideSiteX, terrainSectionLayout, type Rect, type SlideFormat } from "../ui/overlay-layout";
 import { SLIDE_OVERVIEW_FILL, slideCalloutFrame } from "../ui/callout-layout";
 import { buildMapScene, locatorBox, mapLabelEntries, nearestLineStroke, NORTH_GLYPH, NORTH_RADIUS, northArrowBox, northArrowPoints, northScaleForBox, RAIL_EXIT_COLOR, RAIL_EXIT_DOT_RADIUS, RAIL_EXIT_DOT_STROKE, SCALE_FONT_PX, SCALE_PANEL_ABOVE, SCALE_PANEL_BELOW, SITE_MARK, scaleBarBox, scaleChromeScaleForBox, scaleFontScaleForPt, type MapScene, type MapSceneBaseBucket, type MapSceneBox } from "../ui/map-scene";
 import { baseTheme, type BaseThemeRef } from "../ui/map-theme";
@@ -13,8 +13,9 @@ import type { PlannedSlide } from "./report-plan";
 import type { PageStyle } from "../ui/board-state";
 import { metersPerPixel, slideViewport, type BasemapChoice } from "../ui/map-projection";
 import { scaleOptionsForFrame, zoomForScale } from "../ui/report-scale";
+import { frameChromeUnit, type ReportPageGeometry } from "../ui/report-page-layout";
 import { DEFAULT_REPORT_FONT_SIZES, frameSiteMarks, type MapFrameState, type PagePanelRect, type ReportLayout } from "./report-doc";
-import { mapLayoutUnitForFrame } from "./report-geometry";
+import { reportMapAvoid } from "./report-page-frame";
 
 const VIEW_W = 960;
 const VIEW_H = 540;
@@ -56,6 +57,8 @@ export type NativeMapOptions = {
   baseTheme?: BaseThemeRef;
   /** 벡터 바탕 도형 다음, 주제 도형 앞에서 불린다. 값 래스터 그림을 이 자리에 넣는다. */
   underlay?: () => void;
+  /** 새 장 배치(지도 + 숫자·지도 + 그래프)의 장 기하. 있으면 `frame`이 기하의 지도 틀이고 방위표·축척·피할 자리가 모두 이 기하에서 온다(화면 MapLayer와 같다). */
+  pageGeometry?: ReportPageGeometry;
 };
 
 export type NativeMapStatus = {
@@ -532,7 +535,7 @@ function locatorFor(model: MapModel, reportFrame: MapFrameState | undefined, sav
 
 type NativeScene = { scene: MapScene; locator: MapSceneBox | null; drawScale: boolean };
 
-function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "tile" }; mode?: NativeMapMode; style?: PageStyle; format?: SlideFormat; reportFrame?: MapFrameState; layout?: ReportLayout; basemap?: BasemapChoice; baseTheme?: BaseThemeRef }): NativeScene {
+function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "tile" }; mode?: NativeMapMode; style?: PageStyle; format?: SlideFormat; reportFrame?: MapFrameState; layout?: ReportLayout; basemap?: BasemapChoice; baseTheme?: BaseThemeRef; pageGeometry?: ReportPageGeometry }): NativeScene {
   const mode = options.mode ?? "tile";
   const format = options.format ?? activeFormat;
   const reportFrame = options.reportFrame;
@@ -542,7 +545,8 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
     const height = activeSceneHeight;
     const cellLegend = cellLegendLayout(displayModel);
     const style = options.style ?? {};
-    const cellUnit = mapLayoutUnitForFrame(activeFrame.h * activePxPerInch);
+    // 칸 장면은 폭 960 px이므로 부속 단위 u는 장면 높이(960 × 칸 높이 / 칸 폭)로 정한다. 장면이 실제로 그리는 u와 같다(O-2).
+    const cellUnit = frameChromeUnit(activeFrame.w, activeFrame.h);
     // 화면은 reportFrame이 없는 칸에 방위표·축척 막대를 그리지 않는다.
     const showNorth = reportFrame?.decorations.north ?? false;
     const drawScale = reportFrame?.decorations.scaleBar ?? false;
@@ -609,9 +613,13 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
         hiddenKeys: [...new Set([...(style.hiddenKeys ?? []), ...reportFrame.hiddenLabelKeys])],
       }
     : style;
-  const hasSummary = style.summary !== false && !(plan.callout && plan.callout.page > 0);
-  const baseLegend = slideLegend(displayModel, !plan.muted, undefined, hasSummary, format, reportFrame?.legend ?? {}).rect;
-  const panels = slidePanelRects(style, hasSummary, baseLegend, format);
+  // 새 장 배치(pageGeometry): 지도 틀 = frame, 장면 1 in = scenePxPerInch px, 부속·피할 자리는 모두 기하의 사각형이다(화면 MapLayer와 같다).
+  const geo = options.pageGeometry;
+  const ppi = geo ? geo.scenePxPerInch : activePxPerInch;
+  const geoBox = (r: Rect): MapSceneBox => ({ x0: r.x * ppi, y0: r.y * ppi, x1: (r.x + r.w) * ppi, y1: (r.y + r.h) * ppi });
+  const hasSummary = !geo && style.summary !== false && !(plan.callout && plan.callout.page > 0);
+  const baseLegend = geo ? null : slideLegend(displayModel, !plan.muted, undefined, hasSummary, format, reportFrame?.legend ?? {}).rect;
+  const panels = geo ? { title: geo.title, summary: null, legend: geo.legend } : slidePanelRects(style, hasSummary, baseLegend, format);
   const terrainShown = plan.view.code === "D17" && !!plan.view.terrainSections && !!plan.terrainSection;
   const terrainLayout = terrainShown ? terrainSectionLayout(panels, slideLayout(format), format) : null;
   const legend = panels.legend;
@@ -620,25 +628,26 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
   const layout = slideLayout(format);
   const calloutEntries = calloutOverview ? calloutLegendEntries(plan.callout!.model, reportFrame?.legend) : [];
   const calloutAlignment = calloutDetail ? null : slideCalloutAvoidance(panels, calloutEntries, layout, format, fontSizeForStyle(style, "legend") / DEFAULT_REPORT_FONT_SIZES.legend);
-  const calloutLegend = calloutAlignment?.calloutLegend ?? null;
+  // 새 장 배치의 설명선 개요는 범례 자리가 기하의 legend다(화면 TileSurface의 resolvedCalloutLegend와 같다).
+  const calloutLegend = geo && calloutOverview ? geo.legend : calloutAlignment?.calloutLegend ?? null;
   const geometry = slideGeometry(format);
   const summaryX = panels.summary?.x ?? geometry.w;
-  const gap = geometry.edge * activePxPerInch * 0.5;
-  const siteX = calloutDetail?.siteX ?? slideSiteX(style, hasSummary, format);
+  const gap = geometry.edge * ppi * 0.5;
+  const siteX = geo ? 0.5 : calloutDetail?.siteX ?? slideSiteX(style, hasSummary, format);
   const fill = calloutDetail?.fill ?? terrainLayout?.mapFill ?? (calloutOverview ? SLIDE_OVERVIEW_FILL : undefined);
-  const rightInset = calloutDetail ? 0 : hasSummary ? Math.max(0, VIEW_W - summaryX * activePxPerInch + gap) : geometry.edge * activePxPerInch;
+  const rightInset = geo || calloutDetail ? 0 : hasSummary ? Math.max(0, VIEW_W - summaryX * activePxPerInch + gap) : geometry.edge * activePxPerInch;
   // 방위표는 지도 scene의 고정 y(22u)만 쓰면 크게 키운 제목 판과 겹친다.
   // 제목 판 아래에 방위표 반지름과 안전 간격을 확보한 중심을 전달한다.
-  const calloutTopPx = calloutAlignment ? calloutAlignment.calloutTop * activePxPerInch : (panels.title.y + panels.title.h) * activePxPerInch + gap;
+  const calloutTopPx = calloutAlignment ? calloutAlignment.calloutTop * ppi : (panels.title.y + panels.title.h) * ppi + gap;
   const height = activeSceneHeight;
   const northY = calloutTopPx + NORTH_RADIUS * Math.min(1.5, Math.max(1, height / 360));
-  const bottomInset = geometry.stripH * activePxPerInch + (calloutLegend ? (calloutLegend.h + 0.18) * activePxPerInch : 0);
+  const bottomInset = geo ? (calloutLegend ? (calloutLegend.h + 0.18) * ppi : 0) : geometry.stripH * activePxPerInch + (calloutLegend ? (calloutLegend.h + 0.18) * activePxPerInch : 0);
   const viewport = fixedScaleViewport(displayModel, frameStyle, reportFrame, { width: VIEW_W, height, siteX, siteY: terrainLayout?.mapSiteY ?? 0.5, fill: fill ?? 0.8 });
   // 축척·방위표는 장식 설정이 정한다(상세 장도 같다). 설정이 없는 옛 계획은 화면처럼 상세 장에서만 축척을 뺀다.
   const showScale = reportFrame?.decorations.scaleBar ?? !calloutDetail;
   const showNorth = reportFrame?.decorations.north ?? true;
-  const savedNorthBox = savedPanelBox(style.panels?.north);
-  const savedScaleBox = savedPanelBox(style.panels?.scaleBar);
+  const savedNorthBox = geo ? geoBox(geo.north) : savedPanelBox(style.panels?.north);
+  const savedScaleBox = geo ? geoBox(geo.scaleBar) : savedPanelBox(style.panels?.scaleBar);
   const defaultScaleBox = !showScale ? null : scaleBarBox(VIEW_W, height, metersPerPixel(viewport.center[1], viewport.zoom), bottomInset, rightInset);
   const defaultNorthBox = !showNorth ? null : northArrowBox(VIEW_W, height, rightInset, northY);
   const scaleAvoid = savedScaleBox ?? defaultScaleBox;
@@ -650,7 +659,9 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
   const localize = (box: MapSceneBox): MapSceneBox => ({ x0: box.x0 - frameOriginX, y0: box.y0 - frameOriginY, x1: box.x1 - frameOriginX, y1: box.y1 - frameOriginY });
   const avoid = calloutDetail
     ? []
-     : [...slideReserved(activePxPerInch, { info: hasSummary, titleRect: panels.title, infoRect: panels.summary, legend, calloutLegend, terrainSection: terrainLayout?.rect, format }).map(localize), ...(savedScaleBox ? [] : scaleAvoid ? [scaleAvoid] : []), ...(savedNorthBox ? [] : northAvoid ? [northAvoid] : [])];
+    : geo
+      ? [...reportMapAvoid(geo, ppi), ...(calloutLegend ? [geoBox(calloutLegend)] : [])]
+      : [...slideReserved(activePxPerInch, { info: hasSummary, titleRect: panels.title, infoRect: panels.summary, legend, calloutLegend, terrainSection: terrainLayout?.rect, format }).map(localize), ...(savedScaleBox ? [] : scaleAvoid ? [scaleAvoid] : []), ...(savedNorthBox ? [] : northAvoid ? [northAvoid] : [])];
   // 상세 장은 avoid가 비어 있어도 장면이 방위표·축척을 그리므로 장면이 그릴 자리(저장 상자 또는 기본 상자)를 직접 예약한다.
   const locator = locatorFor(displayModel, reportFrame, savedPanelBox(style.panels?.locator), [
     ...avoid,
@@ -667,7 +678,7 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
     rightInset,
     ...(calloutDetail ? {} : { calloutTop: calloutTopPx }),
     ...(calloutAlignment?.calloutLeftBottom !== undefined
-      ? { calloutLeftBottom: calloutAlignment.calloutLeftBottom * activePxPerInch }
+      ? { calloutLeftBottom: calloutAlignment.calloutLeftBottom * ppi }
       : terrainLayout?.calloutLeftBottom !== undefined ? { calloutLeftBottom: terrainLayout.calloutLeftBottom * activePxPerInch } : {}),
     model: displayModel,
     width: VIEW_W,
@@ -1183,9 +1194,10 @@ export function addEditableMap(slide: Slide, plan: (PlannedSlide & { kind: "tile
   const previousMode = activeMode;
   activeFormat = options.format ?? "wide";
   activeGeometry = slideGeometry(activeFormat);
-  activePxPerInch = VIEW_W / activeGeometry.w;
   const explicitFrame = options.frame !== undefined;
   activeFrame = options.frame ?? (activeFormat === "wide" ? FULL_FRAME : fullFrame(activeFormat));
+  // 장면은 늘 폭 960 px이다. 쪽 전체를 그리면 1 in = 72 px이고, 칸·새 장 배치의 지도 틀은 틀 폭이 960 px이라 1 in = 960 / 틀 폭 px다(O-2).
+  activePxPerInch = VIEW_W / (options.mode === "cell" || options.pageGeometry ? activeFrame.w : activeGeometry.w);
   activeSceneWidth = VIEW_W;
   activeSceneHeight = !explicitFrame && activeFormat === "wide" && options.mode !== "cell"
     ? VIEW_H
@@ -1205,6 +1217,7 @@ export function addEditableMap(slide: Slide, plan: (PlannedSlide & { kind: "tile
       layout: options.layout,
       basemap: options.basemap,
       baseTheme: options.baseTheme,
+      pageGeometry: options.pageGeometry,
     });
     const baseCode = model.tileCode ?? "map";
     const code = options.scope ? `${options.scope}-${baseCode}` : baseCode;

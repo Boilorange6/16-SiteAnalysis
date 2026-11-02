@@ -5,7 +5,7 @@
  */
 import type { PlannedSlide } from "./report-plan";
 import type { KeyFigure } from "../tile/types";
-import type { AnalysisCharts } from "./analysis-charts";
+import { slideCharts, type AnalysisCharts } from "./analysis-charts";
 import type { ChartBox } from "./chart-geometry";
 import type { CalloutOverviewFrame } from "./types";
 import { wrapToLines } from "./analysis-column-fit";
@@ -247,6 +247,16 @@ export function footnoteText(slide: TileSlide, basemap: BasemapChoice | undefine
   // 한계를 다 줄여도 안 들어가면(아주 좁은 판) 한계를 빼고 출처를 …로 닫는다. credit은 그대로 둔다.
   const rest = Math.max(textIn("출처 …", pt), width - textIn(credit, pt));
   return { text: `${oneLine(cleaned.startsWith("출처") ? cleaned : `출처 ${cleaned}`, pt, rest)}${credit}`, pt };
+}
+
+/**
+ * PPT·지도 그림(map-image)용 입구: 새 배치로 그리는 장(`usesReportPageFrame`)이면 그 장의 계산 묶음, 아니면 null.
+ * 그래프 자료는 화면과 같은 판정(`map-charts`이면 `slideCharts`, 끈 레이어 반영)으로 센다.
+ */
+export function pageFrameFor(slide: PlannedSlide, basemap?: BasemapChoice): ReportPageFrame | null {
+  if (slide.kind !== "tile" || !usesReportPageFrame(slide)) return null;
+  const hidden = slide.page?.kind === "tile" ? slide.page.frame?.hiddenLayers : undefined;
+  return reportPageFrame(slide, slide.page?.layout === "map-charts" ? slideCharts(slide, hidden) : null, basemap);
 }
 
 export type PixelBox = { x0: number; y0: number; x1: number; y1: number };
