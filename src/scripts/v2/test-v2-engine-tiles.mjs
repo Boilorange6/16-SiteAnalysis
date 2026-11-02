@@ -219,6 +219,12 @@ const noForbidden = (t) => {
   assert.ok(t.presentation.features.every((f) => f.plannedMonth === null || /^\d{4}-\d{2}$/.test(f.plannedMonth)));
   assert.match(metric(t, "move_in_projects").formulaVersion, /event-link=2\/6/, "development_event 연결 가능 여부만 기록");
   assert.ok(t.limitations.some((l) => l.kind === "partial" && l.note.includes("중복") && l.note.includes("합계를 보류")));
+  // G1: 반경 안 0이 「확인된 0」인지 알 수 있게 원천 기준(마지막 공고일·위치 미확인 공고 수)을 한계에 적는다. 값은 원천(development_event)에서 읽는다.
+  const basis = t.limitations.find((l) => l.note.includes("청약홈 공고"));
+  assert.ok(basis, "A06 한계에 청약홈 반영 기준");
+  assert.match(basis.note, /2026-07-28까지 반영/);
+  assert.match(basis.note, /위치를 확인하지 못한 공고 2건/);
+  assert.equal(basis.kind, "partial");
   assert.deepEqual(
     t.provenance.sources.map((s) => [s.releaseId, s.sourceAsOf]),
     [["applyhome@2026-09-29", null], ["move_in@2026-06-30", "2026-06-30"]],

@@ -277,6 +277,19 @@ const recommended = recommendedPages(EMPTY_REPORT_DOC, views, board, context);
 assert.equal(recommended[0]?.kind, "cover", "추천 구성 첫 장은 표지");
 assert.equal(recommended.at(-1)?.kind, "sources", "추천 구성 마지막 장은 출처");
 
+// Ruling 32: D02(건물)는 추천 구성에서 뺀다. 타일·보드는 그대로이고 사용자가 직접 추가하면 장을 만들 수 있다.
+{
+  const d02Result = { ...GODEOK_RESULTS[0], tileId: "t-D02", tileCode: "D02" };
+  const withD02Board = initBoard([...GODEOK_RESULTS, d02Result]);
+  const d02View = { ...views.get("t-A01"), tileId: "t-D02", code: "D02" };
+  const withD02Views = new Map([...views, ["t-D02", d02View]]);
+  const withD02 = recommendedPages(EMPTY_REPORT_DOC, withD02Views, withD02Board, { ...context, results: new Map([...results, ["t-D02", d02Result]]) });
+  assert.ok(!withD02.some((page) => page.kind === "tile" && page.tileId === "t-D02"), "추천 구성에 D02가 없다");
+  assert.equal(withD02.length, recommended.length, "D02를 빼면 D02 없는 구성과 쪽수가 같다");
+  const added = pagesForTile(EMPTY_REPORT_DOC, "t-D02", d02View, tileReportSettingsFromBoard(withD02Board, "t-D02"), { ...tileContext, views: withD02Views });
+  assert.ok(added.length > 0 && added.every((page) => page.tileId === "t-D02"), "직접 추가하면 D02 장을 만들 수 있다");
+}
+
 const manySources = new Map(views);
 const sourceView = manySources.get("t-A01");
 assert.ok(sourceView, "source fixture");

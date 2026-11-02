@@ -5,7 +5,7 @@
 import type { TileResult } from "../../tile-result";
 import { TIMING_ORDER, TIMING_STYLE, timingBucket, type Timing } from "../../ui/callout-layout";
 import { unitTypesFromUnknown } from "../../unit-types";
-import type { EngineContext } from "../../engine/context";
+import type { EngineContext, Limitation } from "../../engine/context";
 import { candidate, fmt, makeTile, noDataTile, obs, type TileDraft } from "../../engine/tiles/common";
 
 const SOURCES = [
@@ -54,6 +54,7 @@ export function markOverlaps(items: Array<{ source: string; name: string | null;
   );
 }
 
+const DUPLICATE: Limitation = { kind: "partial", note: "청약홈·입주예정에 같은 사업이 중복 등장할 수 있어 합계를 보류했습니다. 이름·주소가 같은 쌍은 \"중복 가능\"으로 표시하지만 합치지는 않습니다." };
 const TYPE_TEXT: Record<string, string> = { apartment: "아파트", officetel: "오피스텔", residential: "주거" };
 const pct = (part: number, whole: number) => whole > 0 ? Math.round((part / whole) * 1000) / 10 : 0;
 
@@ -100,6 +101,11 @@ export function a06(ctx: EngineContext): TileResult {
   metrics.push(...TIMING_ORDER.map((timing) => obs(`share_timing_${timing}`, `구성비: ${TIMING_STYLE[timing].label}`, pct(timingCounts.get(timing) ?? 0, mapped.length), "%", "a06-share-timing@1:입주 시기별 사업 수÷지도에 표시하는 청약홈·입주예정 사업 수", timingCounts.get(timing) ?? 0, mapped.length)));
   const overlaps = markOverlaps(mapped.map((h) => ({ source: h.properties.source as string, name: h.name, address: h.properties.address })));
   const empty = hits.length === 0;
+  // 청약홈 공고(sale_notice)의 마지막 공고일과, 주소·좌표가 없어 위치를 확인하지 못한(geometry_id 없음) 공고 수. 전국 기준 원천 값이다.
+  const notice = market.prepare("SELECT max(effective_date) AS lastDate, count(*) AS total, coalesce(sum(geometry_id IS NULL), 0) AS unlocated FROM development_event WHERE event_type = 'sale_notice'").get() as { lastDate: string | null; total: number; unlocated: number };
+  const basis: Limitation | null = notice.total > 0 && notice.lastDate
+    ? { kind: "partial", note: `청약홈 공고 ${notice.lastDate}까지 반영, 주소·좌표가 없어 위치를 확인하지 못한 공고 ${fmt(notice.unlocated)}건(전국)은 제외했습니다. 그 뒤 공고와 위치를 모르는 공고는 이 반경 안 사업에 들어 있을 수 있습니다.` }
+    : null;
   const sentence = empty
     ? "반경 안 분양·입주예정 사업이 확인되지 않음 → 위치를 확인하지 못한 사업은 빠져 있을 수 있음 → 사업별 연결 확인 필요"
     : `청약홈 ${fmt(sums.applyhome)}세대, 입주예정 ${fmt(sums.move_in)}세대가 각각 확인됨 → 같은 사업이 겹쳐 잡혔을 수 있어 합계는 내지 않음 → 사업별 연결 확인 필요`;
@@ -127,7 +133,9 @@ export function a06(ctx: EngineContext): TileResult {
       });
     }),
     limitations: [
-      { kind: "partial", note: "청약홈·입주예정에 같은 사업이 중복 등장할 수 있어 합계를 보류했습니다. 이름·주소가 같은 쌍은 \"중복 가능\"으로 표시하지만 합치지는 않습니다." },
+      // 반경 안 0이 확인된 0인지 알 수 있게: 반경 안 판정은 확인된 값이지만 원천이 끝난 공고일 이후와 위치를 모르는 공고는 볼 수 없다.
+      // 비어 있으면 각주(첫 한계)에 먼저 보이도록 앞에 둔다.
+      ...(empty ? [basis, DUPLICATE] : [DUPLICATE, basis]).filter((l): l is Limitation => l !== null),
       ...ctx.coverage("market", ["applyhome", "applyhome_types", "move_in"]),
     ],
   });

@@ -311,7 +311,7 @@ export function recommendedPages(
   let working = doc;
   const resultIds = new Set(board.results.map((result) => result.tileId));
   const ordered = [...views.values()]
-    .filter((view) => resultIds.has(view.tileId) && isTileResultView(view))
+    .filter((view) => resultIds.has(view.tileId) && isTileResultView(view) && view.code !== "D02") // D02(건물)는 추천 구성에서 뺀다(Ruling 32). 사용자가 직접 추가하면 장을 만든다.
     .sort((a, b) => (TILE_CODES.indexOf(a.code as (typeof TILE_CODES)[number]) - TILE_CODES.indexOf(b.code as (typeof TILE_CODES)[number])) || a.tileId.localeCompare(b.tileId));
   const cover = newSimplePage(working, "cover");
   pages.push(cover);
