@@ -142,8 +142,13 @@ for (const scale of SCALES) {
   const near = distanceShapes({ ...floors, mean: 4.1 }, 1000, BOX, scale);
   const m = byName(near, "chart-distance-median-label");
   const a = byName(near, "chart-distance-mean-label");
-  assert.equal(m.y, a.y, "가까우면 같은 줄");
-  assert.ok(a.x + a.w <= m.x + EPS, "평균 글자는 중앙값 글자 왼쪽");
+  const nearMedY = byName(near, "chart-distance-median").y1;
+  const nearMeanY = byName(near, "chart-distance-mean").y1;
+  assert.ok(m.y !== a.y && Math.abs(m.y - a.y) >= m.h, "가까우면 한 줄에 나란히 두지 않는다(실제 글꼴 폭에서 맞닿는다)");
+  const upperY = Math.min(nearMedY, nearMeanY);
+  const split = nearMeanY < nearMedY ? a.y + a.h <= nearMeanY + EPS && m.y >= nearMedY - EPS : m.y + m.h <= nearMedY + EPS && a.y >= nearMeanY - EPS;
+  const stacked = m.y + m.h <= upperY + EPS && a.y + a.h <= upperY + EPS && Math.abs(m.y - a.y) - m.h >= 0.02 * scale - EPS; // 아래 자리가 없는 값(축 맨 아래 가까이)은 위쪽에 틈을 두고 두 줄
+  assert.ok(split || stacked, "위쪽 선 글자는 선 위, 아래쪽 선 글자는 선 아래(아래 자리가 없으면 위에 틈을 두고 두 줄)");
   const far = distanceShapes({ ...floors, mean: 30 }, 1000, BOX, scale);
   assert.ok(byName(far, "chart-distance-mean-label").y < byName(far, "chart-distance-median-label").y, "멀면 각자 선 위");
 }
@@ -169,7 +174,6 @@ for (const scale of SCALES) {
     const medY = byName(shapes, "chart-distance-median").y1;
     const meanY = byName(shapes, "chart-distance-mean").y1;
     assert.ok(Math.abs(medY - meanY) < medLabel.h, `전제: 두 선이 글자 높이보다 가깝다 x${scale}`);
-    assert.ok(medLabel.x + medLabel.w > meanLabel.x + EPS && meanLabel.x + meanLabel.w > medLabel.x + EPS, `전제: 두 글자가 가로로 겹치는 폭이라 나란히 못 놓는다 x${scale}`);
     const above = (l, y) => l.y + l.h <= y + EPS;
     const below = (l, y) => l.y >= y - EPS;
     const medAbove = above(medLabel, medY);

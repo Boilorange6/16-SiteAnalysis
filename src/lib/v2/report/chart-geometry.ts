@@ -137,9 +137,10 @@ function scatterShapes(d: Scatter, radiusM: number, box: ChartBox, scale: number
   const lead = d.qualifier ? `${d.qualifier} ` : "";
   const medText = `${lead}중앙값 ${formatStat(d.median, unit)}${unit}`;
   const meanText = `${lead}평균 ${formatStat(d.mean, unit)}${unit}`;
-  const medW = textW(medText, pt, true);
-  const sideFits = medW + textW(meanText, pt) + 0.08 * scale <= pw; // 가까운 두 선의 글자를 한 줄에 나란히 놓을 수 있나
-  const t = sideFits ? th + 0.03 * scale : 2 * th + 0.07 * scale; // 위에 중앙값·평균 글자 자리(나란히 못 놓으면 두 줄)
+  // 위에 중앙값·평균 글자 자리. 두 선이 글자 높이보다 가까우면 글자가 위·아래로 엇갈리고 아래 자리가 없을 때를 대비해 두 줄 자리를 둔다.
+  const single = th + 0.03 * scale;
+  const closeLines = (Math.abs(d.median - d.mean) / (axis.end - axis.start)) * (box.h - single - b) < th;
+  const t = closeLines ? 2 * th + 0.07 * scale : single;
   const ph = box.h - t - b;
   const X = (m: number) => px + (pw * Math.min(m, radiusM)) / radiusM;
   const Y = (v: number) => box.y + t + ph * (1 - (v - axis.start) / (axis.end - axis.start));
@@ -165,29 +166,22 @@ function scatterShapes(d: Scatter, radiusM: number, box: ChartBox, scale: number
   const yMean = Y(d.mean);
   out.push({ kind: "line", x1: px, y1: yMean, x2: px + pw, y2: yMean, stroke: C.strong, width: 0.75, dash: true, name: "chart-distance-mean" });
   out.push({ kind: "line", x1: px, y1: yMed, x2: px + pw, y2: yMed, stroke: C.strong, width: 0.9, name: "chart-distance-median" });
-  // 두 선이 글자 높이보다 가까우면 글자를 같은 줄에 나란히 둔다(평균을 중앙값 왼쪽에). 가로로 모자라면 위쪽 선 글자는 선 위, 아래쪽 선 글자는 선 아래(자리가 없으면 위쪽에 두 줄).
+  // 두 선이 글자 높이보다 가까우면 위쪽 선의 글자는 선 위, 아래쪽 선의 글자는 선 아래에 엇갈려 둔다(두 글자가 한 줄에서 맞닿지 않는다.
+  // 실제 글꼴 폭은 어림보다 넓어 나란히 두면 붙는다). 아래쪽 글자가 x 눈금 줄까지 내려가면 선 위쪽에 틈을 두고 두 줄로 쌓는다.
   const gap = 0.03 * scale;
   const close = Math.abs(yMed - yMean) < th;
   const right = px + pw;
   let yMedLabel = yMed - gap - th;
   let yMeanLabel = yMean - gap - th;
-  let meanAx = right;
   if (close) {
     const first = Math.min(yMed, yMean) - gap - th; // 위쪽 선 바로 위
-    if (sideFits) {
-      yMedLabel = yMeanLabel = first;
-      meanAx = right - medW - 0.08 * scale;
-    } else {
-      // 나란히 못 놓으면 위쪽 선의 글자는 선 위, 아래쪽 선의 글자는 선 아래에 엇갈려 둔다(두 글자가 맞닿지 않는다).
-      // 아래쪽 글자가 x 눈금 줄까지 내려가면 선 위쪽에 두 줄로 쌓는다.
-      const lower = Math.max(yMed, yMean);
-      const room = lower + gap + th <= Y(axis.start) + 1e-9;
-      if (yMed <= yMean) yMeanLabel = room ? yMean + gap : first - th - gap;
-      else yMedLabel = room ? yMed + gap : first - th - gap;
-    }
+    const lower = Math.max(yMed, yMean);
+    const room = lower + gap + th <= Y(axis.start) + 1e-9;
+    if (yMed <= yMean) yMeanLabel = room ? yMean + gap : first - th - gap;
+    else yMedLabel = room ? yMed + gap : first - th - gap;
   }
   out.push(text("median-label", medText, pt, C.strong, "right", right, yMedLabel, true));
-  out.push(text("mean-label", meanText, pt, C.label, "right", meanAx, yMeanLabel));
+  out.push(text("mean-label", meanText, pt, C.label, "right", right, yMeanLabel));
 
   if (d.site !== null) {
     // 테두리 있는 점 하나(분홍 속·진한 테두리 1.5 px). 반지름은 테두리 가운데선까지.
