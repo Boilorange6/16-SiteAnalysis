@@ -7,7 +7,8 @@ import type { CalloutModel } from "../../ui/tile-view";
 import { unitTypeSummaryParts } from "../../unit-types";
 import { E, FONT, INK, IW, IX, L, MUTED, SLIDE, fitPt, fontSizeForStyle, hex, plate, seg, textIn, type ReportItem, type Slide } from "../../report/pptx-kit";
 import type { PlannedSlide } from "../../report/report-plan";
-import type { TileReportRenderContext } from "../../report/types";
+import type { CalloutOverviewFrame, TileReportRenderContext } from "../../report/types";
+import type { Rect } from "../../ui/overlay-layout";
 import type { TileReportModule } from "../types";
 
 // The A05 and A06 callout pages are one ownership unit, matching their shared screen Stage.
@@ -16,18 +17,21 @@ const K = SLIDE.w / 960;
 const cTag = (c: Complex, part: string) => `${GROUP_TAG_PREFIX}${calloutKeyTag(c.key)}|${`콜아웃 ${c.rank} ${cardName(c)}`.replace(/\|/g, "/")}|${part}`;
 
 /** 배경 지도(map-pptx·미리보기)와 같은 뷰: 사용자가 옮기거나 확대한 보고서 프레임(고정 축척 포함)을 따른다 */
-function projector(p: PlannedSlide & { kind: "tile" }, model: CalloutModel, siteX: number, fill: number): (c: Complex) => Pt {
-  const dims = { width: 960, height: 540, siteX, siteY: 0.5, fill };
+function projector(p: PlannedSlide & { kind: "tile" }, model: CalloutModel, siteX: number, fill: number, map?: Rect): (c: Complex) => Pt {
+  // 새 장 배치의 지도 틀(`map`, inch)이 오면 틀 폭을 960 장면 폭으로 보고 틀 모양대로 투영한다. 없으면 옛 쪽 전체(16:9, 폭 SLIDE.w).
+  const frameW = map?.w ?? SLIDE.w;
+  const dims = { width: 960, height: map ? (960 * map.h) / map.w : 540, siteX, siteY: 0.5, fill };
   const frame = p.page?.kind === "tile" ? p.page.frame : undefined;
   const view = !frame
     ? p.style
     : frame.scaleDenominator !== null && Number.isFinite(frame.scaleDenominator) && frame.scaleDenominator > 0
-      ? { zoomDelta: zoomForScale(frame.scaleDenominator, model, scaleOptionsForFrame(SLIDE.w * 25.4, dims)), offsetM: frame.offsetM }
+      ? { zoomDelta: zoomForScale(frame.scaleDenominator, model, scaleOptionsForFrame(frameW * 25.4, dims)), offsetM: frame.offsetM }
       : { zoomDelta: frame.zoomDelta, offsetM: frame.offsetM };
   const pr = makeProjector(slideViewport(model, view, dims));
+  const k = frameW / 960;
   return (c) => {
     const [x, y] = pr(c.lng, c.lat);
-    return [x * K, y * K];
+    return [x * k, y * k];
   };
 }
 
@@ -111,21 +115,29 @@ function calloutLegend(s: Slide, model: CalloutModel, x: number, bottom: number,
 }
 
 /** 개요 장: 번호 점 전체 + 왼쪽 아래 핵심 값 카드 + 범례 (오른쪽 정보 판은 공용 renderer가 그린다) */
-function calloutOverview(s: Slide, p: PlannedSlide & { kind: "tile" }) {
+function calloutOverview(s: Slide, p: PlannedSlide & { kind: "tile" }, overviewFrame?: CalloutOverviewFrame) {
   const cm = p.callout!.model;
   const style = p.style ?? {};
   const frame = p.page?.kind === "tile" ? p.page.frame : undefined;
   const labelsScale = fontSizeForStyle(style, "labels") / 10;
-  const proj = projector(p, cm, slideSiteX(style, style.summary !== false), SLIDE_OVERVIEW_FILL);
+  // 새 장 배치(화면, Task 7 뒤 PPT)는 지도 틀 가운데(siteX 0.5)·틀 모양으로, 옛 경로는 오른쪽 정보 판을 뺀 영역으로 그린다.
+  const proj = projector(p, cm, overviewFrame ? 0.5 : slideSiteX(style, style.summary !== false), SLIDE_OVERVIEW_FILL, overviewFrame?.map);
   const hMax = Math.max(0, ...cm.complexes.map((c) => c.households ?? 0));
   cm.complexes.forEach((c) => numberDot(s, c, proj(c), dotRadius(c.households, hMax, INCH.rMin / 2, INCH.rMax / 2), labelsScale, false, cm.palette));
   if (cm.complexes.length === 0) {
     const w = 4.6;
     const h = 1.2;
-    const r = { x: slideSiteX() * SLIDE.w - w / 2, y: SLIDE.h / 2 + 0.9, w, h };
+    const r = overviewFrame
+      ? { x: overviewFrame.map.w / 2 - w / 2, y: overviewFrame.map.h / 2 + 0.9, w, h }
+      : { x: slideSiteX() * SLIDE.w - w / 2, y: SLIDE.h / 2 + 0.9, w, h };
     plate(s, r, 0.16);
     s.addText(`반경 안 확인된 ${cm.unit === "곳" ? "사업" : "단지"} 0`, { x: r.x + 0.3, y: r.y + 0.2, w: w - 0.6, h: 0.45, fontFace: FONT, fontSize: 20, bold: true, color: INK, margin: 0 });
     s.addText(`기준 ${cm.sourceLine}`, { x: r.x + 0.3, y: r.y + 0.7, w: w - 0.6, h: 0.35, valign: "top", fontFace: FONT, fontSize: 10.5, color: MUTED, margin: 0, fit: "shrink" });
+    return;
+  }
+  if (overviewFrame) {
+    const at = overviewFrame.legend;
+    if (at) calloutLegend(s, cm, at.x, at.y + at.h, overviewFrame.legendMaxW, style, frame?.legend);
     return;
   }
   calloutLegend(s, cm, E, L.legendBottom, L.info.x - 2 * E, style, frame?.legend);
@@ -179,14 +191,14 @@ function calloutPage(s: Slide, p: PlannedSlide & { kind: "tile" }) {
   calloutLegend(s, cm, f.left.x1 + 0.35, L.legendBottom, f.right.x0 - f.left.x1 - 0.7, p.style ?? {}, frame?.legend);
 }
 
-function renderCallout({ slide, planned, part }: TileReportRenderContext): ReportItem | void {
+function renderCallout({ slide, planned, part, overviewFrame }: TileReportRenderContext): ReportItem | void {
   if (!planned.callout) return;
   if (part === "page") {
     calloutPage(slide, planned);
     return;
   }
   if (part === "overview") {
-    calloutOverview(slide, planned);
+    calloutOverview(slide, planned, overviewFrame);
     return;
   }
   if (planned.callout.model.complexes.length > 0) return calloutStatItem(slide, planned.callout.model);

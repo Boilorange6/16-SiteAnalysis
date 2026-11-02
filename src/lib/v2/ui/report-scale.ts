@@ -25,15 +25,21 @@ export type ReportScaleViewport = {
 
 export type ReportScaleOptions = ReportScaleViewport & { frameWidthMm: number };
 
-/** 새 배치(지도 + 숫자·지도 + 그래프)의 지도 틀(inch). 장 기하(reportPageGeometry)의 지도 틀이 정본이고 그 밖의 레이아웃은 null이다. */
-function reportPageMap(format: SlideFormat, layout: ReportLayout, summaryDeleted: boolean): Rect | null {
-  if (layout !== "map-key" && layout !== "map-charts") return null;
-  return reportPageGeometry({ layout, format, summaryDeleted, titleSize: { w: 1, h: 0.5 }, keyCardHeight: 0, legendSize: null, chartSlots: 0, sentenceHeight: 0, notes: false }).map;
+/**
+ * 새 틀로 그리는 장(`usesReportPageFrame`)임을 호출부가 알린다. `summaryDeleted`는 ②에서 숫자 카드를 지워 지도가 전체 폭이 된 장이다.
+ * layout 이름만으로는 알 수 없다: 설명선 상세 장·D17 단면 장·옛 PPT는 같은 `map-key`·`map-charts`여도 지도를 전체 폭으로 그린다(Ruling 22).
+ */
+export type ReportPageFrameScale = { summaryDeleted: boolean };
+
+/** 새 배치(지도 + 숫자·지도 + 그래프)의 지도 틀(inch). 장 기하(reportPageGeometry)의 지도 틀이 정본이다. 새 틀이 아니면 null. */
+function reportPageMap(format: SlideFormat, layout: ReportLayout, pageFrame: ReportPageFrameScale | undefined): Rect | null {
+  if (!pageFrame || (layout !== "map-key" && layout !== "map-charts")) return null;
+  return reportPageGeometry({ layout, format, summaryDeleted: pageFrame.summaryDeleted, titleSize: { w: 1, h: 0.5 }, keyCardHeight: 0, legendSize: null, chartSlots: 0, sentenceHeight: 0, notes: false }).map;
 }
 
-/** 보고서 지도 프레임이 실제 PPT 종이에서 차지하는 가로 폭(mm). `summaryDeleted`는 ②에서 숫자 카드를 지워 지도가 전체 폭이 된 장이다. */
-export function mapFrameWidthMm(format: SlideFormat, layout: ReportLayout, summaryDeleted = false): number {
-  const page = reportPageMap(format, layout, summaryDeleted);
+/** 보고서 지도 프레임이 실제 PPT 종이에서 차지하는 가로 폭(mm). `pageFrame`이 없으면 옛 폭(`layoutRects`)이다. */
+export function mapFrameWidthMm(format: SlideFormat, layout: ReportLayout, pageFrame?: ReportPageFrameScale): number {
+  const page = reportPageMap(format, layout, pageFrame);
   if (page) return page.w * 25.4;
   const map = layoutRects(layout, format).map;
   const widthRatio = map && Number.isFinite(map.w) && map.w > 0 ? map.w : 1;
@@ -50,13 +56,13 @@ export function mapFrameScaleOptions(
   format: SlideFormat,
   layout: ReportLayout,
   viewport: Partial<ReportScaleViewport> = {},
-  summaryDeleted = false,
+  pageFrame?: ReportPageFrameScale,
 ): ReportScaleOptions {
   const size = slideSize(format);
-  const page = reportPageMap(format, layout, summaryDeleted);
+  const page = reportPageMap(format, layout, pageFrame);
   const map = page ? { w: page.w / size.w, h: page.h / size.h } : layoutRects(layout, format).map;
   const fullHeight = DEFAULT_VIEW_WIDTH * size.h / size.w;
-  return scaleOptionsForFrame(mapFrameWidthMm(format, layout, summaryDeleted), {
+  return scaleOptionsForFrame(mapFrameWidthMm(format, layout, pageFrame), {
     width: viewport.width ?? DEFAULT_VIEW_WIDTH * (map?.w ?? 1),
     height: viewport.height ?? fullHeight * (map?.h ?? 1),
     siteX: viewport.siteX ?? 0.5,

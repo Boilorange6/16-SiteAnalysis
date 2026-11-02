@@ -34,7 +34,6 @@ export function KeyFigureCard({ styles, view, fit, rect, unit, interaction }: { 
   if (!figure) return null;
   const { rows } = fit;
   const color = view.color;
-  const chipPt = fit.questionPt * (8 / 9.4);
   const tone = (text: string) => view.badges.find((badge) => badge.text === text)?.tone ?? "limit";
   const ptPx = unit / 72;
   const answerBase = (rows.answerBaseline - rows.answer.y) * unit;
@@ -50,10 +49,13 @@ export function KeyFigureCard({ styles, view, fit, rect, unit, interaction }: { 
       {...interaction}
     >
       <span className={styles.kfBar} data-part="key-question-bar" style={at(rows.questionBar, unit, { background: color })} />
-      <span className={styles.kfText} data-part="key-question" style={line(rows.question, unit, fit.questionPt, { color: SUB, fontWeight: 700 })}>{figure.question}</span>
+      <span className={styles.kfText} data-part="key-question" title={fit.questionClipped ? figure.question : undefined} style={line(rows.question, unit, fit.questionPt, { color: SUB, fontWeight: 700 })}>{figure.question}</span>
       {rows.badges.map((badge, i) => {
-        const chip = CHIP[badge.text.startsWith("+") && i === rows.badges.length - 1 && fit.badgesMore > 0 ? "limit" : tone(badge.text)];
-        return <span key={badge.text + i} className={styles.kfChip} data-part="key-badge" style={line(badge.rect, unit, chipPt, { background: `#${chip.fill}`, color: `#${chip.color}`, fontWeight: 700, borderRadius: badge.rect.h * unit, textAlign: "center", textOverflow: "clip" })}>{badge.text}</span>;
+        const folded = fit.badgesMore > 0 && i === rows.badges.length - 1;
+        const chip = CHIP[folded ? "limit" : tone(badge.text)];
+        // `+n` 칩은 접힌 배지 글을 title·aria-label로 보인다(같은 글이 주석 칩에도 올라 있다).
+        const foldedText = folded ? fit.badgesFolded.join(", ") : undefined;
+        return <span key={badge.text + i} className={styles.kfChip} data-part="key-badge" title={foldedText} aria-label={foldedText ? `${badge.text}: ${foldedText}` : undefined} style={line(badge.rect, unit, fit.chipPt, { background: `#${chip.fill}`, color: `#${chip.color}`, fontWeight: 700, borderRadius: badge.rect.h * unit, textAlign: "center", textOverflow: "clip" })}>{badge.text}</span>;
       })}
       <svg className={styles.kfAnswer} data-part="key-answer" role="img" aria-label={`${pre}${figure.answer.value}${figure.answer.post ?? ""}${target}`} width={rows.answer.w * unit} height={rows.answer.h * unit} style={at(rows.answer, unit, { overflow: "visible" })}>
         <text x={0} y={answerBase} fill={INK} style={{ whiteSpace: "pre", fontVariantNumeric: "tabular-nums" }}>
@@ -66,7 +68,7 @@ export function KeyFigureCard({ styles, view, fit, rect, unit, interaction }: { 
       {rows.sub && <span className={styles.kfText} data-part="key-sub" style={{ ...at(rows.sub, unit), ...fontStyle(fit.subPt, unit), lineHeight: `${(rows.sub.h / Math.max(1, fit.subLines.length)) * unit}px`, color: SUB, fontWeight: 500, whiteSpace: "pre-line", overflow: "hidden" }}>{fit.subLines.join("\n")}</span>}
       {rows.grades.map((grade, i) => {
         const level = view.grades[i]?.level ?? "fair";
-        return <span key={grade.text} className={styles.kfChip} data-part="key-grade" data-level={level} style={line(grade.rect, unit, fit.subPt * (8.5 / 9.4), { background: GRADE_CHIP[level].fill, color: GRADE_CHIP[level].color, fontWeight: 700, borderRadius: grade.rect.h * unit, textAlign: "center", textOverflow: "clip" })}>{grade.text}</span>;
+        return <span key={grade.text} className={styles.kfChip} data-part="key-grade" data-level={level} style={line(grade.rect, unit, fit.gradePt, { background: GRADE_CHIP[level].fill, color: GRADE_CHIP[level].color, fontWeight: 700, borderRadius: grade.rect.h * unit, textAlign: "center", textOverflow: "clip" })}>{grade.text}</span>;
       })}
       {rows.filter && fit.filterText && <span className={styles.kfText} data-part="key-filter" style={line(rows.filter, unit, fit.subPt, { color: SUB, fontWeight: 500 })}>{fit.filterText}</span>}
       {rows.divider && <span className={styles.kfRule} data-part="key-divider" style={at(rows.divider, unit)} />}
@@ -107,8 +109,8 @@ export function KeyFigureCard({ styles, view, fit, rect, unit, interaction }: { 
         return (
           <React.Fragment key={i}>
             <span className={styles.kfSwatch} style={at(row.swatch, unit, { background: part.color, borderRadius: 0.02 * unit })} />
-            <span className={styles.kfText} data-part="key-part-label" style={line(row.label, unit, fit.statLabelPt * (11.5 / 11), { color: part.site ? INK : SUB, fontWeight: part.site ? 900 : 500 })}>{part.label.replace(/지역$/, "")}</span>
-            <span className={styles.kfText} data-part="key-part-share" style={line(row.share, unit, fit.statLabelPt * (11.5 / 11), { color: part.site ? INK : SUB, fontWeight: part.site ? 900 : 500, textAlign: "right", fontVariantNumeric: "tabular-nums" })}>{`${part.share.toFixed(1)}%`}</span>
+            <span className={styles.kfText} data-part="key-part-label" style={line(row.label, unit, fit.partPt, { color: part.site ? INK : SUB, fontWeight: part.site ? 900 : 500 })}>{row.labelText}</span>
+            <span className={styles.kfText} data-part="key-part-share" style={line(row.share, unit, fit.partPt, { color: part.site ? INK : SUB, fontWeight: part.site ? 900 : 500, textAlign: "right", fontVariantNumeric: "tabular-nums" })}>{row.shareText}</span>
           </React.Fragment>
         );
       })}

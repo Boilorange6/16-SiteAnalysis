@@ -483,8 +483,6 @@
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: calc(var(--slide-unit) * 0.1);
-  padding: 0 calc(var(--slide-unit) * 0.167);
   overflow: hidden;
   background: rgba(255, 255, 255, 0.94);
   border: 1px solid rgba(21, 23, 28, 0.12);
@@ -498,10 +496,8 @@
 
 .kfKind {
   flex: 0 0 auto;
-  padding: calc(var(--slide-unit) * 0.03) calc(var(--slide-unit) * 0.085);
   color: #5b616b;
   background: #efefeb;
-  border-radius: calc(var(--slide-unit) * 0.052);
   font-weight: 700;
   line-height: 1.2;
 }

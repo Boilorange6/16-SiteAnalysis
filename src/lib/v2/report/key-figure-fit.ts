@@ -44,7 +44,7 @@ export type KeyFigureRows = {
   lead: { value: Rect; text: string; desc: Rect; lines: string[] } | null;
   partsBar: Rect | null;
   partsSegments: Array<{ rect: Rect; color: string; site: boolean }>;
-  parts: Array<{ row: Rect; swatch: Rect; label: Rect; share: Rect }>;
+  parts: Array<{ row: Rect; swatch: Rect; label: Rect; share: Rect; labelText: string; shareText: string }>;
   /** ①만: 카드 맨 아래 해석 줄(막대 + 글). ②는 null이고 열이 `sentenceHeight`로 그린다. */
   sentenceBar: Rect | null; sentence: Rect | null;
 };
@@ -58,9 +58,15 @@ export type KeyFigureFit = {
   subPt: number; statValuePt: number; statLabelPt: number; sentencePt: number;
   /** 구성 막대 위 큰 % (시안 32 px) */
   leadPt: number;
+  /** 상태 배지 칩 글자(시안 8 pt)·등급 칩 글자·구성 막대 항목 글자 — 화면과 PPT가 같은 값을 쓴다 */
+  chipPt: number; gradePt: number; partPt: number;
   /** 큰 답이 넘쳐 대상 이름을 보조 줄로 내렸다 */
   targetOnSub: boolean;
   badgesShown: string[]; badgesMore: number;
+  /** `+n`으로 접힌 배지 글(주석 칩 목록과 `+n` 칩의 title로 보인다) */
+  badgesFolded: string[];
+  /** 질문 글이 질문 칸보다 길어 …로 잘린다(화면은 질문 전체를 title로 단다) */
+  questionClipped: boolean;
   /** 해석 한 줄(최대 2줄, 넘치면 마지막 줄을 …로 닫는다) */
   sentenceLines: string[];
   /** 해석 줄 블록의 높이. ②는 이 값을 열의 `sentenceHeight`로 넘긴다. */
@@ -142,12 +148,15 @@ function fitAt({ figure, badges, grades, filterLine, sentence, width, columns, n
 
   const chipW = (text: string) => textIn(text, 8 * s) + 0.2;
   // 배지 줄은 질문 글을 남긴 자리(질문이 길면 안쪽 폭의 35 %까지)를 넘으면 뒤에서부터 `+n`으로 접는다. 질문 줄이 카드 밖으로 나가지 않게 한다.
+  // 첫 배지(상태·한계를 알리는 정직성 배지)는 자기 폭이 안쪽 폭의 절반 안이면 접지 않고 질문 줄이 말줄임을 받는다(Ruling 24).
   const badgeBudget = Math.max(inner * 0.35, inner - (textIn(figure.question, questionPt) + 0.14));
   const badgeRowW = (texts: string[]) => texts.reduce((sum, text) => sum + chipW(text) + 0.06, -0.06);
   const withMore = (shown: string[]) => (badges.length > shown.length ? [...shown, `+${badges.length - shown.length}`] : shown);
+  const keepFirst = badges.length > 0 && chipW(badges[0]!) <= inner * 0.5;
   let badgesShown = badges.slice(0, MAX_BADGES);
-  while (badgesShown.length > 0 && badgeRowW(withMore(badgesShown)) > badgeBudget) badgesShown = badgesShown.slice(0, -1);
+  while (badgesShown.length > (keepFirst ? 1 : 0) && badgeRowW(withMore(badgesShown)) > badgeBudget) badgesShown = badgesShown.slice(0, -1);
   const badgesMore = badges.length - badgesShown.length;
+  const badgesFolded = badges.slice(badgesShown.length);
 
   const subRowH = Math.max(pt(subPt) * LINE, 0.19 * s);
 
@@ -164,6 +173,7 @@ function fitAt({ figure, badges, grades, filterLine, sentence, width, columns, n
   }
   const qLeft = PAD_X + 0.08;
   const question: Rect = { x: qLeft, y, w: Math.max(0, (badgeRects[0]?.rect.x ?? PAD_X + inner + 0.06) - 0.06 - qLeft), h: qH };
+  const questionClipped = textIn(figure.question, questionPt) > question.w;
   const questionBar: Rect = { x: PAD_X, y: y + (qH - 0.125) / 2, w: 0.031, h: 0.125 };
   y += qH + 0.06;
 
@@ -263,21 +273,22 @@ function fitAt({ figure, badges, grades, filterLine, sentence, width, columns, n
     const rowH = pt(subPt) * LINE + 0.03;
     const swatch = Math.min(0.1, rowH - 0.03);
     const shareW = Math.min(0.6, inner / 3);
-    for (const _ of parts) {
+    for (const part of parts) {
       partRows.push({
         row: { x: PAD_X, y, w: inner, h: rowH },
         swatch: { x: PAD_X, y: y + 0.015, w: swatch, h: swatch },
         label: { x: PAD_X + swatch + 0.06, y, w: Math.max(0, inner - swatch - 0.06 - shareW), h: rowH - 0.03 },
         share: { x: PAD_X + inner - shareW, y, w: shareW, h: rowH - 0.03 },
+        // 이름의 「지역」은 줄인다(시안). 몫은 소수 1자리 %.
+        labelText: part.label.replace(/지역$/, ""),
+        shareText: `${part.share.toFixed(1)}%`,
       });
       y += rowH;
     }
   }
 
   // 해석 한 줄: ①은 카드 맨 아래, ②는 열 맨 아래(카드 밖이라 카드 안쪽 여백이 없고, 주석 칩이 있으면 칩 자리를 뺀다)
-  const sentenceW = (columns === 3 ? width - (notes ? NOTES_CHIP_SIZE.w + NOTES_CHIP_GAP : 0) : inner) - SENTENCE_BAR;
-  const sentenceLines = sentence ? wrapToLines(sentence, sentencePt, sentenceW, 2) : [];
-  const sentenceHeight = sentenceLines.length * pt(sentencePt) * LINE;
+  const { lines: sentenceLines, height: sentenceHeight } = sentenceFit({ sentence, width, columns, summaryPt, notes });
   let sentenceBar: Rect | null = null;
   let sentenceRect: Rect | null = null;
   if (columns === 2 && sentenceHeight > 0) {
@@ -289,5 +300,17 @@ function fitAt({ figure, badges, grades, filterLine, sentence, width, columns, n
 
   const height = y + PAD_BOTTOM;
   const rows: KeyFigureRows = { questionBar, question, badges: badgeRects, answer: answerRect, answerBaseline, sub, grades: gradeRects, filter, divider, stats: statCells, statSeparators, lead, partsBar, partsSegments, parts: partRows, sentenceBar, sentence: sentenceRect };
-  return { height, questionPt, prePt, valuePt, targetPt, postPt, subPt, statValuePt, statLabelPt, sentencePt, leadPt, targetOnSub, badgesShown, badgesMore, sentenceLines, sentenceHeight, subLines, filterText, rows };
+  return { height, questionPt, prePt, valuePt, targetPt, postPt, subPt, statValuePt, statLabelPt, sentencePt, leadPt, chipPt: 8 * s, gradePt: subPt * (8.5 / 9.4), partPt: statLabelPt * (11.5 / 11), targetOnSub, badgesShown, badgesMore, badgesFolded, questionClipped, sentenceLines, sentenceHeight, subLines, filterText, rows };
+}
+
+/**
+ * 해석 한 줄(최대 2줄, 넘치면 …). 카드가 없는 ②(핵심 숫자 없음)도 사용자가 고친 요약 같은 해석 줄은 그리므로 카드 맞춤과 따로 부를 수 있다.
+ * `width`는 ①이면 카드 바깥 폭, ②이면 열 폭이다.
+ */
+export function sentenceFit({ sentence, width, columns, summaryPt, notes = true }: { sentence: string | null; width: number; columns: 2 | 3; summaryPt: number; notes?: boolean }): { lines: string[]; pt: number; height: number } {
+  const sentencePt = 9.75 * (summaryPt / 13);
+  const inner = Math.max(0.5, width - PAD_X * 2);
+  const sentenceW = (columns === 3 ? width - (notes ? NOTES_CHIP_SIZE.w + NOTES_CHIP_GAP : 0) : inner) - SENTENCE_BAR;
+  const lines = sentence ? wrapToLines(sentence, sentencePt, sentenceW, 2) : [];
+  return { lines, pt: sentencePt, height: lines.length * pt(sentencePt) * LINE };
 }

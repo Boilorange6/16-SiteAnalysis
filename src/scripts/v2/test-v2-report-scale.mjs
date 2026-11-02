@@ -54,13 +54,29 @@ assert.doesNotMatch(drawerMapSource, /<span>1 :<\/span>/, "축척 표기에 콜�
   const { mapFrameWidthMm } = await import("../../lib/v2/ui/report-scale.ts");
   const { reportPageGeometry } = await import("../../lib/v2/ui/report-page-layout.ts");
   const near = (a, b, msg, eps = 0.01) => assert.ok(Math.abs(a - b) <= eps, `${msg}: ${a} ≈ ${b}`);
-  near(mapFrameWidthMm("wide", "map-charts"), 9.067 * 25.4, "② 지도 틀 폭(mm)", 0.05);
-  near(mapFrameWidthMm("wide", "map-key"), 13.333 * 25.4, "① 지도 틀 폭(mm)", 0.05);
-  near(mapFrameWidthMm("wide", "map-charts", true), 13.333 * 25.4, "숫자 카드를 지운 ②는 전체 폭", 0.05);
-  near(mapFrameWidthMm("a3", "map-charts"), slideSize("a3").w * 0.68 * 25.4, "A3 ② 지도 틀 폭", 0.5);
+  const framed = { summaryDeleted: false };
+  near(mapFrameWidthMm("wide", "map-charts", framed), 9.067 * 25.4, "② 지도 틀 폭(mm)", 0.05);
+  near(mapFrameWidthMm("wide", "map-key", framed), 13.333 * 25.4, "① 지도 틀 폭(mm)", 0.05);
+  near(mapFrameWidthMm("wide", "map-charts", { summaryDeleted: true }), 13.333 * 25.4, "숫자 카드를 지운 ②는 전체 폭", 0.05);
+  near(mapFrameWidthMm("a3", "map-charts", framed), slideSize("a3").w * 0.68 * 25.4, "A3 ② 지도 틀 폭", 0.5);
+  // 새 틀이 아닌 장(설명선 상세 장·D17 단면 장·옛 PPT)은 같은 layout 이름이어도 전체 폭(Ruling 22)
+  for (const layout of ["map-key", "map-charts", "map-summary"]) near(mapFrameWidthMm("wide", layout), 13.333 * 25.4, `옛 경로 ${layout} 폭은 전체`, 0.05);
+  {
+    // 옛 경로: 화면(mapFrameScaleOptions)과 설명선 점(a05 projector: 폭 SLIDE.w, 960×540)이 같은 고정 축척에서 같은 바탕지도 확대를 낸다.
+    const { scaleOptionsForFrame: forFrame, zoomForScale: zoomFor } = await import("../../lib/v2/ui/report-scale.ts");
+    const { GODEOK_RESULTS: R } = await import("../../lib/v2/ui/fixtures/godeok.ts");
+    const { toTileView: view } = await import("../../lib/v2/ui/tile-view.ts");
+    const model = view(R.find((r) => r.tileCode === "D04")).map;
+    const dims = { width: 960, height: 540, siteX: 0.4, siteY: 0.5, fill: 0.72 };
+    const dot = zoomFor(5000, model, forFrame(13.333 * 25.4, dims));
+    for (const layout of ["map-key", "map-charts"]) {
+      assert.ok(Math.abs(zoomFor(5000, model, mapFrameScaleOptions("wide", layout, dims)) - dot) < 1e-9, `옛 경로 ${layout}: 바탕지도 zoomDelta = 설명선 점 zoomDelta`);
+    }
+    assert.ok(Math.abs(zoomFor(5000, model, mapFrameScaleOptions("wide", "map-charts", dims, framed)) - dot) > 0.1, "새 틀(0.68 폭)은 다른 확대다(이 비교가 헛돌지 않는다)");
+  }
   for (const [layout, deleted] of [["map-key", false], ["map-charts", false], ["map-charts", true]]) {
     const g = reportPageGeometry({ layout, format: "wide", summaryDeleted: deleted, titleSize: { w: 4, h: 0.5 }, keyCardHeight: 2, legendSize: null, chartSlots: 0, sentenceHeight: 0 });
-    const options = mapFrameScaleOptions("wide", layout, {}, deleted);
+    const options = mapFrameScaleOptions("wide", layout, {}, { summaryDeleted: deleted });
     near(options.width, 960 * g.map.w / 13.333, `${layout} 기본 viewport 폭`, 0.01);
     near(options.height, 960 * g.map.h / 13.333, `${layout} 기본 viewport 높이`, 0.01);
     near(options.frameWidthMm, g.map.w * 25.4, `${layout} 프레임 폭(mm)`, 0.01);

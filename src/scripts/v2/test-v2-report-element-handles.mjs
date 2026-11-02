@@ -9,9 +9,17 @@ const mapPptx = readFileSync(new URL("../../lib/v2/report/map-pptx.ts", import.m
 const mapImage = readFileSync(new URL("../../lib/v2/report/map-image.ts", import.meta.url), "utf8");
 
 assert.match(surface, /key === "source" \? \["e", "w"\]/, "옛 레이아웃의 출처 줄은 좌우 2개 핸들을 사용한다");
-assert.match(surface, /pageFrame\) return key === "summary" && pageFrame\.layout === "map-key" \? undefined : \[\]/, "새 장 배치는 ① 숫자 카드만 8핸들이고 제목·범례·② 열·각주 띠는 크기 핸들이 없다");
-assert.match(surface, /const movablePanel = \(key: PanelKey\): boolean => !pageFrame \|\| \(key !== "source" && !\(key === "summary" && pageFrame\.layout === "map-charts"\)\)/, "새 장 배치의 ② 열·각주 띠는 옮기지 못한다");
-assert.match(surface, /panelDrag\.current = \{[^}]*\};\s*const captureTarget/s, "끌기 시작 경로가 남아 있다");
+// 새 장 배치의 옮기기·크기 규칙은 순수 함수 표 하나다(끌기·키보드 이동·핸들·위치 초기화가 모두 읽는다). 값으로 단언한다.
+const { framePanelRule } = await import("../../lib/v2/report/report-page-frame.ts");
+for (const layout of ["map-key", "map-charts"]) {
+  assert.deepEqual(framePanelRule(layout, "source"), { movable: false, resizable: false }, `${layout} 각주 띠는 옮기지도 크기도 못 바꾼다`);
+  assert.deepEqual(framePanelRule(layout, "title"), { movable: true, resizable: false }, `${layout} 제목 칩은 옮기기만`);
+  assert.deepEqual(framePanelRule(layout, "legend"), { movable: true, resizable: false }, `${layout} 범례는 옮기기만`);
+}
+assert.deepEqual(framePanelRule("map-key", "summary"), { movable: true, resizable: true }, "① 숫자 카드는 옮기고 크기도 바꾼다");
+assert.deepEqual(framePanelRule("map-charts", "summary"), { movable: false, resizable: false }, "② 열은 고르고 지우기만");
+assert.match(surface, /framePanelRule\(pageFrame\.layout, key\)\.movable/, "끌기 시작·키보드 이동은 규칙의 movable을 읽는다");
+assert.match(surface, /framePanelRule\(pageFrame\.layout, key\)\.resizable \? undefined : \[\]/, "핸들은 규칙의 resizable을 읽는다");
 assert.match(surface, /!movablePanel\(key\)\) return;\s*const rect = panelRects\[key\];/, "끌기 시작은 옮길 수 없는 요소를 막는다");
 assert.match(surface, /resizable=\{!pageGeometry \|\| selectedDecorationKey === "locator"\}/, "새 장 배치의 방위표·축척은 크기 핸들이 없다(크기는 틀 기하가 정한다)");
 assert.match(surface, /const directions: DecorationResizeDirection\[\] = \["nw", "ne", "se", "sw"\]/, "방위표·축척·위치도는 네 모서리 핸들을 사용한다");

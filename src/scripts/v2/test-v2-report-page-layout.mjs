@@ -482,6 +482,32 @@ for (const format of ["wide", "a3", "a4"]) {
   assert.ok(tight.badgesMore > 0 && tight.rows.badges.at(-1).text === `+${tight.badgesMore}`, "접힌 배지는 +n 칩");
 }
 
+// ── Ruling 24: 정직성 배지(첫 배지)는 기본 F1에서 접히지 않는다. 대신 질문이 말줄임을 받고, 접힌 글은 fit이 내놓는다.
+{
+  const mk = (question, badges, extra = {}) => keyFigureFit({ figure: { question, answer: { value: "6분", kind: "number" }, stats: [] }, badges, grades: [], filterLine: null, sentence: null, width: 3.125, columns: 2, summaryPt: 13, ...extra });
+  for (const [question, badges] of [
+    ["도보 10분 도달 면적", ["일부 자료만 집계", "미확인"]],
+    ["주변 건물 높이 중앙값", ["일부 자료만 집계", "미확인"]],
+    ["반경 구역·지구 교차면적", ["일부 자료만 집계"]],
+    ["가장 가까운 지하철역", ["일부 자료만 집계", "미확인", "추정"]],
+  ]) {
+    const f = mk(question, badges);
+    assert.equal(f.badgesShown[0], "일부 자료만 집계", `${question}: 첫 배지가 남는다`);
+    assert.deepEqual(f.badgesFolded, badges.slice(f.badgesShown.length), "접힌 글 목록");
+    assert.equal(f.badgesShown.length + f.badgesFolded.length, badges.length);
+    assert.equal(f.rows.badges[0].text, "일부 자료만 집계");
+    for (const b of f.rows.badges) assert.ok(b.rect.x >= f.rows.question.x + f.rows.question.w - 1e-6 && b.rect.x + b.rect.w <= 3.125 - 0.1875 + 1e-6, `${question}: 배지 ${b.text}가 질문 칸·안쪽 여백 안`);
+    assert.ok(f.rows.question.w > 0.5, `${question}: 질문 칸이 남는다`);
+    assert.equal(f.questionClipped, textIn(question, f.questionPt) > f.rows.question.w, "질문 말줄임 판정");
+  }
+  assert.equal(mk("반경 구역·지구 교차면적", ["일부 자료만 집계"]).questionClipped, true, "긴 질문은 말줄임을 받는다");
+  assert.equal(mk("지하철역", ["일부 자료만 집계"]).questionClipped, false, "짧은 질문은 그대로");
+  // 첫 배지가 안쪽 폭의 절반을 넘으면(F1 24 pt) 접는다
+  const big = mk("가장 가까운 지하철역", ["일부 자료만 집계", "미확인"], { summaryPt: 24 });
+  assert.equal(big.badgesShown.length, 0);
+  assert.deepEqual(big.badgesFolded, ["일부 자료만 집계", "미확인"]);
+}
+
 // ── 구성 막대(A12): 보조 숫자 칸 대신 큰 % + 두 줄 설명이 막대 위에 있다(Ruling 6)
 {
   const parts = [{ label: "제3종일반주거지역", share: 50, color: "#F2C94C", site: true }, { label: "제2종일반주거지역", share: 24.9, color: "#F2C94C" }, { label: "일반상업지역", share: 5, color: "#E05A47" }];
