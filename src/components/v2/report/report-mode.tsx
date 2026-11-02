@@ -1594,9 +1594,11 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
           const hasSummary = !!tile && tile.style.summary !== false && !(tile.callout && tile.callout.page > 0);
           const baseLegend = tile?.map ? slideLegend(tile.map, !tile.muted, undefined, hasSummary, format).rect : null;
           const legacyPanels = slidePanelRects(tile?.style, hasSummary, baseLegend, format);
-          const customLayout = selectedPage.layout === "numbers-first" || selectedPage.layout === "side-by-side";
+          // 그리는 단계가 정한 레이아웃(planned page)을 쓴다. 저장된 값 그대로 쓰면 numbers-first 지도 장의 축척 기준이 어긋난다.
+          const drawnLayout = selectedSlide?.page?.layout ?? selectedPage.layout;
+          const customLayout = drawnLayout === "numbers-first" || drawnLayout === "side-by-side";
           const size = slideSize(format);
-          const layout = customLayout ? layoutRects(selectedPage.layout, format) : null;
+          const layout = customLayout ? layoutRects(drawnLayout, format) : null;
           const toRect = (rect: { x: number; y: number; w: number; h: number } | null) => rect
             ? { x: rect.x * size.w, y: rect.y * size.h, w: rect.w * size.w, h: rect.h * size.h }
             : null;
@@ -1605,7 +1607,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
             : legacyPanels;
           const terrainShown = !!tile && tile.view.code === "D17" && !!tile.view.terrainSections && !!tile.terrainSection;
           const terrainLayout = terrainShown ? terrainSectionLayout(panels, slideLayout(format), format) : null;
-          return mapFrameScaleOptions(format, selectedPage.layout, {
+          return mapFrameScaleOptions(format, drawnLayout, {
             siteX: slideSiteX(tile?.style, panels.summary !== null, format),
             siteY: terrainLayout?.mapSiteY ?? 0.5,
             fill: terrainLayout?.mapFill ?? (tile?.callout?.page === 0 ? SLIDE_OVERVIEW_FILL : 0.8),

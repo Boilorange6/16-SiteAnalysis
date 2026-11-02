@@ -64,7 +64,10 @@ assert.equal(newPageId(doc), "p1", "빈 id를 재사용할 수 있다");
 
 const original = structuredClone(docWithPages);
 const laidOut = reportDocReducer(docWithPages, { type: "layout", id: "p1", layout: "numbers-first" });
-assert.equal(laidOut.pages[0].layout, "numbers-first");
+assert.equal(laidOut.pages[0].layout, "numbers-first", "numbers-first는 그대로 통과한다");
+for (const legacy of ["map-full", "map-summary", "side-by-side"]) {
+  assert.equal(reportDocReducer(docWithPages, { type: "layout", id: "p1", layout: legacy }).pages[0].layout, "map-key", `${legacy} 선택은 map-key로 바뀐다`);
+}
 assert.deepEqual(laidOut.pages[0].panels, {}, "layout 변경은 panels를 기본 자리로 되돌린다");
 assert.deepEqual(laidOut.pages[0].frame, original.pages[0].frame, "layout 변경은 frame을 보존한다");
 assert.deepEqual(docWithPages, original, "layout reducer는 입력을 바꾸지 않는다");

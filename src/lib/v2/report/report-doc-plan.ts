@@ -14,7 +14,7 @@ import {
 } from "./report-plan";
 import { defaultCutForCode, isCutSpec, type BoardState, type PageKey, type PageStyle } from "../ui/board-state";
 import { CUT_CODES } from "../tile/client";
-import type { MapModel } from "../ui/map-layers";
+import { modelWithHiddenLayers, type MapModel } from "../ui/map-layers";
 import { catalogEntry, TILE_CODES } from "../ui/tile-catalog";
 import type { SourceDetailRow, SourceMeta } from "../ui/source-details";
 import { sourceDetailsFor, UNKNOWN_AS_OF } from "../ui/source-details";
@@ -26,6 +26,7 @@ import type { A05Filter } from "../engine/a05-filter";
 import { sheetCapacity, sheetView } from "../ui/sheet";
 import { pageItems } from "../ui/callout-layout";
 import { analysisCharts } from "./analysis-charts";
+import { resolveReportLayout } from "./report-layout";
 
 export type ReportDocPlanContext = {
   summary: SummaryView;
@@ -134,11 +135,21 @@ function pageLayoutForSlide(slide: ReportSlide): ReportPage["layout"] {
       : slide.kind === "cover" || slide.kind === "sources"
         ? !!slide.map
         : false;
-  // 그림 타일(바람장미·3D 매스)은 「숫자 먼저」 없이 「그림 + 요약」(§9-8). 그 밖의 지도 없는 장(뒷면 표 등)은 숫자 먼저.
-  if (!hasMap) return slide.kind === "tile" && (slide.rose || slide.mass) ? "map-summary" : "numbers-first";
+  // 그림 타일(바람장미·3D 매스)은 「숫자 먼저」 없이 「그림 + 숫자」(§9-8). 그 밖의 지도 없는 장(뒷면 표 등)은 숫자 먼저.
+  if (!hasMap) return slide.kind === "tile" && (slide.rose || slide.mass) ? "map-key" : "numbers-first";
   // 새로 만드는 쪽만: 이 쪽이 실제로 그리는 지도(slide.map — 레이어 고르기는 view에 이미 반영됨)에 그래프 자료가 있으면 「지도 + 그래프」.
-  // 요약 칸이 없는 설명선 상세 장은 「지도 + 요약」과 다르게 그려지지 않으므로 고르지 않는다.
-  return slide.kind === "tile" && slide.map && !(slide.callout && slide.callout.page > 0) && analysisCharts(slide.map) ? "map-charts" : "map-summary";
+  // 요약 칸이 없는 설명선 상세 장은 「지도 + 숫자」와 다르게 그려지지 않으므로 고르지 않는다.
+  return slide.kind === "tile" && slide.map && !(slide.callout && slide.callout.page > 0) && analysisCharts(slide.map) ? "map-charts" : "map-key";
+}
+
+/** 그리는 단계: 저장된 쪽 값을 이 장의 지도·그림·그래프 유무로 실제 레이아웃에 맞춘다(resolveReportLayout). 저장 문서는 바꾸지 않는다. */
+function pageWithResolvedLayout(page: Extract<ReportPage, { kind: "tile" }>, slide: ReportSlide): ReportPage {
+  const hasMap = slide.kind === "sheet" ? slide.cells.some((cell) => !!cell?.view.map) : (slide.kind === "tile" || slide.kind === "cover") && !!slide.map;
+  const figure = slide.kind === "tile" && !!(slide.rose || slide.mass);
+  const hasCharts = slide.kind === "tile" && !!slide.map && !(slide.callout && slide.callout.page > 0)
+    && analysisCharts(modelWithHiddenLayers(slide.map, page.frame.hiddenLayers)) !== null;
+  const layout = resolveReportLayout(page.layout, { hasMap, figure, hasCharts });
+  return layout === page.layout ? page : { ...page, layout };
 }
 
 function partForSlide(view: TileView, settings: TileReportSettings, slide: ReportSlide, sheetIndex: number): TilePart {
@@ -397,7 +408,7 @@ export function importLegacyReport(
     }
     // 옛 보고서 가져오기는 쪽 모양을 바꾸지 않는다(「지도 + 그래프」는 새로 만드는 쪽에서만).
     const imported = pageForTileSlide(id, view, settings, slide, 0);
-    const page = imported.layout === "map-charts" ? { ...imported, layout: "map-summary" as const } : imported;
+    const page = imported.layout === "map-charts" ? { ...imported, layout: "map-key" as const } : imported;
     const style = board.report.styles[slide.key];
     page.panels = style?.panels ? { ...style.panels } : {};
     page.frame = frameFromLegacyStyle(style, page.frame);
@@ -664,7 +675,7 @@ export function planReportDoc(doc: ReportDoc, views: ReadonlyMap<string, TileVie
       const footer = selected.kind === "tile" && selected.callout?.filterLine
         ? `${selected.callout.filterLine} · ${sourceFooterFor(footerView, sourceMeta)}`
         : sourceFooterFor(footerView, sourceMeta);
-      raw.push(plannedWithMeta(selected, page, page.id, footer, pageStyleFor(doc, page), doc.format));
+      raw.push(plannedWithMeta(selected, pageWithResolvedLayout(page, selected), page.id, footer, pageStyleFor(doc, page), doc.format));
       continue;
     }
     if (page.kind === "compare") {

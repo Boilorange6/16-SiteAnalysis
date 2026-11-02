@@ -7,7 +7,8 @@ import type { BaseThemeRef, BaseToggleLayer } from "../ui/map-theme";
 export type { PagePanelKey, PagePanelRect, PagePanels } from "./report-geometry";
 
 export type ReportFormat = "wide" | "a3" | "a4";
-export type ReportLayout = "map-full" | "map-summary" | "map-charts" | "numbers-first" | "side-by-side";
+/** 새로 쓰는 값은 map-key·map-charts·numbers-first(지도·그림 없는 장). map-full·map-summary·side-by-side는 저장 문서를 읽을 때만 만난다. */
+export type ReportLayout = "map-key" | "map-full" | "map-summary" | "map-charts" | "numbers-first" | "side-by-side";
 export type ReportFontScale = 0.85 | 1 | 1.15;
 export type FontSizeKey = "title" | "summary" | "legend" | "labels" | "source" | "scale";
 export type ReportFontSizes = Record<FontSizeKey, number>;
@@ -599,7 +600,7 @@ export function reportDocReducer(doc: ReportDoc, action: ReportDocAction): Repor
       return { ...doc, pages: [...doc.pages.slice(0, index + 1), duplicate, ...doc.pages.slice(index + 1)] };
     }
     case "layout": {
-      const layout = action.layout === "side-by-side" ? "map-summary" : action.layout;
+      const layout = action.layout === "map-full" || action.layout === "map-summary" || action.layout === "side-by-side" ? "map-key" : action.layout;
       return updatePage(doc, action.id, (page) => ({ ...resetPanels(page), layout }));
     }
     case "grid":

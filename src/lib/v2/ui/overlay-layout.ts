@@ -79,7 +79,7 @@ export type TerrainSectionLayout = {
 };
 
 export type SlideFormat = "wide" | "a3" | "a4";
-export type ReportLayoutName = "map-full" | "map-summary" | "map-charts" | "numbers-first" | "side-by-side";
+export type ReportLayoutName = "map-key" | "map-full" | "map-summary" | "map-charts" | "numbers-first" | "side-by-side";
 
 /** 슬라이드 판형의 실제 PowerPoint inch 크기. wide 수치는 기존 골든과 같다. */
 export const SLIDE = { w: 13.333, h: 7.5, edge: 0.3, stripH: 0.36, infoRatio: 0.32 } as const;
@@ -531,7 +531,7 @@ export function layoutRects(layout: ReportLayoutName = "map-summary", format: Sl
       legend: { x: 0.03, y: 0.87, w: 0.94, h: 0.08 },
     };
   }
-  const panels = slidePanelRects({}, layout === "map-summary" || layout === "map-charts", undefined, format);
+  const panels = slidePanelRects({}, layout === "map-key" || layout === "map-summary" || layout === "map-charts", undefined, format);
   return {
     map: { x: 0, y: 0, w: 1, h: 1 },
     title: normalized(panels.title, g)!,

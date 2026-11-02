@@ -18,7 +18,7 @@ const { EMPTY_REPORT_DOC, defaultFrame } = await import("../../lib/v2/report/rep
 
 const page = (tileId, id = "p1") => ({
   id,
-  layout: "map-summary",
+  layout: "map-key",
   panels: {},
   textBoxes: [],
   notes: "D17 발표 메모",

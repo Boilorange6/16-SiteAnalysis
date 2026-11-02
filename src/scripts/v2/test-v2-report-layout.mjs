@@ -1,17 +1,27 @@
 import assert from "node:assert/strict";
 
-const { reportLayoutDecision } = await import("../../lib/v2/report/report-layout.ts");
+const { reportLayoutDecision, resolveReportLayout } = await import("../../lib/v2/report/report-layout.ts");
 const { defaultFrame, reportDocReducer } = await import("../../lib/v2/report/report-doc.ts");
 
 const map = reportLayoutDecision({ pageKind: "tile", hasMap: true, hasSummary: true });
-assert.deepEqual(map.choices.map((choice) => choice.value), ["map-full", "map-summary", "numbers-first"], "지도 타일은 실제로 다른 세 레이아웃만 노출한다");
+assert.deepEqual(map.choices.map((choice) => choice.value), ["map-key"], "그래프 자료가 없는 지도 타일은 지도 + 숫자 하나뿐이다");
+assert.deepEqual(map.choices.map((choice) => choice.label), ["지도 + 숫자"]);
 assert.ok(map.choices.every((choice) => !choice.label.includes("side-by-side")), "옛 나란히 식별자를 UI에 노출하지 않는다");
 
-const picture = reportLayoutDecision({ pageKind: "tile", hasMap: false, hasSummary: true });
-assert.ok(picture.choices.every((choice) => choice.label.includes("그림") || choice.label === "숫자 먼저"), "지도 없는 타일은 그림 이름을 쓴다");
+// 지도도 그림도 없는 비그림 타일 장(뒷면 표 등): 숫자 먼저 하나뿐
+const noMap = reportLayoutDecision({ pageKind: "tile", hasMap: false, hasSummary: true });
+assert.deepEqual(noMap.choices.map((choice) => [choice.value, choice.label]), [["numbers-first", "숫자 먼저"]], "지도·그림 없는 장은 숫자 먼저 하나뿐이다");
 
-const deduped = reportLayoutDecision({ pageKind: "tile", hasMap: true, hasSummary: true, renderSignatures: { "map-full": "same", "map-summary": "same", "numbers-first": "numbers" } });
-assert.deepEqual(deduped.choices.map((choice) => choice.value), ["map-full", "numbers-first"], "실제 렌더 시그니처가 같은 버튼은 제거한다");
+// resolveReportLayout: 그리는 단계의 공통 판정
+const resolve = (layout, hasMap, figure, hasCharts) => resolveReportLayout(layout, { hasMap, figure, hasCharts });
+assert.equal(resolve("numbers-first", true, false, true), "map-charts", "숫자 먼저 + 지도 + 그래프 → 지도 + 그래프");
+assert.equal(resolve("numbers-first", true, false, false), "map-key", "숫자 먼저 + 지도 + 그래프 없음 → 지도 + 숫자");
+assert.equal(resolve("map-charts", true, false, false), "map-key", "그래프 자료를 잃은 map-charts → map-key (빈 그래프 카드를 남기지 않는다)");
+assert.equal(resolve("map-charts", false, true, true), "map-key", "그림 장의 map-charts → map-key");
+assert.equal(resolve("numbers-first", false, false, false), "numbers-first", "지도·그림 없는 장은 numbers-first 그대로");
+assert.equal(resolve("map-key", true, false, true), "map-key", "map-key를 고른 장은 그래프가 있어도 map-key");
+assert.equal(resolve("map-charts", true, false, true), "map-charts");
+assert.equal(resolve("map-summary", true, false, true), "map-key", "옛 값은 map-key");
 
 const compare = reportLayoutDecision({ pageKind: "compare" });
 assert.equal(compare.choices.length, 0, "조판에는 일반 레이아웃을 보이지 않는다");
@@ -47,12 +57,11 @@ assert.equal(removedCell.pages[0].cells[1].tileId, "t2", "조판 칸 지우기�
 
 // ── 「지도 + 그래프」 (map-charts)
 const withCharts = reportLayoutDecision({ pageKind: "tile", hasMap: true, hasSummary: true, hasCharts: true });
-assert.deepEqual(withCharts.choices.map((choice) => choice.value), ["map-full", "map-summary", "map-charts", "numbers-first"], "그래프 자료가 있으면 map-summary 다음에 map-charts가 있다");
-assert.equal(withCharts.choices.find((choice) => choice.value === "map-charts")?.label, "지도 + 그래프", "map-charts 이름");
+assert.deepEqual(withCharts.choices.map((choice) => choice.value), ["map-key", "map-charts"], "그래프 자료가 있으면 지도 + 숫자·지도 + 그래프 둘");
+assert.deepEqual(withCharts.choices.map((choice) => choice.label), ["지도 + 숫자", "지도 + 그래프"], "두 이름");
+assert.deepEqual(reportLayoutDecision({ pageKind: "tile", hasMap: true, hasCharts: true }).choices.map((choice) => choice.value), ["map-key", "map-charts"], "hasSummary 없이도 같다");
 assert.ok(!reportLayoutDecision({ pageKind: "tile", hasMap: true, hasSummary: true, hasCharts: false }).choices.some((choice) => choice.value === "map-charts"), "그래프 자료가 없으면 map-charts를 고를 수 없다");
 assert.ok(!map.choices.some((choice) => choice.value === "map-charts"), "hasCharts를 주지 않으면 map-charts가 없다");
-assert.ok(!reportLayoutDecision({ pageKind: "tile", hasMap: true, hasSummary: false, hasCharts: true }).choices.some((choice) => choice.value === "map-charts"), "요약 칸이 없으면 map-charts는 「지도 크게」와 같은 모양이라 뺀다");
-assert.deepEqual(reportLayoutDecision({ pageKind: "tile", hasMap: true, hasSummary: true, hasCharts: true, renderSignatures: { "map-charts": "지도:summary:summary" } }).choices.map((choice) => choice.value), ["map-full", "map-summary", "numbers-first"], "시그니처가 같으면 map-charts도 중복으로 뺀다");
 
 const { restoreReportDoc } = await import("../../lib/v2/ui/board-state.ts");
 const restorePage = (layout) => ({ id: "p-chart", kind: "tile", layout, panels: {}, textBoxes: [], notes: "", tileId: "t-A01", part: { type: "single" }, settings: { face: "front", callout: "overview" }, frame: defaultFrame() });
@@ -90,14 +99,14 @@ for (const format of ["wide", "a3", "a4"]) {
   assert.deepEqual(chartsColumnLayout(summary, 1.85).distance, distance, "거리 그래프 칸은 글자 배율에 따라 줄지 않는다");
 }
 
-// ── 그림 타일(바람장미·3D 매스): 「숫자 먼저」 없이 「그림 + 요약」만 (2026-10-30 결정 C)
+// ── 그림 타일(바람장미·3D 매스): 「숫자 먼저」 없이 「그림 + 숫자」만
 {
   const figure = reportLayoutDecision({ pageKind: "tile", hasMap: false, figure: true, hasSummary: true });
-  assert.deepEqual(figure.choices.map((choice) => choice.value), ["map-full", "map-summary"], "그림 타일은 숫자 먼저를 뺀다");
-  assert.deepEqual(figure.choices.map((choice) => choice.label), ["그림 크게", "그림 + 요약"]);
+  assert.deepEqual(figure.choices.map((choice) => choice.value), ["map-key"], "그림 타일은 숫자 먼저를 뺀다");
+  assert.deepEqual(figure.choices.map((choice) => choice.label), ["그림 + 숫자"]);
   // 지도 없는 다른 장(뒷면 표 등)은 그대로 숫자 먼저를 갖는다.
   assert.ok(reportLayoutDecision({ pageKind: "tile", hasMap: false, hasSummary: true }).choices.some((choice) => choice.value === "numbers-first"), "그림 타일이 아닌 지도 없는 장은 숫자 먼저 유지");
-  assert.ok(map.choices.some((choice) => choice.value === "numbers-first"), "지도 타일은 숫자 먼저 유지");
+  assert.ok(!map.choices.some((choice) => choice.value === "numbers-first"), "지도 타일에는 숫자 먼저가 없다");
 
   const { isFigureTileId } = await import("../../lib/v2/report/report-layout.ts");
   assert.ok(isFigureTileId("t-D22") && isFigureTileId("fe9e688b-f7d0-4eda-b00a-7867ea6636ee-S01"), "D22·S01 타일 id");
@@ -115,9 +124,30 @@ for (const format of ["wide", "a3", "a4"]) {
       savedPage("t-D22", "map-full"),
     ].map((page, index) => ({ ...page, id: `p-${index}` })),
   }, new Set(["t-D22", "t-S01", "t-A01"]));
-  assert.deepEqual(restored.pages.map((page) => page.layout), ["map-summary", "map-summary", "numbers-first", "map-full"], "저장된 숫자 먼저 그림 장만 그림 + 요약으로, 지도 장·다른 레이아웃은 그대로");
+  assert.deepEqual(restored.pages.map((page) => page.layout), ["map-key", "map-key", "numbers-first", "map-key"], "저장된 숫자 먼저 그림 장은 그림 + 숫자로, 지도 장의 numbers-first는 그리는 단계가 정하므로 그대로, map-full은 map-key");
   assert.deepEqual(restored.pages[0].panels, {}, "숫자 먼저 기준으로 옮긴 패널 자리는 버린다");
   assert.ok(restored.pages[2].panels.title, "지도 장의 패널 자리는 그대로");
+
+  // ── 저장 장 이관: 한 문서에 옛 값 다섯 가지
+  const north = { x: 0.1, y: 0.1, w: 0.05, h: 0.05 };
+  const oldPanels = { north, title: { x: 0.2, y: 0.1, w: 0.3, h: 0.1 }, summary: { x: 0.6, y: 0.2, w: 0.3, h: 0.5 }, source: { x: 0.2, y: 0.9, w: 0.3, h: 0.05 } };
+  const mixed = restoreReportDoc({
+    v: 1,
+    format: "wide",
+    pages: ["map-summary", "map-charts", "numbers-first", "map-full", "side-by-side"].map((layout, index) => ({ ...savedPage("t-A01", layout, oldPanels), id: `p-m${index}` })),
+  }, new Set(["t-A01"]));
+  assert.deepEqual(mixed.pages.map((page) => page.layout), ["map-key", "map-charts", "numbers-first", "map-key", "map-key"], "옛 다섯 값 이관");
+  assert.deepEqual(mixed.pages.map((page) => (page.deletedElementKeys ?? []).includes("summary")), [false, false, false, true, false], "map-full 쪽만 숫자 카드를 지운 요소에 넣는다");
+  for (const page of mixed.pages) {
+    assert.deepEqual(page.panels.north, north, `${page.layout}: 방위표 자리는 남는다(새 틀 안인지는 기하가 판정)`);
+    assert.ok(page.panels.title, "제목 자리도 남는다");
+    assert.ok(!page.panels.summary && !page.panels.source, "옛 요약 판·출처 줄 자리는 버린다");
+  }
+  // 이미 map-key인 문서의 자리는 사용자가 새로 옮긴 것이라 남긴다.
+  const keyed = restoreReportDoc({ v: 1, format: "wide", pages: [savedPage("t-A01", "map-key", oldPanels)] }, new Set(["t-A01"]));
+  assert.equal(keyed.pages[0].layout, "map-key");
+  assert.ok(keyed.pages[0].panels.summary && keyed.pages[0].panels.source, "map-key 문서의 요약·출처 자리는 그대로");
+  assert.ok(!(keyed.pages[0].deletedElementKeys ?? []).includes("summary"), "map-key는 숫자 카드를 지우지 않는다");
 }
 
 console.log("v2 report layout contract tests passed");

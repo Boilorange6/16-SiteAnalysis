@@ -63,10 +63,10 @@ const tilePage = pages.find((page) => page.kind === "tile");
 assert.ok(tilePage, "추천 구성에 D05 쪽");
 assert.equal(tilePage.layout, "map-charts", "새 추천 구성의 D05 쪽은 map-charts");
 const savedDoc = { ...EMPTY_REPORT_DOC, pages: [{ ...tilePage, id: "saved", layout: "map-summary" }] };
-assert.equal(planReportDoc(savedDoc, views, ctx).find((slide) => slide.kind === "tile").page.layout, "map-summary", "저장된 map-summary 쪽은 그대로");
+assert.equal(planReportDoc(savedDoc, views, ctx).find((slide) => slide.kind === "tile").page.layout, "map-key", "저장된 map-summary 쪽은 map-key로 그린다");
 const noFeatureView = { ...view, map: { ...view.map, features: [], polygons: [], total: 0 } };
 const noChartPages = recommendedPages(EMPTY_REPORT_DOC, new Map([[d05Result.tileId, noFeatureView]]), board, { ...ctx, views: new Map([[d05Result.tileId, noFeatureView]]) });
-assert.equal(noChartPages.find((page) => page.kind === "tile").layout, "map-summary", "그래프 자료가 없으면 map-summary");
+assert.equal(noChartPages.find((page) => page.kind === "tile").layout, "map-key", "그래프 자료가 없으면 map-key");
 
 // ── 세는 대상을 밝히지 않은 타일(A12)은 같은 지도 자료가 있어도 「지도 + 요약」에 머물고, 레이아웃 창도 「지도 + 그래프」를 내놓지 않는다
 {
@@ -79,7 +79,7 @@ assert.equal(noChartPages.find((page) => page.kind === "tile").layout, "map-summ
   const undeclaredCtx = { ...ctx, views: undeclaredViews };
   const undeclaredPage = recommendedPages(EMPTY_REPORT_DOC, undeclaredViews, initBoard([undeclaredResult]), undeclaredCtx).find((page) => page.kind === "tile");
   assert.ok(undeclaredPage, "추천 구성에 A12 쪽");
-  assert.equal(undeclaredPage.layout, "map-summary", "밝히지 않은 타일의 새 쪽은 map-summary");
+  assert.equal(undeclaredPage.layout, "map-key", "밝히지 않은 타일의 새 쪽은 map-key");
   const undeclaredSlide = planReportDoc({ ...EMPTY_REPORT_DOC, pages: [undeclaredPage] }, undeclaredViews, undeclaredCtx).find((slide) => slide.kind === "tile");
   assert.equal(analysisCharts(undeclaredSlide.map), null, "그래프 자료 없음");
   const menu = reportLayoutDecision({ pageKind: "tile", hasMap: true, hasSummary: true, hasCharts: analysisCharts(undeclaredSlide.map) !== null });
@@ -168,7 +168,7 @@ const a01Board = initBoard([a01]);
 const a01Page = recommendedPages(EMPTY_REPORT_DOC, a01Views, a01Board, { summary: toSummaryView(GODEOK_SUMMARY, [a01]), analysisDate: "2026-10-27", views: a01Views }).find((page) => page.kind === "tile");
 const a01Plan = (layout) => planReportDoc({ ...EMPTY_REPORT_DOC, pages: [{ ...a01Page, layout }] }, a01Views, { summary: toSummaryView(GODEOK_SUMMARY, [a01]), analysisDate: "2026-10-27", views: a01Views }).find((slide) => slide.kind === "tile");
 assert.equal(analysisCharts(a01Plan("map-summary").map), null, "고덕 A01 지도에는 그래프 자료가 없다(이 비교의 전제)");
-assert.equal(a01Page.layout, "map-summary", "그래프 자료가 없는 A01 쪽은 map-summary");
+assert.equal(a01Page.layout, "map-key", "그래프 자료가 없는 A01 쪽은 map-key");
 assert.equal(render(a01Plan("map-charts")).replaceAll("map-charts", "map-summary"), render(a01Plan("map-summary")), "자료 없는 map-charts는 map-summary와 같은 화면");
 
 // ── 오른쪽 열 칸에 그래프 기하를 놓아도 글자가 칸 안에 있고 서로 겹치지 않는다(16:9·A3·A4 × 글자 배율 1·1.85)
@@ -223,7 +223,7 @@ for (const format of ["wide", "a3", "a4"]) {
   // 설명선 상세 장(page > 0)은 요약 칸이 없어 map-charts가 map-summary와 다르게 그려지지 않는다. 개요(page 0)는 요약 칸이 있다.
   const calloutView = { ...raw, backdrop: raw.map };
   const calloutPages = pagesForTile(EMPTY_REPORT_DOC, a05.tileId, calloutView, tileReportSettingsFromBoard(initBoard([a05]), a05.tileId), { summary: toSummaryView(GODEOK_SUMMARY, [a05]), analysisDate: "2026-10-27", views: new Map([[a05.tileId, calloutView]]) });
-  assert.deepEqual(calloutPages.map((page) => page.layout), ["map-charts", "map-summary"], "개요는 map-charts, 설명 상세 장은 map-summary");
+  assert.deepEqual(calloutPages.map((page) => page.layout), ["map-charts", "map-key"], "개요는 map-charts, 설명 상세 장은 map-key");
 }
 
 // ── 옛 보고서 가져오기는 쪽 모양을 바꾸지 않는다
@@ -231,7 +231,7 @@ for (const format of ["wide", "a3", "a4"]) {
   const legacy = importLegacyReport(EMPTY_REPORT_DOC, board, views, ctx);
   const legacyTile = legacy.find((page) => page.kind === "tile");
   assert.ok(legacyTile, "가져온 D05 쪽");
-  assert.equal(legacyTile.layout, "map-summary", "가져온 쪽은 map-summary(새 추천 구성만 map-charts)");
+  assert.equal(legacyTile.layout, "map-key", "가져온 쪽은 map-key(새 추천 구성만 map-charts)");
 }
 
 // ── 주석 칩은 아래로 자라 해석 문장을 가리지 않고, 요약 칸을 벗어나지 않는다(슬라이드 폭 850 px 이상 = unit 64 이상)

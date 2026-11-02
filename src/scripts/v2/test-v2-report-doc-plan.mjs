@@ -32,7 +32,7 @@ const restoredLegacyLayout = restoreReportDoc({
   format: "wide",
   pages: [{ id: "legacy-tile", kind: "tile", layout: "side-by-side", panels: {}, textBoxes: [], notes: "", tileId: "t-A01", part: { type: "single" }, settings: { face: "front", callout: "overview" }, frame: defaultFrame() }],
 }, new Set(["t-A01"]));
-assert.equal(restoredLegacyLayout.pages[0]?.layout, "map-summary", "저장된 단일 타일 side-by-side는 map-summary로 마이그레이션");
+assert.equal(restoredLegacyLayout.pages[0]?.layout, "map-key", "저장된 단일 타일 side-by-side는 map-key로 마이그레이션");
 
 // 새 쪽 기본: 그림 타일(장미·매스)은 「그림 + 요약」, 그 밖의 지도 없는 장은 「숫자 먼저」 (2026-10-30 결정 C)
 {
@@ -40,8 +40,19 @@ assert.equal(restoredLegacyLayout.pages[0]?.layout, "map-summary", "저장된 �
   const roseModel = { station: "near", dirs: Array.from({ length: 16 }, () => [1, 0, 0, 0, 0]), calmHours: 1, missingHours: 0, totalHours: 100 };
   const figureCtx = { ...tileContext, views: new Map([["t-D22", { ...base, tileId: "t-D22", code: "D22", rose: roseModel }]]) };
   const rosePages = pagesForTile(EMPTY_REPORT_DOC, "t-D22", figureCtx.views.get("t-D22"), tileReportSettingsFromBoard(board, "t-A01"), figureCtx);
-  assert.equal(rosePages[0]?.layout, "map-summary", "새 바람장미 쪽 기본은 그림 + 요약");
-  assert.equal(pagesForTile(EMPTY_REPORT_DOC, "t-A01", views.get("t-A01"), tileReportSettingsFromBoard(board, "t-A01"), tileContext)[0]?.layout, "map-summary", "지도 타일 기본은 그대로");
+  assert.equal(rosePages[0]?.layout, "map-key", "새 바람장미 쪽 기본은 그림 + 숫자");
+  assert.equal(pagesForTile(EMPTY_REPORT_DOC, "t-A01", views.get("t-A01"), tileReportSettingsFromBoard(board, "t-A01"), tileContext)[0]?.layout, "map-key", "지도 타일 기본은 지도 + 숫자");
+
+  // 그리는 단계: 저장된 numbers-first·그래프 자료 없는 map-charts 지도 장은 map-key로 그린다(저장 문서는 그대로).
+  const [mapPage] = pagesForTile(EMPTY_REPORT_DOC, "t-A01", views.get("t-A01"), tileReportSettingsFromBoard(board, "t-A01"), tileContext);
+  assert.ok(planReportDoc({ ...EMPTY_REPORT_DOC, pages: [mapPage] }, views, tileContext)[0]?.map, "지도가 있는 장");
+  for (const stored of ["numbers-first", "map-charts"]) {
+    const doc = { ...EMPTY_REPORT_DOC, pages: [{ ...mapPage, layout: stored }] };
+    const drawn = planReportDoc(doc, views, tileContext)[0];
+    if (!drawn.map || drawn.page.layout === "map-charts") continue; // 그래프 자료가 있는 분석이면 map-charts도 정당하다
+    assert.equal(drawn.page.layout, "map-key", `${stored} 지도 장(그래프 자료 없음)은 map-key로 그린다`);
+    assert.equal(doc.pages[0].layout, stored, "저장 문서는 바꾸지 않는다");
+  }
 }
 
 const sheetSourceViews =[...views.values()].slice(0, 2);

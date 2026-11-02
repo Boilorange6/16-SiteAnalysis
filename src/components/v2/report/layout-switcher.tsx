@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReportLayout } from "@/lib/v2/report/report-doc";
-import { reportGridChoices, reportLayoutDecision, type ReportGrid, type ReportLayoutPageKind } from "@/lib/v2/report/report-layout";
+import { reportGridChoices, reportLayoutDecision, resolveReportLayout, type ReportGrid, type ReportLayoutPageKind } from "@/lib/v2/report/report-layout";
 import styles from "./report-mode.module.css";
 import SidePanelHeader from "./side-panel-header";
 
@@ -22,7 +22,6 @@ type LayoutSwitcherProps = {
   hasCharts?: boolean;
   grid?: ReportGrid;
   onGridChange?: (grid: ReportGrid) => void;
-  renderSignatures?: Partial<Record<ReportLayout, string>>;
   deletedItems?: readonly DeletedLayoutItem[];
 };
 
@@ -38,18 +37,17 @@ function LayoutPreview({ layout, grid }: { layout: ReportLayout; grid?: ReportGr
   return (
     <svg className={styles.layoutPreview} viewBox="0 0 120 90" aria-hidden="true" focusable="false">
       <rect x="3" y="3" width="114" height="84" rx="2" fill="#f7f8fa" stroke="currentColor" />
-      {layout === "map-full" && <><rect x="8" y="22" width="104" height="57" rx="1" fill="#d9e0ea" /><path d="M8 14h42" stroke="currentColor" strokeWidth="3" strokeLinecap="round" /></>}
-      {layout === "map-summary" && <><rect x="8" y="22" width="70" height="57" rx="1" fill="#d9e0ea" /><path d="M88 28h20M88 38h16M88 48h19M8 14h35" stroke="currentColor" strokeWidth="3" strokeLinecap="round" /></>}
+      {layout === "map-key" && <><rect x="8" y="22" width="70" height="57" rx="1" fill="#d9e0ea" /><path d="M88 28h20M88 38h16M88 48h19M8 14h35" stroke="currentColor" strokeWidth="3" strokeLinecap="round" /></>}
       {layout === "map-charts" && <><rect x="8" y="22" width="70" height="57" rx="1" fill="#d9e0ea" /><rect x="88" y="30" width="8" height="30" rx="1" fill="#9db3d4" /><rect x="100" y="42" width="8" height="18" rx="1" fill="#9db3d4" /><path d="M86 66h24M8 14h35" stroke="currentColor" strokeWidth="3" strokeLinecap="round" /></>}
       {layout === "numbers-first" && <><rect x="8" y="10" width="29" height="15" rx="1" fill="#d9e0ea" /><rect x="45" y="10" width="29" height="15" rx="1" fill="#d9e0ea" /><rect x="82" y="10" width="30" height="15" rx="1" fill="#d9e0ea" /><rect x="8" y="34" width="104" height="45" rx="1" fill="#d9e0ea" /></>}
     </svg>
   );
 }
 
-export default function LayoutSwitcher({ value, onChange, compact = false, pageNumber, opacity, onOpacityChange, onClose, pageKind = "tile", hasMap = true, figure = false, hasSummary = true, hasCharts = false, grid = "2x2", onGridChange, renderSignatures, deletedItems = [] }: LayoutSwitcherProps) {
-  const decision = reportLayoutDecision({ pageKind, hasMap, figure, hasSummary, hasCharts, renderSignatures });
-  // 그래프 자료를 잃은 map-charts 쪽은 「지도 + 요약」 내용으로 그려지므로 그 버튼이 눌린 것으로 보인다.
-  const activeLayout = value === "side-by-side" || (value === "map-charts" && !hasCharts) ? "map-summary" : value;
+export default function LayoutSwitcher({ value, onChange, compact = false, pageNumber, opacity, onOpacityChange, onClose, pageKind = "tile", hasMap = true, figure = false, hasSummary = true, hasCharts = false, grid = "2x2", onGridChange, deletedItems = [] }: LayoutSwitcherProps) {
+  const decision = reportLayoutDecision({ pageKind, hasMap, figure, hasSummary, hasCharts });
+  // 그리는 단계와 같은 판정: 그래프 자료를 잃은 map-charts·옛 값은 「지도 + 숫자」로 그려지므로 그 버튼이 눌린 것으로 보인다.
+  const activeLayout = pageKind === "tile" ? resolveReportLayout(value, { hasMap, figure, hasCharts }) : value;
   const gridChoices = decision.gridChoices.length > 0 ? decision.gridChoices : reportGridChoices();
   return (
     <section className={`${styles.layoutSwitcher} ${compact ? styles.layoutSwitcherCompact : ""}`} aria-label="페이지 레이아웃">
@@ -57,7 +55,7 @@ export default function LayoutSwitcher({ value, onChange, compact = false, pageN
       <div className={styles.layoutPageKind} aria-label="페이지 종류"><span>페이지 종류</span><strong>{decision.pageLabel}</strong></div>
       {decision.gridChoices.length > 0 ? (
         <div className={`${styles.layoutOptions} ${styles.sidePanelContent}`} aria-label="조판 칸 수">
-          {gridChoices.map((option) => <button key={option.value} type="button" className={grid === option.value ? styles.layoutOptionActive : styles.layoutOption} aria-pressed={grid === option.value} onClick={() => onGridChange?.(option.value)}><span className={styles.layoutOptionThumb}><LayoutPreview layout="map-summary" grid={option.value} /></span><span className={styles.layoutOptionName}>{option.label}</span></button>)}
+          {gridChoices.map((option) => <button key={option.value} type="button" className={grid === option.value ? styles.layoutOptionActive : styles.layoutOption} aria-pressed={grid === option.value} onClick={() => onGridChange?.(option.value)}><span className={styles.layoutOptionThumb}><LayoutPreview layout="map-key" grid={option.value} /></span><span className={styles.layoutOptionName}>{option.label}</span></button>)}
         </div>
       ) : (
         <div className={`${styles.layoutOptions} ${styles.sidePanelContent}`}>

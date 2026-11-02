@@ -20,7 +20,6 @@ export type ReportLayoutInput = {
   hasSummary?: boolean;
   /** 그래프 자료가 있어 「지도 + 그래프」를 고를 수 있나 */
   hasCharts?: boolean;
-  renderSignatures?: Partial<Record<ReportLayout, string>>;
 };
 
 export type ReportLayoutDecision = {
@@ -53,7 +52,7 @@ function pageLabel(input: ReportLayoutInput): string {
 
 function disabledChoices(reason: string): ReportLayoutChoice[] {
   return [
-    { value: "map-full", label: "레이아웃 없음", disabled: true, tooltip: reason },
+    { value: "map-key", label: "레이아웃 없음", disabled: true, tooltip: reason },
   ];
 }
 
@@ -70,31 +69,23 @@ export function reportLayoutDecision(input: ReportLayoutInput): ReportLayoutDeci
     return { pageLabel: label, choices: disabledChoices(reason), gridChoices: [], disabledReason: reason };
   }
 
-  const mapWord = input.hasMap ? "지도" : "그림";
-  const defaults: Record<ReportLayout, string> = {
-    "map-full": `${mapWord}:full:${input.hasSummary ? "summary" : "none"}`,
-    "map-summary": `${mapWord}:summary:${input.hasSummary ? "summary" : "none"}`,
-    // 요약 칸이 없으면 그래프 열을 그릴 곳이 없어 「크게」와 같은 모양이다.
-    "map-charts": input.hasSummary ? `${mapWord}:charts` : `${mapWord}:full:none`,
-    "numbers-first": "numbers-first",
-    "side-by-side": "legacy-hidden",
-  };
-  const signatures = { ...defaults, ...(input.renderSignatures ?? {}) };
-  const seen = new Set<string>();
-  const choices: ReportLayoutChoice[] = [];
-  const candidates: Array<{ value: ReportLayout; label: string }> = [
-    { value: "map-full", label: `${mapWord} 크게` },
-    { value: "map-summary", label: `${mapWord} + 요약` },
-    ...(input.hasCharts ? [{ value: "map-charts" as const, label: "지도 + 그래프" }] : []),
-    ...(input.figure ? [] : [{ value: "numbers-first" as const, label: "숫자 먼저" }]),
+  // 지도도 그림도 없는 장(뒷면 표 등)은 숫자 먼저 하나뿐이다.
+  if (!input.hasMap && !input.figure) return { pageLabel: label, choices: [{ value: "numbers-first", label: "숫자 먼저" }], gridChoices: [] };
+  const choices: ReportLayoutChoice[] = [
+    { value: "map-key", label: input.hasMap ? "지도 + 숫자" : "그림 + 숫자" },
+    ...(input.hasCharts && !input.figure ? [{ value: "map-charts" as const, label: "지도 + 그래프" }] : []),
   ];
-  for (const candidate of candidates) {
-    const signature = signatures[candidate.value];
-    if (seen.has(signature)) continue;
-    seen.add(signature);
-    choices.push(candidate);
-  }
   return { pageLabel: label, choices, gridChoices: [] };
+}
+
+/**
+ * 그리는 단계의 공통 판정. 저장된 값(옛 값 포함)과 이 장의 지도·그림·그래프 유무로 실제 레이아웃을 정한다.
+ * 그래프 자료를 잃은 map-charts(옛 분석 등)는 map-key로 그려 빈 그래프 카드를 남기지 않는다.
+ */
+export function resolveReportLayout(layout: ReportLayout, page: { hasMap: boolean; figure: boolean; hasCharts: boolean }): "map-key" | "map-charts" | "numbers-first" {
+  if (!page.hasMap && !page.figure) return "numbers-first";
+  if ((layout === "map-charts" || layout === "numbers-first") && page.hasCharts && !page.figure) return "map-charts";
+  return "map-key";
 }
 
 export function reportGridChoices(): ReportGridChoice[] {

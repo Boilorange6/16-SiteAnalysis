@@ -941,7 +941,7 @@ const isSheetGrid = (value: unknown): value is SheetGrid => value === "2x2" || v
 const isTileKind = (value: unknown): value is TileResult["tileType"] => value === "analysis" || value === "diagram" || value === "simulation" || value === "stack";
 
 const isReportFormat = (value: unknown): value is ReportDoc["format"] => value === "wide" || value === "a3" || value === "a4";
-const isReportLayout = (value: unknown): value is ReportPage["layout"] => value === "map-full" || value === "map-summary" || value === "map-charts" || value === "numbers-first" || value === "side-by-side";
+const isReportLayout = (value: unknown): value is ReportPage["layout"] => value === "map-key" || value === "map-full" || value === "map-summary" || value === "map-charts" || value === "numbers-first" || value === "side-by-side";
 const isFiniteNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 const reportTileIdPattern = /^(?:[A-Za-z0-9._]+-)+[A-Za-z0-9_]+$/;
 const reportPageIdPattern = /^\S+$/;
@@ -1084,18 +1084,26 @@ function restoreReportPage(value: unknown, validTileIds: ReadonlySet<string>, op
   if (!isRecord(value) || typeof value.id !== "string" || value.id.length === 0 || !reportPageIdPattern.test(value.id) || !isReportLayout(value.layout)) return null;
   const fontSizes = clampReportFontSizes(value.fontSizes);
   const pageMapColors = normalizeMapColors(value.mapColors);
-  // 그림 타일(바람장미·3D 매스)은 「숫자 먼저」가 없다(§9-8). 열 때 「그림 + 요약」으로 바꾸고, 「숫자 먼저」 기준으로 옮긴 패널 자리는 버린다.
-  const figureNumbersFirst = value.kind === "tile" && value.layout === "numbers-first" && typeof value.tileId === "string" && isFigureTileId(value.tileId);
-  const layout = (value.kind === "tile" && value.layout === "side-by-side") || figureNumbersFirst ? "map-summary" : value.layout;
+  // 저장된 타일 장 이관(spec §5, 열 때 한 번): 결과 없이 정할 수 있는 것만 바꾼다. 지도·그림·그래프 유무가 필요한 numbers-first·map-charts는 그리는 단계의 resolveReportLayout이 정한다.
+  // 그림 타일(바람장미·3D 매스)은 「숫자 먼저」가 없으므로 map-key로 바꾸고 「숫자 먼저」 기준으로 옮긴 패널 자리는 버린다.
+  const isTile = value.kind === "tile";
+  const figureNumbersFirst = isTile && value.layout === "numbers-first" && typeof value.tileId === "string" && isFigureTileId(value.tileId);
+  const mapFull = isTile && value.layout === "map-full";
+  const layout = figureNumbersFirst || mapFull || (isTile && (value.layout === "map-summary" || value.layout === "side-by-side")) ? "map-key" : value.layout;
+  // 옛 틀의 요약 판·출처 줄 자리는 새 틀과 맞지 않아 버린다. 이미 map-key인 문서의 자리는 사용자가 새로 옮긴 것이라 남긴다.
+  const migratedPanels = reportPanels(value.panels);
+  if (isTile && value.layout !== "map-key") { delete migratedPanels.summary; delete migratedPanels.source; }
+  const deletedKeys = reportPageElements(value.deletedElementKeys);
+  if (mapFull && !deletedKeys.includes("summary")) deletedKeys.push("summary");
   const base = {
     id: value.id,
     layout,
-    panels: figureNumbersFirst ? {} : reportPanels(value.panels),
+    panels: figureNumbersFirst ? {} : migratedPanels,
     textBoxes: reportTextBoxes(value.textBoxes),
     notes: typeof value.notes === "string" ? value.notes : "",
-    ...(options.preserveMissingPageElementKeys && !Object.prototype.hasOwnProperty.call(value, "deletedElementKeys")
+    ...(options.preserveMissingPageElementKeys && !mapFull && !Object.prototype.hasOwnProperty.call(value, "deletedElementKeys")
       ? {}
-      : { deletedElementKeys: reportPageElements(value.deletedElementKeys) }),
+      : { deletedElementKeys: deletedKeys }),
     ...(typeof value.titleOverride === "string" ? { titleOverride: value.titleOverride } : {}),
     ...(typeof value.summaryOverride === "string" ? { summaryOverride: value.summaryOverride } : {}),
     ...(Object.keys(fontSizes).length > 0 ? { fontSizes } : {}),
