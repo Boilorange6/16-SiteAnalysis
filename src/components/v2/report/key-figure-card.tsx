@@ -49,7 +49,7 @@ export function KeyFigureCard({ styles, view, fit, rect, unit, interaction }: { 
       {...interaction}
     >
       <span className={styles.kfBar} data-part="key-question-bar" style={at(rows.questionBar, unit, { background: color })} />
-      <span className={styles.kfText} data-part="key-question" title={fit.questionClipped ? figure.question : undefined} style={line(rows.question, unit, fit.questionPt, { color: SUB, fontWeight: 700 })}>{figure.question}</span>
+      <span className={styles.kfText} data-part="key-question" title={fit.questionClipped ? figure.question : undefined} style={line(rows.question, unit, fit.questionPt, { color: SUB, fontWeight: 700 })}>{fit.questionText}</span>
       {rows.badges.map((badge, i) => {
         const folded = fit.badgesMore > 0 && i === rows.badges.length - 1;
         const chip = CHIP[folded ? "limit" : tone(badge.text)];
@@ -65,7 +65,7 @@ export function KeyFigureCard({ styles, view, fit, rect, unit, interaction }: { 
           {target && <tspan fontSize={answerSize(fit.targetPt)} fontWeight={900}>{target}</tspan>}
         </text>
       </svg>
-      {rows.sub && <span className={styles.kfText} data-part="key-sub" style={{ ...at(rows.sub, unit), ...fontStyle(fit.subPt, unit), lineHeight: `${(rows.sub.h / Math.max(1, fit.subLines.length)) * unit}px`, color: SUB, fontWeight: 500, whiteSpace: "pre-line", overflow: "hidden" }}>{fit.subLines.join("\n")}</span>}
+      {rows.sub && <span className={styles.kfText} data-part="key-sub" title={fit.subClipped ? fit.subFull : undefined} style={{ ...at(rows.sub, unit), ...fontStyle(fit.subPt, unit), lineHeight: `${(rows.sub.h / Math.max(1, fit.subLines.length)) * unit}px`, color: SUB, fontWeight: 500, whiteSpace: "pre-line", overflow: "hidden" }}>{fit.subLines.join("\n")}</span>}
       {rows.grades.map((grade, i) => {
         const level = view.grades[i]?.level ?? "fair";
         return <span key={grade.text} className={styles.kfChip} data-part="key-grade" data-level={level} style={line(grade.rect, unit, fit.gradePt, { background: GRADE_CHIP[level].fill, color: GRADE_CHIP[level].color, fontWeight: 700, borderRadius: grade.rect.h * unit, textAlign: "center", textOverflow: "clip" })}>{grade.text}</span>;
@@ -74,7 +74,7 @@ export function KeyFigureCard({ styles, view, fit, rect, unit, interaction }: { 
       {rows.divider && <span className={styles.kfRule} data-part="key-divider" style={at(rows.divider, unit)} />}
       {rows.stats.map((stat, i) => (
         <React.Fragment key={i}>
-          <span className={styles.kfText} data-part="key-stat-value" style={line(stat.value, unit, fit.statValuePt, { color: INK, fontWeight: 900, fontVariantNumeric: "tabular-nums" })}>{figure.stats[i]?.value}</span>
+          <span className={styles.kfText} data-part="key-stat-value" title={fit.statValueClipped[i] ? figure.stats[i]?.value : undefined} style={line(stat.value, unit, fit.statValuePt, { color: INK, fontWeight: 900, fontVariantNumeric: "tabular-nums" })}>{fit.statValueText[i]}</span>
           <span className={styles.kfText} data-part="key-stat-label" title={fit.statLabelClipped[i] ? figure.stats[i]?.label : undefined} style={{ ...at(stat.label, unit), ...fontStyle(fit.statLabelPt, unit), lineHeight: 1.25, color: SUB, fontWeight: 500, whiteSpace: "pre", overflow: "hidden" }}>{fit.statLabelLines[i]?.join("\n")}</span>
         </React.Fragment>
       ))}
@@ -109,13 +109,13 @@ export function KeyFigureCard({ styles, view, fit, rect, unit, interaction }: { 
         return (
           <React.Fragment key={i}>
             <span className={styles.kfSwatch} style={at(row.swatch, unit, { background: part.color, borderRadius: 0.02 * unit })} />
-            <span className={styles.kfText} data-part="key-part-label" style={line(row.label, unit, fit.partPt, { color: part.site ? INK : SUB, fontWeight: part.site ? 900 : 500 })}>{row.labelText}</span>
+            <span className={styles.kfText} data-part="key-part-label" title={row.labelClipped ? row.labelFull : undefined} style={line(row.label, unit, fit.partPt, { color: part.site ? INK : SUB, fontWeight: part.site ? 900 : 500 })}>{row.labelText}</span>
             <span className={styles.kfText} data-part="key-part-share" style={line(row.share, unit, fit.partPt, { color: part.site ? INK : SUB, fontWeight: part.site ? 900 : 500, textAlign: "right", fontVariantNumeric: "tabular-nums" })}>{row.shareText}</span>
           </React.Fragment>
         );
       })}
       {rows.sentenceBar && <span className={styles.kfBar} style={at(rows.sentenceBar, unit, { background: color })} />}
-      {rows.sentence && <span className={styles.kfText} data-part="key-sentence" style={{ ...at(rows.sentence, unit), ...fontStyle(fit.sentencePt, unit), lineHeight: 1.25, color: INK, fontWeight: 700, whiteSpace: "pre-line", overflow: "hidden", textWrap: "balance" } as CSSProperties}>{fit.sentenceLines.join("\n")}</span>}
+      {rows.sentence && <span className={styles.kfText} data-part="key-sentence" title={fit.sentenceClipped ? fit.sentenceFull : undefined} style={{ ...at(rows.sentence, unit), ...fontStyle(fit.sentencePt, unit), lineHeight: 1.25, color: INK, fontWeight: 700, whiteSpace: "pre-line", overflow: "hidden", textWrap: "balance" } as CSSProperties}>{fit.sentenceLines.join("\n")}</span>}
     </div>
   );
 }

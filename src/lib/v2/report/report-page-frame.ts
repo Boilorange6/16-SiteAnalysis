@@ -58,7 +58,7 @@ export type ReportPageFrame = {
    * 해석 한 줄(줄·pt·높이). 카드가 있으면 `fit`의 값 그대로다(①은 카드 안 `fit.rows.sentence`에, ②는 열 맨 아래 `AnalysisColumn`이 그린다).
    * 카드가 없는 ②는 사용자가 고친 요약도 그리도록 따로 센 값이고, 해석이 없거나 ① 카드 없음이면 null이다.
    */
-  sentence: { lines: string[]; pt: number; height: number } | null;
+  sentence: { lines: string[]; pt: number; height: number; /** …로 잘렸다: 화면은 전문(`full`)을 title로 단다 */ clipped: boolean; full: string } | null;
   /** 제목 칩에 그리는 글(한 줄, 넘치면 …)과 전문. 화면은 잘렸을 때 전문을 title로 단다. */
   title: { text: string; fullText: string; titleClipped: boolean; kind: string; fullKind: string; kindClipped: boolean; pt: number; kindPt: number };
   /** 지도 범례 판(설명선 개요가 아닐 때) */
@@ -357,9 +357,9 @@ export function reportPageFrame(slide: TileSlide, charts: AnalysisCharts | null,
       : null;
     // 카드가 없는 ②도 해석 한 줄(사용자가 고친 요약 등)은 열 맨 아래에 그린다.
     const sentenceInfo = fit
-      ? { lines: fit.sentenceLines, pt: fit.sentencePt, height: fit.sentenceHeight }
+      ? { lines: fit.sentenceLines, pt: fit.sentencePt, height: fit.sentenceHeight, clipped: fit.sentenceClipped, full: fit.sentenceFull }
       : layout === "map-charts" && !cardDeleted
-        ? sentenceFit({ sentence, width: box.w, columns: 3, summaryPt, notes: hasNotes })
+        ? { ...sentenceFit({ sentence, width: box.w, columns: 3, summaryPt, notes: hasNotes }), full: sentence ?? "" }
         : null;
     return { fit, sentenceInfo };
   };

@@ -4,7 +4,7 @@
  * 글은 모두 줄바꿈·자동 맞춤 없이 `fit`이 이미 줄을 나눈 대로 그린다(PowerPoint의 자동 줄임은 편집할 때만 적용돼 믿을 수 없다).
  */
 import type { KeyFigureFit } from "./key-figure-fit";
-import { CHIP, FONT, INK, MUTED, hex, textIn, type Slide } from "./pptx-kit";
+import { CHIP, FONT, INK, MUTED, hex, type Slide } from "./pptx-kit";
 import type { Rect } from "../ui/overlay-layout";
 import type { TileView } from "../ui/tile-view";
 
@@ -15,14 +15,6 @@ const GRADE_CHIP: Record<"good" | "fair" | "caution", { fill: string; color: str
   fair: CHIP.status,
   caution: { fill: "FBE3E1", color: "8A1F17" },
 };
-
-/** 한 줄 글을 폭 안에 닫는다(…). 화면은 CSS text-overflow인데 PPT에는 없으므로 같은 어림(textIn)으로 미리 자른다. */
-function clip(text: string, pt: number, width: number): string {
-  if (textIn(text, pt) <= width) return text;
-  let cut = [...text];
-  while (cut.length > 1 && textIn(`${cut.join("")}…`, pt) > width) cut = cut.slice(0, -1);
-  return `${cut.join("").trimEnd()}…`;
-}
 
 export type KeyFigureCardInput = {
   view: TileView;
@@ -58,7 +50,7 @@ export function drawKeyFigureCard(s: Slide, { view, fit, rect, tag }: KeyFigureC
 
   // 질문 줄 + 상태 배지(많으면 마지막이 `+n`)
   bar(rows.questionBar, "question-bar");
-  text(clip(figure.question, fit.questionPt, rows.question.w), rows.question, "question", { fontSize: fit.questionPt, bold: true, color: MUTED, valign: "middle" });
+  text(fit.questionText, rows.question, "question", { fontSize: fit.questionPt, bold: true, color: MUTED, valign: "middle" });
   rows.badges.forEach((badge, i) => {
     const folded = fit.badgesMore > 0 && i === rows.badges.length - 1;
     pill(badge.rect, badge.text, `badge-${i}`, fit.chipPt, CHIP[folded ? "limit" : tone(badge.text)]);
@@ -84,7 +76,7 @@ export function drawKeyFigureCard(s: Slide, { view, fit, rect, tag }: KeyFigureC
   const rule = (r: Rect, part: string) => s.addShape("rect", { ...at(r), fill: { color: RULE }, line: { color: RULE, width: 0 }, objectName: tag(part) });
   if (rows.divider) rule(rows.divider, "divider");
   rows.stats.forEach((stat, i) => {
-    text(figure.stats[i]?.value ?? "", stat.value, `stat-value-${i}`, { fontSize: fit.statValuePt, bold: true, color: INK, valign: "middle" });
+    text(fit.statValueText[i] ?? "", stat.value, `stat-value-${i}`, { fontSize: fit.statValuePt, bold: true, color: INK, valign: "middle" });
     lines(fit.statLabelLines[i] ?? [], stat.label, `stat-label-${i}`, fit.statLabelPt, fit.statLabelPt * 1.25, { color: MUTED });
   });
   rows.statSeparators.forEach((sep, i) => rule(sep, `stat-separator-${i}`));

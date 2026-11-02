@@ -175,7 +175,7 @@ export function AnalysisColumn({ styles, frame, charts, view, unit, showNotes, i
       {sentenceLines.length > 0 && (
         <>
           <span className={styles.kfBar} style={at({ x: sentence.x, y: sentence.y, w: BAR_W, h: sentence.h }, { background: view.color })} />
-          <div className={styles.kfText} data-part="column-sentence" style={{ ...at({ x: sentence.x + SENTENCE_BAR, y: sentence.y, w: sentence.w - SENTENCE_BAR, h: sentence.h }), ...fontStyle(sentenceInfo!.pt, unit), lineHeight: 1.25, color: "#15171c", fontWeight: 700, whiteSpace: "pre-line", overflow: "hidden" }}>{sentenceLines.join("\n")}</div>
+          <div className={styles.kfText} data-part="column-sentence" title={sentenceInfo!.clipped ? sentenceInfo!.full : undefined} style={{ ...at({ x: sentence.x + SENTENCE_BAR, y: sentence.y, w: sentence.w - SENTENCE_BAR, h: sentence.h }), ...fontStyle(sentenceInfo!.pt, unit), lineHeight: 1.25, color: "#15171c", fontWeight: 700, whiteSpace: "pre-line", overflow: "hidden" }}>{sentenceLines.join("\n")}</div>
         </>
       )}
       {showNotes && frame.notes.length > 0 && <NotesChip notes={frame.notes} rect={column.notesChip} panel={rect} unit={unit} styles={styles} growUp />}

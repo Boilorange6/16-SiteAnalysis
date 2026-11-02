@@ -663,6 +663,34 @@ for (const format of ["wide", "a3", "a4"]) {
   }
 }
 
+// ── M-8: fit이 질문·보조 숫자 값·구성 이름을 미리 자르고(…Text·…Clipped) 보조 줄·해석 줄의 잘림도 알린다. 화면·PPT는 그 글을 그린다.
+{
+  const longQ = "반경 안에서 지금 가장 가까운 지하철역과 그 역까지 걸어서 가는 데 걸리는 시간은 얼마인가";
+  const fig = { question: longQ, answer: { value: "26.4m", kind: "number" }, sub: "원천 높이와 층수 추정을 함께 쓴 값이라 실제와 다를 수 있고 확인되지 않은 건물은 3 m 가정이 적용되었습니다 그래서 크게 다를 수 있습니다", stats: [{ value: "1,234,567,890,123,456,789만원", label: "값" }, { value: "73%", label: "비율" }] };
+  const f = keyFigureFit({ figure: fig, badges: ["일부 자료만 집계"], grades: [], filterLine: null, sentence: "짧은 해석", width: 3.125, columns: 2, summaryPt: 13 });
+  assert.equal(f.questionClipped, true);
+  assert.ok(f.questionText.endsWith("…") && longQ.startsWith(f.questionText.slice(0, -1)), "질문은 …로 미리 자른다");
+  assert.ok(textIn(f.questionText, f.questionPt) <= f.rows.question.w + 1e-6, "자른 질문이 칸 안");
+  assert.equal(f.statValueClipped[0], true);
+  assert.ok(f.statValueText[0].endsWith("…") && textIn(f.statValueText[0], f.statValuePt) * 1.1 <= f.rows.stats[0].value.w + 1e-6, "보조 숫자 값은 칸 안에서 …로 닫는다");
+  assert.equal(f.statValueClipped[1], false);
+  assert.equal(f.statValueText[1], "73%");
+  assert.equal(f.subClipped, true, "보조 줄이 두 줄을 넘어 …로 닫혔다");
+  assert.equal(f.subFull, fig.sub);
+  assert.equal(f.sentenceClipped, false);
+  const longSentence = keyFigureFit({ figure: fig, badges: [], grades: [], filterLine: null, sentence: "이 문장은 아주 길어서 세 줄에 다 들어가지 않습니다 ".repeat(8), width: 3.125, columns: 2, summaryPt: 13 });
+  assert.equal(longSentence.sentenceClipped, true);
+  assert.ok(longSentence.sentenceLines.at(-1).endsWith("…"));
+  assert.equal(keyFigureFit({ figure: { question: "짧은 질문", answer: { value: "6분", kind: "number" }, stats: [{ value: "4분", label: "도보" }] }, badges: [], grades: [], filterLine: null, sentence: null, width: 3.125, columns: 2, summaryPt: 13 }).subClipped, false);
+  // 구성 이름
+  const zoneParts = [{ label: "제3종일반주거지역과 그 주변의 아주 긴 이름을 가진 지구단위계획구역", share: 60, color: "#F2C94C", site: true }, { label: "일반상업지역", share: 40, color: "#E2574C" }];
+  const z = keyFigureFit({ figure: { question: "대지 용도지역", answer: { value: "제3종일반주거지역", kind: "name" }, stats: [{ value: "60.0%", label: "같은 용도지역" }, { value: "95.0%", label: "주거지역" }], parts: zoneParts }, badges: [], grades: [], filterLine: null, sentence: null, width: 3.125, columns: 2, summaryPt: 13 });
+  assert.equal(z.rows.parts[0].labelClipped, true);
+  assert.ok(z.rows.parts[0].labelText.endsWith("…") && textIn(z.rows.parts[0].labelText, z.partPt) * 1.1 <= z.rows.parts[0].label.w + 1e-6, "구성 이름은 칸 안에서 …로 닫는다");
+  assert.equal(z.rows.parts[1].labelClipped, false);
+  assert.equal(z.rows.parts[1].labelFull, "일반상업지역");
+}
+
 // ── 구성 막대(A12): 보조 숫자 칸 대신 큰 % + 두 줄 설명이 막대 위에 있다(Ruling 6)
 {
   const parts = [{ label: "제3종일반주거지역", share: 50, color: "#F2C94C", site: true }, { label: "제2종일반주거지역", share: 24.9, color: "#F2C94C" }, { label: "일반상업지역", share: 5, color: "#E05A47" }];

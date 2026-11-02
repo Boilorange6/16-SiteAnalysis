@@ -579,6 +579,48 @@ assert.ok(charts.blocks.some((b) => textsOf(b).includes("1~4층")) && charts.blo
   assert.match(by("t-right"), /wrap="none"/, "줄바꿈 없음");
 }
 
+// M-8: 카드 칸 넘침은 fit이 미리 자른 글을 화면·PPT가 그대로 그린다. 화면은 잘린 글마다 title에 전문을 단다.
+{
+  const { keyFigureFit } = await import("../../lib/v2/report/key-figure-fit.ts");
+  const { drawKeyFigureCard } = await import("../../lib/v2/report/key-figure-pptx.ts");
+  const { KeyFigureCard } = await import("../../components/v2/report/key-figure-card.tsx");
+  const longQ = "반경 안에서 지금 가장 가까운 지하철역과 그 역까지 걸어서 가는 데 걸리는 시간은 얼마인가";
+  const longSub = "원천 높이와 층수 추정을 함께 쓴 값이라 실제와 다를 수 있고 확인되지 않은 건물은 3 m 가정이 적용되었습니다 그래서 크게 다를 수 있습니다";
+  const longSentence = "이 문장은 아주 길어서 세 줄에 다 들어가지 않습니다 ".repeat(8);
+  const zoneLabel = "제3종일반주거지역과 그 주변의 아주 긴 이름을 가진 지구단위계획구역";
+  const figures = [
+    { question: longQ, answer: { value: "26.4m", kind: "number" }, sub: longSub, stats: [{ value: "1,234,567,890,123,456,789만원", label: "값" }, { value: "73%", label: "비율" }] },
+    { question: "대지 용도지역", answer: { value: "제3종일반주거지역", kind: "name" }, stats: [{ value: "60.0%", label: "같은 용도지역" }, { value: "95.0%", label: "주거지역" }], parts: [{ label: zoneLabel, share: 60, color: "#F2C94C", site: true }, { label: "일반상업지역", share: 40, color: "#E2574C" }] },
+  ];
+  const draw = (figure) => {
+    const fit = keyFigureFit({ figure, badges: ["일부 자료만 집계"], grades: [], filterLine: null, sentence: longSentence, width: 3.125, columns: 2, summaryPt: 13 });
+    const view = { keyFigure: figure, color: "#2f6fdb", badges: [{ text: "일부 자료만 집계", tone: "limit" }], grades: [] };
+    const markup = renderToStaticMarkup(createElement(KeyFigureCard, { styles: {}, view, fit, rect: { x: 0, y: 0, w: 3.125, h: fit.height }, unit: 96 }));
+    const tagOf = (part) => new RegExp(`<[a-z]+ [^>]*data-part="${part}"[^>]*>[^<]*`).exec(markup)?.[0] ?? "";
+    const recorded = [];
+    const recorder = { addShape: () => recorder, addText: (value, o) => { recorded.push({ value, o }); return recorder; } };
+    drawKeyFigureCard(recorder, { view, fit, rect: { x: 1, y: 1, w: 3.125, h: fit.height }, tag: (part) => `T|${part}` });
+    const textOf = (part) => { const hit = recorded.find((r) => r.o.objectName === `T|${part}`); return typeof hit?.value === "string" ? hit.value : (hit?.value ?? []).map((run) => run.text).join("\n"); };
+    return { fit, tagOf, textOf };
+  };
+  {
+    const { fit, tagOf, textOf } = draw(figures[0]);
+    assert.ok(tagOf("key-question").includes(fit.questionText) && tagOf("key-question").includes(`title="${longQ}"`), "질문: 자른 글 + title 전문");
+    assert.ok(tagOf("key-stat-value").includes(fit.statValueText[0]) && tagOf("key-stat-value").includes(`title="${figures[0].stats[0].value}"`), "보조 숫자 값: 자른 글 + title 전문");
+    assert.ok(tagOf("key-sub").includes(`title="${fit.subFull}"`), "보조 줄: title 전문");
+    assert.ok(tagOf("key-sentence").includes(`title="${fit.sentenceFull}"`), "해석 줄: title 전문");
+    assert.equal(textOf("question"), fit.questionText, "PPT 질문 = fit 자른 글");
+    assert.equal(textOf("stat-value-0"), fit.statValueText[0], "PPT 보조 숫자 값 = fit 자른 글");
+    assert.equal(textOf("sub"), fit.subLines.join("\n"), "PPT 보조 줄 = fit 줄");
+    assert.equal(textOf("sentence"), fit.sentenceLines.join("\n"), "PPT 해석 줄 = fit 줄");
+  }
+  {
+    const { fit, tagOf, textOf } = draw(figures[1]);
+    assert.ok(tagOf("key-part-label").includes(fit.rows.parts[0].labelText) && tagOf("key-part-label").includes(`title="${zoneLabel}"`), "구성 이름: 자른 글 + title 전문");
+    assert.equal(textOf("part-label-0"), fit.rows.parts[0].labelText, "PPT 구성 이름 = fit 자른 글");
+  }
+}
+
 // M-7: 긴 제목은 한 줄로 잘려 제목 칩 안에 있고, PPT는 화면과 같은 자른 글을 그린다(종류 칩도 칩 밖으로 나가지 않는다).
 {
   const long = "서울특별시 강남구 대치동 503번지 일대 매매 실거래가 분포와 단지별 평균·중앙값 비교 분석 결과";
