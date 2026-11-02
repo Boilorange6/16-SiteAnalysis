@@ -152,7 +152,9 @@ function scatterShapes(d: Scatter, radiusM: number, box: ChartBox, scale: number
     if (!byColor.has(p.color)) byColor.set(p.color, []);
     byColor.get(p.color)!.push([X(p.d), Y(p.v)]);
   }
-  [...byColor].forEach(([color, points], i) => out.push({ kind: "dots", color, r: 0.03 * scale, opacity: 0.8, points, name: `chart-distance-dots-${i}` }));
+  // 점이 400개를 넘으면 큰 점이 덩어리가 되어 평균·중앙값 글을 덮으므로 작고 옅게 그린다.
+  const dense = d.points.length > 400;
+  [...byColor].forEach(([color, points], i) => out.push({ kind: "dots", color, r: (dense ? 0.018 : 0.03) * scale, opacity: dense ? 0.5 : 0.8, points, name: `chart-distance-dots-${i}` }));
 
   const yMed = Y(d.median);
   const yMean = Y(d.mean);

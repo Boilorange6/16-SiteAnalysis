@@ -111,6 +111,9 @@ for (const scale of SCALES) {
   assert.deepEqual(dots.map((s) => s.name), ["chart-distance-dots-0", "chart-distance-dots-1", "chart-distance-dots-2"]);
   assert.equal(dots.reduce((sum, s) => sum + s.points.length, 0), points.length);
   assert.ok(dots.every((s) => s.opacity === 0.8 && Math.abs(s.r - 0.03 * scale) < EPS), "점 크기·불투명도(G1: 점이 잘 안 보인다)");
+  // 점이 400개를 넘으면(D04·D05 약 1,000개) 큰 점이 덩어리가 되어 평균·중앙값 글을 덮으므로 작고 옅게
+  const denseDots = distanceShapes({ ...floors, points: [...points, ...points] }, 1000, BOX, scale).filter((s) => s.kind === "dots" && s.name.startsWith("chart-distance-dots-"));
+  assert.ok(denseDots.every((s) => s.opacity === 0.5 && Math.abs(s.r - 0.018 * scale) < EPS), "점이 많으면 작고 옅게");
   const gx0 = byName(shapes, "chart-distance-grid-0").x1;
   const gx1 = byName(shapes, "chart-distance-grid-0").x2;
   const first = points.find((p) => p.color === COLORS[0]);

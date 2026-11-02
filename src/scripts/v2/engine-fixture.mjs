@@ -433,9 +433,12 @@ export async function buildEngineFixture(dataDir, version, options = {}) {
     // 청약홈 공고(sale_notice): 마지막 공고일과 위치를 확인하지 못한(geometry_id null) 공고 수는 A06 한계 문구의 원천 값이다.
     const sn = db.prepare(`INSERT INTO development_event (event_id, project_id, event_type, stage, effective_date, planned_date_precision, units, geometry_id, evidence_url, release_id)
       VALUES (?, ?, 'sale_notice', 'announced', ?, 'month', 1, ?, 'https://example.invalid', ?)`);
-    sn.run("sn1", "sn1", "2026-07-28", "applyhome:outside", ah);
-    sn.run("sn2", "sn2", "2026-05-02", null, ah);
-    sn.run("sn3", "sn3", "2026-06-10", null, ah);
+    // 켤 때만 넣는다: market 내용이 바뀌면 매니페스트 해시가 바뀌어 topo 테스트의 출력 해시 고정값이 움직인다.
+    if (options.saleNotices) {
+      sn.run("sn1", "sn1", "2026-07-28", "applyhome:outside", ah);
+      sn.run("sn2", "sn2", "2026-05-02", null, ah);
+      sn.run("sn3", "sn3", "2026-06-10", null, ah);
+    }
     if (options.trades) {
       // 분석일 2026-09-30 기준 창 (2025-09-30, 2026-09-30], 최근 반기 (2026-03-30, 2026-09-30]
       const rt = rel(db, "rtms_apt_trade", "2026-09-30");

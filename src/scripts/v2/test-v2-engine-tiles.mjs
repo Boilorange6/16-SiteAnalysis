@@ -20,7 +20,7 @@ const { buildSummary } = await import("../../lib/v2/engine/summary.ts");
 const { toSummaryView, toTileView } = await import("../../lib/v2/ui/tile-view.ts");
 
 const dataDir = mkdtempSync(join(tmpdir(), "v2-eng-tiles-"));
-const hash = await buildEngineFixture(dataDir, "v1");
+const hash = await buildEngineFixture(dataDir, "v1", { saleNotices: true });
 const manifest = M.readManifest(dataDir);
 const ctxFor = (radiusM = 800, analysisDate = "2026-09-30", dir = dataDir, m = manifest) =>
   new EngineContext(dir, m, "an-1", { address: "경기도 남양주시 다산동 100", center: CENTER, radiusM, analysisDate });
