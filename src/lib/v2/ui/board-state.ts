@@ -1090,9 +1090,10 @@ function restoreReportPage(value: unknown, validTileIds: ReadonlySet<string>, op
   const figureNumbersFirst = isTile && value.layout === "numbers-first" && typeof value.tileId === "string" && isFigureTileId(value.tileId);
   const mapFull = isTile && value.layout === "map-full";
   const layout = figureNumbersFirst || mapFull || (isTile && (value.layout === "map-summary" || value.layout === "side-by-side")) ? "map-key" : value.layout;
-  // 옛 틀의 요약 판·출처 줄 자리는 새 틀과 맞지 않아 버린다. 이미 map-key인 문서의 자리는 사용자가 새로 옮긴 것이라 남긴다.
+  // 옛 틀의 요약 판·출처 줄 자리는 이 함수가 layout을 map-key로 바꿀 때만 버린다(새 틀과 맞지 않음).
+  // numbers-first·map-charts·이미 map-key인 문서는 그대로 둔다: 앞의 둘은 그리는 단계가 복사본에서만 판정하고, map-key의 자리는 사용자가 새로 옮긴 것이다.
   const migratedPanels = reportPanels(value.panels);
-  if (isTile && value.layout !== "map-key") { delete migratedPanels.summary; delete migratedPanels.source; }
+  if (isTile && layout === "map-key" && value.layout !== "map-key") { delete migratedPanels.summary; delete migratedPanels.source; }
   const deletedKeys = reportPageElements(value.deletedElementKeys);
   if (mapFull && !deletedKeys.includes("summary")) deletedKeys.push("summary");
   const base = {

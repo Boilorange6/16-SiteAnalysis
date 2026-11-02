@@ -963,8 +963,12 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
   }, [apply, commitDoc, history.present, selectedId]);
 
   const applyPanels = useCallback((panels: PagePanels) => {
-    if (selectedId) apply({ type: "panels", id: selectedId, panels });
-  }, [apply, selectedId]);
+    if (!selectedId) return;
+    // 그려진 layout이 저장값과 다르면(numbers-first·map-charts → map-key) 함께 저장해 옮긴 카드 자리를 지킨다.
+    const page = history.present.pages.find((candidate) => candidate.id === selectedId);
+    const drawn = selectedSlide?.page?.layout;
+    apply({ type: "panels", id: selectedId, panels, ...(page?.kind === "tile" && drawn && drawn !== page.layout ? { layout: drawn } : {}) });
+  }, [apply, history.present.pages, selectedId, selectedSlide]);
   const applyCellPanels = useCallback((cell: number, panels: PagePanels) => {
     if (selectedId) apply({ type: "cellPanels", id: selectedId, cell, panels });
   }, [apply, selectedId]);
@@ -1855,7 +1859,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
             </div>
             <div className={styles.railPopoverRoot}>
               <button ref={layoutTriggerRef} type="button" className={`${styles.railButton} ${layoutPopoverOpen ? styles.railButtonActive : ""}`} aria-haspopup="dialog" aria-pressed={layoutPopoverOpen} aria-expanded={layoutPopoverOpen} aria-controls={layoutPopoverOpen ? "report-layout-menu" : undefined} aria-label="페이지 레이아웃 메뉴" onClick={(event) => toggleLayoutPopover(event.currentTarget)} disabled={!selectedPage}><span aria-hidden="true"><RailIcon name="layout" /></span><span className={styles.railTooltip} role="tooltip">레이아웃</span></button>
-               {layoutPopoverOpen && selectedPage && <div ref={layoutPopoverRef} id="report-layout-menu" className={`${styles.floatCard} ${styles.sidePanelCard} ${styles.anchoredCard} ${styles.railPopover}`} style={{ ...anchoredCardStyle, ...sidePanelStyle }} role="dialog" aria-label="페이지 레이아웃"><LayoutSwitcher compact pageNumber={selectedPageNumber ?? 1} value={selectedPage.layout} pageKind={layoutPageKind} hasMap={layoutHasMap} figure={layoutIsFigure} hasSummary={layoutHasSummary} hasCharts={layoutHasCharts} grid={selectedPage.kind === "compare" ? selectedPage.grid : undefined} deletedItems={deletedLayoutItems} opacity={sidePanelOpacity} onOpacityChange={changeSidePanelOpacity} onChange={(layout) => apply({ type: "layout", id: selectedPage.id, layout })} onGridChange={(grid) => apply({ type: "grid", id: selectedPage.id, grid })} onClose={() => closePopover(true)} /></div>}
+               {layoutPopoverOpen && selectedPage && <div ref={layoutPopoverRef} id="report-layout-menu" className={`${styles.floatCard} ${styles.sidePanelCard} ${styles.anchoredCard} ${styles.railPopover}`} style={{ ...anchoredCardStyle, ...sidePanelStyle }} role="dialog" aria-label="페이지 레이아웃"><LayoutSwitcher compact pageNumber={selectedPageNumber ?? 1} value={selectedPage.layout} pageKind={layoutPageKind} hasMap={layoutHasMap} figure={layoutIsFigure} hasCharts={layoutHasCharts} grid={selectedPage.kind === "compare" ? selectedPage.grid : undefined} deletedItems={deletedLayoutItems} opacity={sidePanelOpacity} onOpacityChange={changeSidePanelOpacity} onChange={(layout) => apply({ type: "layout", id: selectedPage.id, layout })} onGridChange={(grid) => apply({ type: "grid", id: selectedPage.id, grid })} onClose={() => closePopover(true)} /></div>}
             </div>
             <div className={styles.railPopoverRoot}>
               <button ref={notesTriggerRef} type="button" className={`${styles.railButton} ${notesPopoverOpen ? styles.railButtonActive : ""}`} aria-haspopup="dialog" aria-pressed={notesPopoverOpen} aria-expanded={notesPopoverOpen} aria-controls={notesPopoverOpen ? "report-notes-popover" : undefined} aria-label={selectedPage?.notes.trim() ? "발표 메모 있음" : "발표 메모"} data-has-notes={selectedPage?.notes.trim() ? "true" : "false"} onClick={(event) => toggleNotesPopover(event.currentTarget)} disabled={!selectedPage}><span aria-hidden="true"><RailIcon name="notes" /></span><span className={styles.railTooltip} role="tooltip">메모</span>{selectedPage?.notes.trim() && <span className={styles.noteDot} aria-hidden="true" />}</button>

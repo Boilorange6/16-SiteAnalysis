@@ -196,7 +196,8 @@ export type ReportDocAction =
   | { type: "removeCell"; id: string; cell: number }
   | { type: "sameExtent"; id: string; value: boolean }
   | { type: "pageElement"; id: string; key: PageElementKey; deleted: boolean }
-  | { type: "panels"; id: string; panels: PagePanels }
+  /** layout: 그려진 layout이 저장값과 다를 때(numbers-first·map-charts가 map-key로 그려진 장) 함께 저장해, 옮긴 카드 자리가 다음 판정에서 사라지지 않게 한다. */
+  | { type: "panels"; id: string; panels: PagePanels; layout?: ReportLayout }
   | { type: "cellPanels"; id: string; cell: number; panels: PagePanels }
   | { type: "notes"; id: string; notes: string }
   | { type: "text"; id: string; title?: string; summary?: string }
@@ -616,7 +617,7 @@ export function reportDocReducer(doc: ReportDoc, action: ReportDocAction): Repor
     case "pageElement":
       return updatePage(doc, action.id, (page) => updatePageElement(page, action.key, action.deleted));
     case "panels":
-      return updatePage(doc, action.id, (page) => ({ ...clonePage(page), panels: clonePanels(action.panels) }));
+      return updatePage(doc, action.id, (page) => ({ ...clonePage(page), panels: clonePanels(action.panels), ...(action.layout ? { layout: action.layout } : {}) }));
     case "cellPanels":
       return updatePage(doc, action.id, (page) => updateCellPanels(page, action.cell, action.panels));
     case "notes":

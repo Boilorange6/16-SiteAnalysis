@@ -18,7 +18,6 @@ type LayoutSwitcherProps = {
   pageKind?: ReportLayoutPageKind;
   hasMap?: boolean;
   figure?: boolean;
-  hasSummary?: boolean;
   hasCharts?: boolean;
   grid?: ReportGrid;
   onGridChange?: (grid: ReportGrid) => void;
@@ -44,8 +43,8 @@ function LayoutPreview({ layout, grid }: { layout: ReportLayout; grid?: ReportGr
   );
 }
 
-export default function LayoutSwitcher({ value, onChange, compact = false, pageNumber, opacity, onOpacityChange, onClose, pageKind = "tile", hasMap = true, figure = false, hasSummary = true, hasCharts = false, grid = "2x2", onGridChange, deletedItems = [] }: LayoutSwitcherProps) {
-  const decision = reportLayoutDecision({ pageKind, hasMap, figure, hasSummary, hasCharts });
+export default function LayoutSwitcher({ value, onChange, compact = false, pageNumber, opacity, onOpacityChange, onClose, pageKind = "tile", hasMap = true, figure = false, hasCharts = false, grid = "2x2", onGridChange, deletedItems = [] }: LayoutSwitcherProps) {
+  const decision = reportLayoutDecision({ pageKind, hasMap, figure, hasCharts });
   // 그리는 단계와 같은 판정: 그래프 자료를 잃은 map-charts·옛 값은 「지도 + 숫자」로 그려지므로 그 버튼이 눌린 것으로 보인다.
   const activeLayout = pageKind === "tile" ? resolveReportLayout(value, { hasMap, figure, hasCharts }) : value;
   const gridChoices = decision.gridChoices.length > 0 ? decision.gridChoices : reportGridChoices();

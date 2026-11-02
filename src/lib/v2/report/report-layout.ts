@@ -17,7 +17,6 @@ export type ReportLayoutInput = {
   hasMap?: boolean;
   /** 지도가 아니라 그림(바람장미·3D 매스)이 전면인 장. 「숫자 먼저」는 지도 틀 전용이라 뺀다. */
   figure?: boolean;
-  hasSummary?: boolean;
   /** 그래프 자료가 있어 「지도 + 그래프」를 고를 수 있나 */
   hasCharts?: boolean;
 };
@@ -57,9 +56,8 @@ function disabledChoices(reason: string): ReportLayoutChoice[] {
 }
 
 /**
- * 레이아웃 버튼은 이름이 아니라 계획 결과의 렌더 시그니처가 달라질 때만 남긴다.
- * 시그니처를 호출부가 넘기면 plan 결과 비교를 그대로 테스트할 수 있고, 없으면
- * 현재 문서의 지도/요약 조건으로 보수적인 기본 시그니처를 만든다.
+ * 레이아웃 창에는 그 장에서 실제로 다르게 그려지는 것만 보인다(§9-8).
+ * 지도·그림이 없는 장은 숫자 먼저, 지도·그림 장은 지도(그림) + 숫자, 그래프 자료가 있으면 지도 + 그래프를 더한다.
  */
 export function reportLayoutDecision(input: ReportLayoutInput): ReportLayoutDecision {
   const label = pageLabel(input);

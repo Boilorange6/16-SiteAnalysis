@@ -149,7 +149,13 @@ function pageWithResolvedLayout(page: Extract<ReportPage, { kind: "tile" }>, sli
   const hasCharts = slide.kind === "tile" && !!slide.map && !(slide.callout && slide.callout.page > 0)
     && analysisCharts(modelWithHiddenLayers(slide.map, page.frame.hiddenLayers)) !== null;
   const layout = resolveReportLayout(page.layout, { hasMap, figure, hasCharts });
-  return layout === page.layout ? page : { ...page, layout };
+  if (layout === page.layout) return page;
+  // 저장된 numbers-first·map-charts가 map-key로 그려지면 옛 요약 판·출처 줄 자리는 그리는 복사본에서만 뺀다(저장 문서는 그대로).
+  if ((page.layout === "numbers-first" || page.layout === "map-charts") && layout === "map-key") {
+    const { summary: _summary, source: _source, ...panels } = page.panels;
+    return { ...page, layout, panels };
+  }
+  return { ...page, layout };
 }
 
 function partForSlide(view: TileView, settings: TileReportSettings, slide: ReportSlide, sheetIndex: number): TilePart {
@@ -411,6 +417,8 @@ export function importLegacyReport(
     const page = imported.layout === "map-charts" ? { ...imported, layout: "map-key" as const } : imported;
     const style = board.report.styles[slide.key];
     page.panels = style?.panels ? { ...style.panels } : {};
+    // map-key로 쓰는 쪽에 옛 요약 판·출처 줄 자리를 넣으면 새 문서 자리로 둔갑한다(spec §5). 복원 단계는 map-key를 새 문서로 본다.
+    if (page.layout === "map-key") { delete page.panels.summary; delete page.panels.source; }
     page.frame = frameFromLegacyStyle(style, page.frame);
     pages.push(page);
   }

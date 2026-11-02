@@ -9,6 +9,7 @@ const { EMPTY_REPORT_DOC, defaultFrame, historyApply, historyUndo, mergeReportFo
 const { calloutPageFor, importLegacyReport, pagesForTile, planReportDoc, printedPageCount, recommendedPages } = await import("../../lib/v2/report/report-doc-plan.ts");
 const { pageStripItems, pageStripLabel } = await import("../../lib/v2/report/report-page-strip.ts");
 const { sheetView } = await import("../../lib/v2/ui/sheet.ts");
+const { analysisCharts } = await import("../../lib/v2/report/analysis-charts.ts");
 const { withLegacyStyle } = await import("./legacy-report-fixture.mjs");
 
 const summary = toSummaryView(GODEOK_SUMMARY, GODEOK_RESULTS);
@@ -44,15 +45,63 @@ assert.equal(restoredLegacyLayout.pages[0]?.layout, "map-key", "저장된 단일
   assert.equal(pagesForTile(EMPTY_REPORT_DOC, "t-A01", views.get("t-A01"), tileReportSettingsFromBoard(board, "t-A01"), tileContext)[0]?.layout, "map-key", "지도 타일 기본은 지도 + 숫자");
 
   // 그리는 단계: 저장된 numbers-first·그래프 자료 없는 map-charts 지도 장은 map-key로 그린다(저장 문서는 그대로).
-  const [mapPage] = pagesForTile(EMPTY_REPORT_DOC, "t-A01", views.get("t-A01"), tileReportSettingsFromBoard(board, "t-A01"), tileContext);
-  assert.ok(planReportDoc({ ...EMPTY_REPORT_DOC, pages: [mapPage] }, views, tileContext)[0]?.map, "지도가 있는 장");
+  const pageFor = (tileId) => pagesForTile(EMPTY_REPORT_DOC, tileId, views.get(tileId), tileReportSettingsFromBoard(board, tileId), tileContext)[0];
+  const planOne = (page) => planReportDoc({ ...EMPTY_REPORT_DOC, pages: [page] }, views, tileContext)[0];
+  const mapPage = pageFor("t-A01"); // 지도는 있고 그래프 자료는 없다
+  assert.ok(planOne(mapPage).map && !analysisCharts(planOne(mapPage).map), "전제: A01은 지도가 있고 그래프 자료가 없다");
   for (const stored of ["numbers-first", "map-charts"]) {
-    const doc = { ...EMPTY_REPORT_DOC, pages: [{ ...mapPage, layout: stored }] };
-    const drawn = planReportDoc(doc, views, tileContext)[0];
-    if (!drawn.map || drawn.page.layout === "map-charts") continue; // 그래프 자료가 있는 분석이면 map-charts도 정당하다
+    const drawn = planOne({ ...mapPage, layout: stored });
     assert.equal(drawn.page.layout, "map-key", `${stored} 지도 장(그래프 자료 없음)은 map-key로 그린다`);
-    assert.equal(doc.pages[0].layout, stored, "저장 문서는 바꾸지 않는다");
   }
+  // 그래프 자료가 있는 지도 장: numbers-first → map-charts. 끈 레이어로 자료를 잃으면 map-charts → map-key.
+  const chartPage = pageFor("t-D04");
+  assert.ok(analysisCharts(planOne(chartPage).map), "전제: D04에는 그래프 자료가 있다");
+  assert.equal(planOne({ ...chartPage, layout: "numbers-first" }).page.layout, "map-charts", "numbers-first + 그래프 자료 → map-charts");
+  assert.equal(planOne({ ...chartPage, layout: "map-key" }).page.layout, "map-key", "map-key를 고른 장은 그래프 자료가 있어도 map-key");
+  const hiddenAll = { ...defaultFrame(), hiddenLayers: ["bldg_pre1980", "bldg_1980s", "bldg_1990s", "bldg_2000s", "bldg_2010s", "bldg_2020s", "bldg_unknown"] };
+  assert.equal(planOne({ ...chartPage, layout: "map-charts", frame: hiddenAll }).page.layout, "map-key", "끈 레이어로 자료를 잃은 map-charts → map-key");
+
+  // Ruling 18: 저장 문서의 자리는 판정이 바뀌어도 그대로, 그리는 복사본에서만 옛 요약·출처 자리를 뺀다.
+  const summaryRect = { x: 0.7, y: 0.1, w: 0.25, h: 0.5 };
+  const sourceRect = { x: 0.1, y: 0.9, w: 0.3, h: 0.05 };
+  const oldPanels = { title: { x: 0.05, y: 0.05, w: 0.3, h: 0.08 }, summary: summaryRect, source: sourceRect };
+  const restoreDoc = (page) => restoreReportDoc(JSON.parse(JSON.stringify({ v: 1, format: "wide", pages: [page] })), new Set(["t-A01", "t-A02", "t-D04"]));
+  for (const stored of ["numbers-first", "map-charts"]) {
+    const doc = restoreDoc({ ...mapPage, layout: stored, panels: oldPanels });
+    assert.equal(doc.pages[0].layout, stored, `${stored}: 복원은 layout을 바꾸지 않는다`);
+    assert.deepEqual(doc.pages[0].panels.summary, summaryRect, `${stored}: 저장 문서에는 요약 자리가 남는다`);
+    assert.deepEqual(doc.pages[0].panels.source, sourceRect, `${stored}: 저장 문서에는 출처 자리가 남는다`);
+    const drawn = planReportDoc(doc, views, tileContext)[0];
+    assert.equal(drawn.page.layout, "map-key");
+    assert.ok(!drawn.page.panels.summary && !drawn.page.panels.source, `${stored}: 그리는 복사본에는 옛 요약·출처 자리가 없다`);
+    assert.ok(drawn.page.panels.title, "제목 자리는 그린다");
+    // 카드를 옮기면(panels 액션 + 그려진 layout 함께 저장) 복원·계획을 거쳐도 옮긴 자리가 남는다.
+    const movedRect = { x: 0.6, y: 0.2, w: 0.3, h: 0.5 };
+    const moved = { ...drawn.page.panels, summary: movedRect };
+    const saved = reportDocReducer(doc, { type: "panels", id: doc.pages[0].id, panels: moved, layout: drawn.page.layout });
+    assert.equal(saved.pages[0].layout, "map-key", "그려진 layout도 함께 저장");
+    const again = planReportDoc(restoreDoc(saved.pages[0]), views, tileContext)[0];
+    assert.deepEqual(again.page.panels.summary, movedRect,`${stored}: 옮긴 요약 자리는 저장·복원·계획 뒤에도 남는다`);
+  }
+  // 뒷면 표(지도·그림 없음)는 numbers-first 그대로 그리며 자리도 건드리지 않는다.
+  const backPage = pagesForTile(EMPTY_REPORT_DOC, "t-A01", views.get("t-A01"), { ...tileReportSettingsFromBoard(board, "t-A01"), face: "back" }, tileContext)[0];
+  assert.equal(backPage.layout, "numbers-first", "전제: 뒷면 표 쪽 기본은 numbers-first");
+  backPage.panels = oldPanels;
+  assert.ok(!planOne(backPage).map, "전제: 뒷면 표 장에는 지도가 없다");
+  const backDrawn = planReportDoc(restoreDoc(backPage), views, tileContext)[0];
+  assert.equal(backDrawn.page.layout, "numbers-first");
+  assert.deepEqual(backDrawn.page.panels.summary, summaryRect, "뒷면 표의 요약 자리는 복원·계획을 거쳐도 남는다");
+  assert.deepEqual(backDrawn.page.panels.source, sourceRect, "뒷면 표의 출처 자리도 남는다");
+}
+
+// 옛 보고서 가져오기: map-key로 쓰면서 옛 요약·출처 자리는 넣지 않는다(spec §5).
+{
+  const key = buildReportPlan({ summary, views, board, analysisDate: context.analysisDate }).find((slide) => slide.kind === "tile")?.key;
+  const stylePanels = { title: { x: 0.05, y: 0.05, w: 0.3, h: 0.08 }, summary: { x: 0.7, y: 0.1, w: 0.25, h: 0.5 }, source: { x: 0.1, y: 0.9, w: 0.3, h: 0.05 } };
+  const importedPages = importLegacyReport(EMPTY_REPORT_DOC, withLegacyStyle(board, [key], { panels: stylePanels }), views, context);
+  const importedTile = importedPages.find((page) => page.kind === "tile" && page.id === key);
+  assert.ok(importedTile?.panels.title, "옛 제목 자리는 가져온다");
+  assert.ok(!importedTile.panels.summary && !importedTile.panels.source, "옛 요약·출처 자리는 가져오지 않는다");
 }
 
 const sheetSourceViews =[...views.values()].slice(0, 2);

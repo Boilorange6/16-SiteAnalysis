@@ -82,10 +82,10 @@ assert.equal(noChartPages.find((page) => page.kind === "tile").layout, "map-key"
   assert.equal(undeclaredPage.layout, "map-key", "밝히지 않은 타일의 새 쪽은 map-key");
   const undeclaredSlide = planReportDoc({ ...EMPTY_REPORT_DOC, pages: [undeclaredPage] }, undeclaredViews, undeclaredCtx).find((slide) => slide.kind === "tile");
   assert.equal(analysisCharts(undeclaredSlide.map), null, "그래프 자료 없음");
-  const menu = reportLayoutDecision({ pageKind: "tile", hasMap: true, hasSummary: true, hasCharts: analysisCharts(undeclaredSlide.map) !== null });
+  const menu = reportLayoutDecision({ pageKind: "tile", hasMap: true, hasCharts: analysisCharts(undeclaredSlide.map) !== null });
   assert.ok(!menu.choices.some((choice) => choice.value === "map-charts"), "레이아웃 창에 「지도 + 그래프」가 없다");
   const declaredSlide = planReportDoc({ ...EMPTY_REPORT_DOC, pages: [{ ...tilePage, layout: "map-summary" }] }, views, ctx).find((slide) => slide.kind === "tile");
-  assert.ok(reportLayoutDecision({ pageKind: "tile", hasMap: true, hasSummary: true, hasCharts: analysisCharts(declaredSlide.map) !== null }).choices.some((choice) => choice.value === "map-charts"), "밝힌 타일(D05)은 같은 자료에서 메뉴에 나온다");
+  assert.ok(reportLayoutDecision({ pageKind: "tile", hasMap: true, hasCharts: analysisCharts(declaredSlide.map) !== null }).choices.some((choice) => choice.value === "map-charts"), "밝힌 타일(D05)은 같은 자료에서 메뉴에 나온다");
 }
 
 const planOf = (page, v = views) => planReportDoc({ ...EMPTY_REPORT_DOC, pages: [page] }, v, { ...ctx, views: v }).find((slide) => slide.kind === "tile");
@@ -154,14 +154,17 @@ const exportMarkup = render(chartsSlide, "export");
 assert.doesNotMatch(exportMarkup, /주석 \d/, "내보내기 화면에는 칩이 없다");
 assert.match(exportMarkup, /data-chart="composition"/, "내보내기 화면에도 그래프");
 
-// ── 저장된 map-charts 쪽이 그래프 자료를 잃으면 map-summary 내용(표 줄·각주)으로 그린다
+// ── 저장된 map-charts 쪽이 그래프 자료를 잃으면 map-key 내용(표 줄·각주)으로 그린다
 const lostViews = new Map([[d05Result.tileId, { ...noFeatureView, caveats: view.caveats, notes: view.notes }]]);
 const lostSlide = planOf({ ...tilePage, layout: "map-charts" }, lostViews);
 const lostMarkup = render(lostSlide);
 assert.doesNotMatch(lostMarkup, /data-chart=|주석 \d/, "자료가 없으면 그래프·칩이 없다");
 assert.match(lostMarkup, /표본 한계 문구 가나다/, "자료가 없으면 각주를 장에 그린다");
+assert.equal(lostSlide.page.layout, "map-key", "그래프 자료를 잃은 map-charts 장은 map-key로 판정된다");
+assert.equal(lostMarkup, render(planOf({ ...tilePage, layout: "map-key" }, lostViews)), "자료를 잃은 map-charts는 같은 자료로 고른 map-key와 같은 화면이다");
+assert.notEqual(markup, summaryMarkup, "자료가 있는 map-charts 장은 map-key 장과 다른 화면이다(그래프 열)");
 
-// 다른 타일(고덕 A01)에는 영향 없음: 같은 쪽을 map-summary로 그린 결과와 map-charts로 그린 결과가 같다(그래프 자료가 없을 때)
+// 다른 타일(고덕 A01)에는 영향 없음: 그래프 자료가 없는 장은 옛 값 map-summary·map-charts·numbers-first로 저장돼 있어도 같은 화면(map-key)으로 그린다
 const a01 = GODEOK_RESULTS.find((result) => result.tileCode === "A01");
 const a01Views = new Map([[a01.tileId, toTileView(a01)]]);
 const a01Board = initBoard([a01]);
@@ -169,7 +172,10 @@ const a01Page = recommendedPages(EMPTY_REPORT_DOC, a01Views, a01Board, { summary
 const a01Plan = (layout) => planReportDoc({ ...EMPTY_REPORT_DOC, pages: [{ ...a01Page, layout }] }, a01Views, { summary: toSummaryView(GODEOK_SUMMARY, [a01]), analysisDate: "2026-10-27", views: a01Views }).find((slide) => slide.kind === "tile");
 assert.equal(analysisCharts(a01Plan("map-summary").map), null, "고덕 A01 지도에는 그래프 자료가 없다(이 비교의 전제)");
 assert.equal(a01Page.layout, "map-key", "그래프 자료가 없는 A01 쪽은 map-key");
-assert.equal(render(a01Plan("map-charts")).replaceAll("map-charts", "map-summary"), render(a01Plan("map-summary")), "자료 없는 map-charts는 map-summary와 같은 화면");
+for (const stored of ["map-summary", "map-charts", "numbers-first"]) {
+  assert.equal(a01Plan(stored).page.layout, "map-key", `자료 없는 ${stored} 쪽은 map-key로 판정된다`);
+  assert.equal(render(a01Plan(stored)), render(a01Plan("map-key")), `자료 없는 ${stored}는 map-key와 같은 화면`);
+}
 
 // ── 오른쪽 열 칸에 그래프 기하를 놓아도 글자가 칸 안에 있고 서로 겹치지 않는다(16:9·A3·A4 × 글자 배율 1·1.85)
 const { compositionShapes, distanceShapes } = await import("../../lib/v2/report/chart-geometry.ts");
