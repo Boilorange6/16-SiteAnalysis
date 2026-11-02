@@ -758,11 +758,11 @@ const INTERIOR_ANCHOR_GRID = 13;
 
 /**
  * 면 라벨 기준점: 면 안쪽(구멍 제외)이고 화면 안인 점 중 면의 보이는 중심에 가장 가까운 점.
- * 좌우 카드 칸 사이 띠(bands, 안쪽 띠부터)를 차례로 찾고, 어느 띠에도 없으면 띠에 가장 가까운 점을 쓴다(점이 카드 밑으로 덜 들어가게).
+ * 좌우 카드 칸 사이 띠(bands, 안쪽 띠부터)를 차례로 찾되 면 폭의 절반 이상 겹치는 띠만 쓰고, 어느 띠에도 없으면 중심 거리 + 띠 밖 거리 × 0.5가 가장 작은 점을 쓴다(점이 카드 밑으로 덜 들어가게).
  * 이미 쓴 기준점(taken)과 gap 이상 떨어진 점만 쓰고, 꺾임 세로선(keepOut x 범위)과 피할 상자(avoidBoxes)는 가능하면 피한다.
  * 링이 같은 면(반경 전체를 덮는 구역 면)이 한 점·원 둘레에 몰리지 않게 한다. 없으면 null(호출자가 옛 방식으로 돌아간다).
  */
-function interiorAnchor(
+export function interiorAnchor(
   rings: ReadonlyArray<ReadonlyArray<readonly [number, number]>>,
   width: number,
   height: number,
@@ -787,14 +787,16 @@ function interiorAnchor(
   const tiers: Array<[number, number]> = [...bands.map(([b0, b1]): [number, number] => [Math.max(fx0, b0), Math.min(fx1, b1)]), [fx0, fx1]];
   for (const [index, [x0, x1]] of tiers.entries()) {
     if (x1 <= x0) continue;
+    // 면이 띠 경계에 1~2 px만 걸친 경우 그 끝점이 기준점이 되지 않도록, 면 폭의 절반 미만만 겹치는 띠는 건너뛴다.
+    const lastTier = index === tiers.length - 1;
+    if (!lastTier && x1 - x0 < 0.5 * (fx1 - fx0)) continue;
     const candidates: Array<[number, number]> = [];
     for (let i = 0; i < INTERIOR_ANCHOR_GRID; i += 1) {
       for (let j = 0; j < INTERIOR_ANCHOR_GRID; j += 1) candidates.push([x0 + ((i + 0.5) / INTERIOR_ANCHOR_GRID) * (x1 - x0), fy0 + ((j + 0.5) / INTERIOR_ANCHOR_GRID) * (fy1 - fy0)]);
     }
     const distance = (point: readonly [number, number]) => Math.hypot(point[0] - centre[0], point[1] - centre[1]);
-    // 마지막 층(띠 밖)은 띠에 가까운 점부터, 그 밖은 면의 보이는 중심에 가까운 점부터.
-    const lastTier = index === tiers.length - 1;
-    candidates.sort((a, b) => (lastTier ? outsideBands(a[0]) - outsideBands(b[0]) : 0) || distance(a) - distance(b));
+    // 마지막 층(띠 밖)은 면 중심 거리에 띠 밖 거리의 절반을 더한 값이 작은 점부터(띠 쪽 끝점으로 쏠리지 않게), 그 밖은 면의 보이는 중심에 가까운 점부터.
+    candidates.sort((a, b) => (lastTier ? distance(a) + 0.5 * outsideBands(a[0]) - (distance(b) + 0.5 * outsideBands(b[0])) : 0) || distance(a) - distance(b));
     for (const [useKeepOut, useAvoid] of [[true, true], [true, false], [false, false]] as const) {
       for (const [x, y] of candidates) {
         if (useAvoid && avoidBoxes.some((box) => x >= box.x0 && x <= box.x1 && y >= box.y0 && y <= box.y1)) continue;

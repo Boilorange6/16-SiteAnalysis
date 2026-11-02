@@ -87,4 +87,23 @@ import { toTileView } from "../../lib/v2/ui/tile-view.ts";
   }
 }
 
+// ── (c) 면 기준점: 면이 좌우 카드 사이 띠 경계에 1~2 px만 걸쳐도 그 끝점이 기준점이 되던 것(G1, 12쪽 개포주공6,7단지·개포우성4차·도곡개포한신)
+{
+  const { interiorAnchor } = await import("../../lib/v2/ui/map-scene.ts");
+  // 12쪽 DOM 실측(1440×900, 855×680): 카드 틀 left.x1=192 · right.x0=663, stub 14 → 안쪽 띠 [206,649], 바깥 띠 [192,663]
+  const bands = [[206, 649], [192, 663]];
+  const keepOut = [[200.4, 211.6], [643.4, 654.6]];
+  const rect = (x0, y0, x1, y1) => [[[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]]];
+  for (const [name, x0, y0, x1, y1] of [["개포주공6,7단지 (띠와 1 px 겹침)", 648, 360, 760, 456], ["개포우성4차 (띠와 2 px 겹침)", 130, 480, 208, 560], ["도곡개포한신 (띠 밖 작은 면)", 170, 448, 190, 452]]) {
+    const point = interiorAnchor(rect(x0, y0, x1, y1), 855, 680, bands, keepOut, [], [], 10);
+    assert.ok(point, `${name}: 기준점이 있다`);
+    const centre = [(x0 + x1) / 2, (y0 + y1) / 2];
+    assert.ok(Math.abs(point[0] - centre[0]) <= 0.25 * (x1 - x0) + 1, `${name}: 기준점 x ${point[0]}가 면 중심 ${centre[0]} 쪽 (귀퉁이 아님)`);
+    assert.ok(Math.abs(point[1] - centre[1]) <= 0.25 * (y1 - y0) + 1, `${name}: 기준점 y ${point[1]}가 면 중심 ${centre[1]} 쪽`);
+  }
+  // 띠와 면이 절반 이상 겹치면 그 띠를 그대로 쓴다(카드 사이 띠 안 우선 규칙은 유지): 면 x 300–500은 안쪽 띠 안
+  const inBand = interiorAnchor(rect(300, 100, 500, 200), 855, 680, bands, keepOut, [], [], 10);
+  assert.ok(inBand && inBand[0] > 380 && inBand[0] < 420, `띠 안의 면은 중심: ${inBand}`);
+}
+
 console.log("callout leader anchor ok");
