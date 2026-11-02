@@ -178,7 +178,7 @@ export type TilePart =
 export type ReportPage = ReportPageBase & (
   | { kind: "cover" }
   | { kind: "tile"; tileId: string; part: TilePart; settings: TileReportSettings; frame: MapFrameState }
-  | { kind: "compare"; grid: "2x2" | "3x2" | "3x1"; cells: ({ tileId: string; settings: TileReportSettings; frame: MapFrameState; panels?: PagePanels } | null)[]; sameExtent: boolean }
+  | { kind: "compare"; grid: "2x2" | "3x2" | "3x1"; cells: ({ tileId: string; settings: TileReportSettings; frame: MapFrameState; panels?: PagePanels; /** 타일 컷 조판(계절 4컷 등)에서 온 칸: 그 타일 컷 계획의 `sheets[sheet].cells[index]`. 계획 단계가 칸의 그림·계절을 다시 만든다. */ cutCell?: { sheet: number; index: number } } | null)[]; sameExtent: boolean }
   | { kind: "sources" }
   | { kind: "blank" }
 );
@@ -318,7 +318,7 @@ function clonePage(page: ReportPage): ReportPage {
       kind: "compare",
       grid: page.grid,
       sameExtent: page.sameExtent,
-      cells: page.cells.map((cell) => cell ? { tileId: cell.tileId, settings: cloneSettings(cell.settings), frame: cloneFrame(cell.frame), ...(cell.panels ? { panels: clonePanels(cell.panels) } : {}) } : null),
+      cells: page.cells.map((cell) => cell ? { tileId: cell.tileId, settings: cloneSettings(cell.settings), frame: cloneFrame(cell.frame), ...(cell.panels ? { panels: clonePanels(cell.panels) } : {}), ...(cell.cutCell ? { cutCell: { ...cell.cutCell } } : {}) } : null),
     };
   }
   return { ...base, kind: page.kind };

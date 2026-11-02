@@ -67,4 +67,20 @@ assert.match(slide, /09:00/);
 assert.match(slide, /12:00/);
 assert.match(slide, /15:00/);
 
+// I-4: 보고서 문서(조판 compare 쪽)로 가져와도 3컷의 칸마다 시각(그림자 층·노트)이 남는다 — 칸이 컷 칸 번호를 갖고 계획 단계가 다시 만든다.
+{
+  const { EMPTY_REPORT_DOC } = await import("../../lib/v2/report/report-doc.ts");
+  const { importLegacyReport, planReportDoc } = await import("../../lib/v2/report/report-doc-plan.ts");
+  const ctx = { summary, analysisDate: "2026-09-30", views };
+  const pages = importLegacyReport(EMPTY_REPORT_DOC, board, views, ctx);
+  const compare = pages.find((page) => page.kind === "compare");
+  assert.ok(compare, "3컷은 조판 쪽으로 온다");
+  assert.deepEqual(compare.cells.map((cell) => cell.cutCell), [0, 1, 2].map((index) => ({ sheet: 0, index })));
+  const drawn = planReportDoc({ ...EMPTY_REPORT_DOC, pages }, views, ctx).find((slide) => slide.kind === "sheet");
+  assert.deepEqual(drawn.cells.map((cell) => cell.view.notes[0]), ["동지 09:00", "동지 12:00", "동지 15:00"], "칸마다 그 시각");
+  for (const [index, cell] of drawn.cells.entries()) {
+    assert.deepEqual(new Set(cell.view.map.polygons.map((polygon) => polygon.layer)), new Set([`shadow_${["09", "12", "15"][index]}`, "sun_face"]), "칸마다 그 시각의 그림자 층");
+  }
+}
+
 console.log("✓ v2 S02 1/3 cut report slides");

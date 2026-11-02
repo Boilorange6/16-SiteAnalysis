@@ -1591,7 +1591,7 @@ function LazyMass3D(props: React.ComponentProps<typeof Mass3DComponent>) {
   }, []);
   return Mass3D ? <Mass3D {...props} /> : <div aria-busy="true" role="status" style={{ width: props.width, height: props.height }} />;
 }
-function FigureLayer({ slide, width, height, scene, avoid, frame = null, unit }: { slide: Extract<PlannedSlide, { kind: "tile" }>; width: number; height: number; /** 그림 장면(`figureSceneSize`). PPT 그림과 같다. */ scene: { w: number; h: number }; /** 카드·제목 칩 자리(장면 px, `reportMapAvoid`). 새 장 배치만. */ avoid?: PixelBox[]; /** 새 장 배치의 기하 map 틀(inch). 없으면 옛 경로의 쪽 전체. */ frame?: Rect | null; unit: number }) {
+function FigureLayer({ slide, width, height, scene, avoid, frame = null, unit }: { slide: Pick<Extract<PlannedSlide, { kind: "tile" }>, "mass" | "rose" | "roseSeason">; width: number; height: number; /** 그림 장면(`figureSceneSize`). PPT 그림과 같다. */ scene: { w: number; h: number }; /** 카드·제목 칩 자리(장면 px, `reportMapAvoid`). 새 장 배치만. */ avoid?: PixelBox[]; /** 새 장 배치의 기하 map 틀(inch). 없으면 옛 경로의 쪽 전체. */ frame?: Rect | null; unit: number }) {
   const { mass, rose } = slide;
   return (
     <div data-surface-figure={mass ? "mass" : "rose"} data-part={frame ? "map" : undefined} style={frame ? { position: "absolute", left: frame.x * unit, top: frame.y * unit, width: frame.w * unit, height: frame.h * unit, overflow: "hidden", background: "#F2F2EF" } : { position: "absolute", inset: 0, overflow: "hidden", background: "#F2F2EF" }}>
@@ -2079,7 +2079,9 @@ function SheetSurface({ slide, unit, basemap, thumbnail = false, editable = fals
                 {onCellActivate && !thumbnail && <button type="button" className={styles.sheetCellButton} data-sheet-cell-index={index} aria-label={`${index + 1}번째 칸 타일 선택`} onClick={() => onCellActivate(index)} />}
               </div>
             );
-            const model = cell.view.map ?? cell.view.backdrop;
+            // 그림 칸(바람장미·매스)은 대지 바탕 지도가 아니라 그림을 그린다(PPT sheet()와 같다).
+            const figure = !!(cell.rose || cell.mass);
+            const model = figure ? null : cell.view.map ?? cell.view.backdrop;
             const width = Math.max(1, Math.round(rect.w * unit));
             const height = Math.max(1, Math.round(rect.h * unit));
             const chart = cell.face === "back" && !!cell.view.chart;
@@ -2119,7 +2121,7 @@ function SheetSurface({ slide, unit, basemap, thumbnail = false, editable = fals
               const patch = resetLabelBoxFramePatch(cell.reportFrame, key);
               if (patch) onFrame?.(index, patch);
             };
-            const cellMap = cellEditableMap ? (
+            const cellMap = cellEditableMap && model ? (
               <MapLayer
                 model={cell.reportFrame ? modelWithHiddenLayers(model, cell.reportFrame.hiddenLayers) : model}
                 style={cellStyle}
@@ -2192,7 +2194,11 @@ function SheetSurface({ slide, unit, basemap, thumbnail = false, editable = fals
                 onKeyDown={(event) => { if ((event.key === "Enter" || event.key === " ") && editable && !thumbnail) { event.preventDefault(); onCellEdit?.(index); } }}
                 onContextMenu={(event) => { if (!editable || thumbnail || !onFontContextMenu) return; event.preventDefault(); event.stopPropagation(); onFontContextMenu({ kind: "sheetCell", cell: index }, event.clientX, event.clientY, event.currentTarget); }}
               >
-                {chart ? <ChartPlaceholder view={cell.view} unit={unit} /> : model ? (
+                {chart ? <ChartPlaceholder view={cell.view} unit={unit} /> : figure ? (
+                  thumbnail
+                    ? <VisualPlaceholder title={cell.view.title} message={cell.mass ? "3D 매스 미리보기는 내보내기와 같은 페이지 위치로 표시됩니다." : "바람장미 도판 미리보기"} unit={unit} />
+                    : <FigureLayer slide={cell} width={width} height={height} scene={figureSceneSize({ map: { w: rect.w, h: rect.h } })} unit={unit} />
+                ) : model ? (
                   <div className={styles.sheetCellMap} data-surface-map="true" data-map-cell-index={index}>
                     {cellMap}
                   </div>

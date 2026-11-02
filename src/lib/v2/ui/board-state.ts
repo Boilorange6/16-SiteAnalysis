@@ -1126,7 +1126,10 @@ function restoreReportPage(value: unknown, validTileIds: ReadonlySet<string>, op
       ? value.cells.map((item) => {
           if (!isRecord(item) || !isReportTileId(item.tileId, validTileIds)) return null;
           const panels = reportPanels(item.panels);
-          return { tileId: item.tileId, settings: reportSettings(item.settings), frame: reportFrame(item.frame), ...(Object.keys(panels).length > 0 ? { panels } : {}) };
+          const cut = isRecord(item.cutCell) && Number.isInteger(item.cutCell.sheet) && Number.isInteger(item.cutCell.index) && (item.cutCell.sheet as number) >= 0 && (item.cutCell.index as number) >= 0
+            ? { sheet: item.cutCell.sheet as number, index: item.cutCell.index as number }
+            : null;
+          return { tileId: item.tileId, settings: reportSettings(item.settings), frame: reportFrame(item.frame), ...(Object.keys(panels).length > 0 ? { panels } : {}), ...(cut ? { cutCell: cut } : {}) };
         })
       : [];
     return { ...base, kind: "compare", grid: value.grid, cells, sameExtent: typeof value.sameExtent === "boolean" ? value.sameExtent : false };

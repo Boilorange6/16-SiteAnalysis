@@ -243,6 +243,8 @@ function comparePageFromSheetSlide(
   slide: Extract<ReportSlide, { kind: "sheet" }>,
   fallbackSettings: TileReportSettings,
   settingsFor?: (tileId: string) => TileReportSettings,
+  /** 이 시트가 그 타일 컷 조판의 몇 번째 시트인가(`tileSlides`의 시트 순서). 사용자가 만든 조판(SHEET)은 undefined. */
+  cutSheet?: number,
 ): Extract<ReportPage, { kind: "compare" }> {
   return {
     id,
@@ -261,6 +263,8 @@ function comparePageFromSheetSlide(
         settings: cloneSettings(settingsFor?.(cell.view.tileId) ?? fallbackSettings),
         frame: cloneMapFrame(cell.reportFrame),
         ...(cell.panels ? { panels: { ...cell.panels } } : {}),
+        // 컷 조판의 칸은 그림(장미)·계절·래스터를 컷 계획이 정한다. 칸 번호를 저장해 계획 단계가 같은 칸을 다시 만든다.
+        ...(cutSheet !== undefined && cell.view.tileId === slide.view.tileId ? { cutCell: { sheet: cutSheet, index } } : {}),
       } : null;
     }),
   };
@@ -290,10 +294,11 @@ export function pagesForTile(
   const slides = tileSlides(tileId, view, settings, planContext(ctx, ctx.views, ctx.settingsFor));
   const pages: ReportPage[] = [];
   let sheetIndex = 0;
+  let cutSheets = 0;
   let working = doc;
   for (const slide of slides) {
     const page = slide.kind === "sheet"
-      ? comparePageFromSheetSlide(newPageId(working), slide, settings, ctx.settingsFor)
+      ? comparePageFromSheetSlide(newPageId(working), slide, settings, ctx.settingsFor, view.code === "SHEET" ? undefined : cutSheets++)
       : pageForTileSlide(newPageId(working), view, settings, slide, sheetIndex++);
     pages.push(page);
     working = { ...working, pages: [...working.pages, page] };
@@ -382,6 +387,7 @@ export function importLegacyReport(
   const used = new Set<string>(doc.pages.map((page) => page.id));
   let sourceAdded = false;
   let sheetIndex = 0;
+  const cutSheets = new Map<string, number>();
   for (const slide of oldPlan) {
     if (slide.kind === "sources") {
       if (sourceAdded) continue;
@@ -406,7 +412,9 @@ export function importLegacyReport(
     const view = slide.view;
     const settings = tileReportSettingsFromBoard(board, view.tileId);
     if (slide.kind === "sheet") {
-      const page = comparePageFromSheetSlide(id, slide, settings, (tileId) => tileReportSettingsFromBoard(board, tileId));
+      const cutSheet = view.code === "SHEET" ? undefined : (cutSheets.get(view.tileId) ?? 0);
+      if (cutSheet !== undefined) cutSheets.set(view.tileId, cutSheet + 1);
+      const page = comparePageFromSheetSlide(id, slide, settings, (tileId) => tileReportSettingsFromBoard(board, tileId), cutSheet);
       const style = board.report.styles[slide.key];
       page.panels = style?.panels ? { ...style.panels } : {};
       page.cells = page.cells.map((cell) => cell ? { ...cell, frame: frameFromLegacyStyle(style, cell.frame) } : null);
@@ -695,8 +703,12 @@ export function planReportDoc(doc: ReportDoc, views: ReadonlyMap<string, TileVie
         if (!cell) return null;
         const view = views.get(cell.tileId);
         if (!view) return null;
+        // 컷 조판에서 온 칸은 그 타일 컷 계획(`tileSlides`)의 같은 칸으로 view·그림(장미)·계절·래스터를 다시 만든다.
+        const cutSlide = cell.cutCell ? tileSlides(cell.tileId, view, cell.settings, viewContext).filter((candidate) => candidate.kind === "sheet")[cell.cutCell.sheet] : undefined;
+        const cut = cutSlide?.kind === "sheet" ? cutSlide.cells[cell.cutCell!.index] : null;
         return {
-          view,
+          ...(cut ? { rose: cut.rose, roseSeason: cut.roseSeason, mass: cut.mass } : {}),
+          view: cut?.view ?? view,
           face: cell.settings.face === "back" ? "back" as const : "front" as const,
           mapKey: `${page.id}:cell:${index}`,
           sourceLine: sourceLineFor(view, sourceMeta),

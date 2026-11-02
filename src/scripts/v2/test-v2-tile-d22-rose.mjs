@@ -261,6 +261,37 @@ assert.match(slide, /정온/);
   assert.deepEqual(decision.choices.map((choice) => [choice.value, choice.label]), [["map-key", "그림 + 숫자"]]);
   assert.equal(isFigureSlide({ kind: "sheet", cells: [{ rose: {} }, { view: {} }] }), false, "그림이 아닌 칸이 섞인 조판은 그림 장이 아니다");
 
+  // I-4: D22 「계절 4컷」을 가져온 조판(compare) 장은 칸마다 장미와 계절을 다시 만든다(예전엔 대지 바탕 지도 4장이었다).
+  {
+    const { restoreReportDoc } = await import("../../lib/v2/ui/board-state.ts");
+    const { SlideSurface } = await import("../../components/v2/report/slide-surface.tsx");
+    const sheetBoard = boardReducer(board, { type: "cut", id: d22Result.tileId, cut: seasons });
+    const imported = importLegacyReport(EMPTY_REPORT_DOC, sheetBoard, docViews, docContext);
+    const compare = imported.find((page) => page.kind === "compare");
+    assert.ok(compare, "계절 4컷은 조판(compare) 쪽으로 온다");
+    assert.deepEqual(compare.cells.map((cell) => cell.cutCell), [0, 1, 2, 3].map((index) => ({ sheet: 0, index })), "칸마다 컷 칸 번호를 저장한다");
+    // 저장·복원(옛 문서처럼 cutCell이 없는 칸도 읽힌다)
+    const restored = restoreReportDoc({ ...EMPTY_REPORT_DOC, pages: imported }, new Set([d22Result.tileId]));
+    assert.deepEqual(restored.pages.find((page) => page.kind === "compare").cells.map((cell) => cell.cutCell), compare.cells.map((cell) => cell.cutCell), "복원해도 컷 칸 번호가 같다");
+    const legacyCells = compare.cells.map(({ cutCell: _cut, ...cell }) => cell);
+    const legacy = restoreReportDoc({ ...EMPTY_REPORT_DOC, pages: imported.map((page) => (page.kind === "compare" ? { ...page, cells: legacyCells } : page)) }, new Set([d22Result.tileId]));
+    assert.ok(legacy.pages.find((page) => page.kind === "compare").cells.every((cell) => cell.cutCell === undefined), "컷 정보 없는 옛 compare 장은 지금처럼 읽힌다");
+    const plan = planReportDoc({ ...EMPTY_REPORT_DOC, pages: imported }, docViews, docContext);
+    const sheet = plan.find((slide) => slide.kind === "sheet");
+    assert.deepEqual(sheet.cells.map((cell) => cell.roseSeason), ["spring", "summer", "autumn", "winter"], "칸 4개에 계절");
+    assert.ok(sheet.cells.every((cell) => cell.rose), "칸 4개에 장미");
+    assert.ok(isFigureSlide(sheet), "그림 칸만 있는 조판은 그림 장");
+    // 화면(export 마크업): 장미 4개. 각주에 바탕지도 출처가 없다
+    const screen = renderToStaticMarkup(React.createElement(SlideSurface, { slide: sheet, basemap: "none", mode: "export" }));
+    assert.equal((screen.match(/data-wind-rose-chrome=/g) ?? []).length, 4, "화면에 장미 4개");
+    assert.doesNotMatch(screen, /VWorld|OpenStreetMap/);
+    // PPT sheet(): 칸마다 장미 그림(이미지), 대지 지도 도형 없음
+    const images = Object.fromEntries(sheet.cells.map((cell) => [cell.mapKey, rosePng]));
+    const xml = await (await JSZip.loadAsync(await renderReportPptx(plan, images))).file(`ppt/slides/slide${plan.indexOf(sheet) + 1}.xml`).async("string");
+    assert.equal((xml.match(/<p:pic>/g) ?? []).length, 4, "PPT에 장미 그림 4장");
+    assert.doesNotMatch(xml, /VWorld|OpenStreetMap/);
+  }
+
   // M-1: 그림 칸만 있는 시트 장의 각주에도 바탕지도 출처가 없다(화면·PPT가 같은 판정 `footerCredit`)
   {
     const sheetFooter = await (await JSZip.loadAsync(await renderReportPptx([sheetSlide]))).file("ppt/slides/slide1.xml").async("string");
