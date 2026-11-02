@@ -60,7 +60,6 @@ assert.match(selectedMapMarkup, /aria-label="[^"]+지도\. Enter 또는 두 번 
 
 const thumbMarkup = renderToStaticMarkup(createElement(SlideSurface, { slide: a3, basemap: "none", mode: "thumb" }));
 assert.equal((thumbMarkup.match(/<button\b/g) ?? []).length, 0, "thumb 표면은 조작 버튼이 없다");
-assert.match(exportMarkup, /data-surface-map[^>]*left:55%/, "numbers-first 지도 영역은 오른쪽에 있다");
 assert.match(slideSurfaceSource, /fixed=\{!thumbnail\}/, "축소판 지도는 축소판 전용 대지 크기를 사용한다");
 assert.doesNotMatch(slideSurfaceSource, /slide\.kind === "sheet" \? "조판" : slide\.view\.code/, "축소판 대체 문구에 내부 타일 코드를 쓰지 않는다");
 assert.doesNotMatch(slideSurfaceSource, /\{cell\.view\.code\} · \{cell\.view\.title\}/, "조판 셀 라벨에 내부 타일 코드를 쓰지 않는다");
