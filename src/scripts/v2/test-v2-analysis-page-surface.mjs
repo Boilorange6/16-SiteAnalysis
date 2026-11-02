@@ -130,6 +130,12 @@ const frameOf = (slide) => reportPageFrame(slide, slideChartsOf(slide, slide.pag
   near(column.x + column.w, 13.333 - 0.25, "② 열은 오른쪽 0.25 in까지");
   near(column.x + card2.x, f2.geometry.column.key.x, "② 카드는 열의 왼쪽 위(열 상자 기준 좌표)");
   near(card2.w, f2.geometry.column.key.w, "② 카드 폭 = 열 폭");
+  // N1: 구성비 카드는 막대 줄 수에 맞는 내용 높이를 넘지 않는다(남는 높이는 거리 카드로).
+  {
+    const { compositionContentHeight } = await import("../../lib/v2/report/chart-geometry.ts");
+    const content = compositionContentHeight(f2.charts.composition.length, f2.chartScale, true) + 0.146 + 0.125;
+    assert.ok(f2.geometry.column.chart1.h <= content + 1e-6, `구성비 카드 높이 ${f2.geometry.column.chart1.h} ≤ 내용 ${content}`);
+  }
   assert.equal((m2.match(/<svg[^>]*data-chart="[a-z]+"[^>]*role="img"|<svg[^>]*role="img"[^>]*data-chart="[a-z]+"/g) ?? []).length, 2, "② 쪽의 그래프 카드는 둘(role=img SVG)");
   assert.equal((m2.match(/data-part="chart-card"/g) ?? []).length, 2, "그래프 카드 상자 둘");
 

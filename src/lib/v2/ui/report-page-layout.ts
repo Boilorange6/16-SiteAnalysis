@@ -33,6 +33,8 @@ type GeometryInput = {
   summaryDeleted: boolean; titleSize: { w: number; h: number };
   keyCardHeight: number; legendSize: { w: number; h: number } | null;
   chartSlots: 0 | 1 | 2; sentenceHeight: number;
+  /** 구성비 카드(그래프 카드 1)의 내용 높이. 두 카드를 다 둘 때 카드가 이보다 크면 이 높이로 줄이고 남는 높이는 거리 카드가 가진다. */
+  chart1Content?: number;
   /** `주석 N` 칩이 있는가(기본 true). 있으면 칩 자리를 두고 해석 줄 폭에서 뺀다. */
   notes?: boolean;
 };
@@ -133,7 +135,7 @@ function place(input: GeometryInput): { geometry: ReportPageGeometry; cardMoved:
     let chart2: Rect | null = null;
     if (slots === 1) chart1 = { x: rect.x, y: top, w: rect.w, h: room(1) };
     if (slots === 2) {
-      const h1 = room(2) * CHART1_SHARE;
+      const h1 = Math.min(room(2) * CHART1_SHARE, input.chart1Content ?? Infinity);
       chart1 = { x: rect.x, y: top, w: rect.w, h: h1 };
       chart2 = { x: rect.x, y: bottom(chart1) + CARD_GAP, w: rect.w, h: room(2) - h1 };
     }

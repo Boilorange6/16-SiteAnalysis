@@ -6,7 +6,7 @@
 import type { PlannedSlide } from "./report-plan";
 import type { KeyFigure } from "../tile/types";
 import { slideCharts, slideTerrainSection, type AnalysisCharts } from "./analysis-charts";
-import type { ChartBox } from "./chart-geometry";
+import { compositionContentHeight, type ChartBox } from "./chart-geometry";
 import type { CalloutOverviewFrame } from "./types";
 import { wrapToLines } from "./analysis-column-fit";
 import { keyFigureFit, sentenceFit, type KeyFigureFit } from "./key-figure-fit";
@@ -360,6 +360,8 @@ export function reportPageFrame(slide: TileSlide, charts: AnalysisCharts | null,
     keyCardHeight: fit?.height ?? 0, legendSize,
     chartSlots: layout === "map-charts" && !summaryDeleted ? (terrain ? 1 : 2) : 0,
     sentenceHeight: sentenceInfo?.height ?? 0,
+    // 구성비 카드는 막대 줄 수만큼만 높다(내용보다 큰 빈 여백을 두지 않는다). 단면 장에는 구성비 카드가 없다.
+    ...(layout === "map-charts" && charts && !terrain ? { chart1Content: compositionContentHeight(charts.composition.length, summaryPt / DEFAULT_REPORT_FONT_SIZES.summary, !!charts.titles.composition) + CHART_PAD.top + CHART_PAD.bottom } : {}),
     notes: hasNotes,
   });
   const inner = (rect: Rect | null | undefined): ChartBox | null => rect ? { x: rect.x + CHART_PAD.x, y: rect.y + CHART_PAD.top, w: Math.max(0.1, rect.w - CHART_PAD.x * 2), h: Math.max(0.1, rect.h - CHART_PAD.top - CHART_PAD.bottom) } : null;

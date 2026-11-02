@@ -66,6 +66,11 @@ function withTitle(box: ChartBox, scale: number, title: string, prefix: string, 
   return [textMaker(box, prefix)("title", fit(title, pt, box.w / 1.05), pt, C.strong, "left", box.x, box.y, true), ...shapes];
 }
 
+/** 구성비 막대 그래프(제목 포함)가 box 높이 안에서 차지하는 높이(inch). 줄 높이는 `compositionRows`의 0.23 in × scale이다. */
+export function compositionContentHeight(count: number, scale: number, hasTitle: boolean): number {
+  return (hasTitle ? textH(TITLE_PT * scale) + 0.04 * scale : 0) + count * 0.23 * scale;
+}
+
 export function compositionShapes(items: CompositionItem[], box: ChartBox, scale: number, title = ""): ChartShape[] {
   return withTitle(box, scale, title, "chart-composition", (rest) => compositionRows(items, rest, scale));
 }

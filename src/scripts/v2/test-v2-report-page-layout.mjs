@@ -165,6 +165,19 @@ for (const format of ["wide", "a3", "a4"]) {
   assert.equal(geo({ layout: "map-charts", chartSlots: 0 }).column.chart1, null);
 }
 
+// ── N1: 구성비 카드가 내용(막대 줄 수)보다 크면 내용 높이로 줄이고 남는 높이는 거리 카드가 가진다. 내용이 더 크면 그대로.
+{
+  const full = geo({ layout: "map-charts" }).column;
+  const capped = geo({ layout: "map-charts", chart1Content: 1.1 }).column;
+  near(capped.chart1.h, 1.1, "구성비 카드 높이 = 내용 높이");
+  near(capped.chart2.y - bottom(capped.chart1), 0.125, "카드 간격 chart1→chart2");
+  near(bottom(capped.chart2), bottom(full.chart2), "거리 카드 아래 끝은 그대로");
+  assert.ok(full.chart1.h > 1.1, "전제: 몫이 내용보다 크다");
+  near(capped.chart2.h, full.chart2.h + (full.chart1.h - 1.1), "거리 카드가 남는 높이만큼 커진다");
+  const big = geo({ layout: "map-charts", chart1Content: 9 }).column;
+  near(big.chart1.h, full.chart1.h, "내용이 더 크면 몫 그대로");
+}
+
 // ── 숫자 카드 지움
 {
   const k = geo({ layout: "map-key", summaryDeleted: true });
