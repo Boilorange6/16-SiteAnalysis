@@ -301,6 +301,21 @@ assert.match(slide, /정온/);
     assert.doesNotMatch(xml, /VWorld|OpenStreetMap/);
   }
 
+  // M-6: PPT 조판 칸 그림(장미·매스)은 화면 칸처럼 칸 모양 장면(`figureSceneSize(칸)`)으로 만든다. 브라우저에서만 그려져 코드 모양으로 확인한다.
+  {
+    const { readFileSync } = await import("node:fs");
+    const source = readFileSync(new URL("../../lib/v2/report/map-image.ts", import.meta.url), "utf8");
+    assert.match(source, /rasterizeRose\(cell\.rose, figureScene\.w, figureScene\.h, /, "칸 장미 그림은 칸 모양 장면");
+    assert.match(source, /rasterizeMass\(cell\.mass, cell\.mass\.exploded, figureScene\.w, figureScene\.h\)/, "칸 매스 그림도 칸 모양 장면");
+    assert.match(source, /figureSceneSize\(\{ map: cells\[cellIndex\]! \}\)/, "칸 자리(inch)로 장면을 정한다");
+    const { figureSceneSize } = await import("../../lib/v2/report/report-page-frame.ts");
+    const { sheetCells } = await import("../../lib/v2/ui/sheet.ts");
+    for (const grid of ["2x2", "3x2", "3x1"]) for (const cell of sheetCells(grid)) {
+      const scene = figureSceneSize({ map: cell });
+      assert.ok(Math.abs(scene.w / scene.h - cell.w / cell.h) < 0.01, `${grid}: 장면 비율 = 칸 비율`);
+    }
+  }
+
   // M-1: 그림 칸만 있는 시트 장의 각주에도 바탕지도 출처가 없다(화면·PPT가 같은 판정 `footerCredit`)
   {
     const sheetFooter = await (await JSZip.loadAsync(await renderReportPptx([sheetSlide]))).file("ppt/slides/slide1.xml").async("string");

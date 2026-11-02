@@ -425,8 +425,10 @@ export async function buildMapImages(plan: PlannedSlide[], layer?: BasemapChoice
         if (!cell) continue;
         if (out[cell.mapKey]) continue;
         try {
-          if (cell.mass) out[cell.mapKey] = await rasterizeMass(cell.mass, cell.mass.exploded);
-          else if (cell.rose) out[cell.mapKey] = await rasterizeRose(cell.rose, VIEW_W, VIEW_H, cell.roseSeason ?? "annual");
+          // 칸 그림은 칸 모양 장면(폭 960 px, 화면 조판 칸과 같은 `figureSceneSize`)이라 PPT 칸에 contain으로 넣어도 비어 보이지 않는다.
+          const figureScene = cells[cellIndex] ? figureSceneSize({ map: cells[cellIndex]! }) : { w: VIEW_W, h: VIEW_H };
+          if (cell.mass) out[cell.mapKey] = await rasterizeMass(cell.mass, cell.mass.exploded, figureScene.w, figureScene.h);
+          else if (cell.rose) out[cell.mapKey] = await rasterizeRose(cell.rose, figureScene.w, figureScene.h, cell.roseSeason ?? "annual");
           else {
             const model = mapForCell(cell);
             const rect = cells[cellIndex];

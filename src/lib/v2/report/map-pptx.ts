@@ -195,8 +195,9 @@ function fixedScaleViewport(model: MapModel, style: PageStyle, frame: MapFrameSt
   return slideViewport(model, { zoomDelta, offsetM: frame.offsetM }, dimensions);
 }
 
-function cellLegendItems(model: MapModel): CellLegendItem[] {
-  const all = slideLegend(model, true, undefined, true, activeFormat).items;
+/** 칸 범례 항목. 값 래스터 단계(`swatch: "raster"`)는 싣지 않는다: 칸 4개 한도가 단계로 차지 않고, 화면 조판 칸도 범례를 그리지 않는다(쪽 범례에만 있다). */
+export function cellLegendItems(model: MapModel): CellLegendItem[] {
+  const all = slideLegend(model, true, undefined, true, activeFormat).items.filter((item) => item.swatch !== "raster");
   if (all.length <= CELL_LEGEND_MAX_ITEMS) return all;
   const site = all.find((item) => item.site);
   const nonSite = all.filter((item) => !item.site);

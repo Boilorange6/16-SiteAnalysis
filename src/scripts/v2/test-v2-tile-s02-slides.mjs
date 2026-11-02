@@ -83,4 +83,17 @@ assert.match(slide, /15:00/);
   }
 }
 
+// M-6: PPT 조판 칸 범례는 값 래스터 단계(일조시간 16단계 등)를 싣지 않는다 — 칸 4개 한도가 래스터 단계로 차지 않고, 화면 조판 칸도 범례를 그리지 않는다.
+{
+  const { cellLegendItems } = await import("../../lib/v2/report/map-pptx.ts");
+  const { slideLegend } = await import("../../lib/v2/ui/overlay-layout.ts");
+  const ref = { name: "sun", kind: "value", crs: "EPSG:5179", x0: 960000, y0: 1950000, cellM: 1, cols: 10, rows: 10, dtype: "u8", bands: 1, scale: 1, offset: 0, nodata: 255, palette: "sun_hours", label: "일조시간", bytes: 100, sha256: "a".repeat(64) };
+  const model = { ...view.map, rasters: [ref] };
+  assert.ok(slideLegend(model, true).items.filter((item) => item.swatch === "raster").length >= 10, "전제: 쪽 범례에는 래스터 단계가 여럿 있다");
+  const shown = cellLegendItems(model);
+  assert.equal(shown.filter((item) => item.swatch === "raster").length, 0, "칸 범례에는 래스터 단계가 없다");
+  assert.ok(shown.some((item) => item.site), "대지 항목은 남는다");
+  assert.ok(shown.length <= 5, "칸 범례 항목 한도");
+}
+
 console.log("✓ v2 S02 1/3 cut report slides");
