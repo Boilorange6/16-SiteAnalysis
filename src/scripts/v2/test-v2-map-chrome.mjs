@@ -142,10 +142,13 @@ const draw = (reportFrame) => {
   near(bg.args[1].shadow.opacity, 0.28, "그림자 28 %");
   const label = calls.find((c) => c.method === "addText" && c.args[1].objectName?.includes("|방위표|label"));
   assert.ok(label && label.args[0] === "N", "N 글자");
-  near(label.args[1].fontSize, NORTH_GLYPH.letterPx * unit * 0.75, "N 11u px를 pt로");
+  // 장면 960 px가 쪽 폭 13.333 in에 대응하므로 장면 1 px = 1 pt다(pxPt = px × 틀 폭 × 72 / 960).
+  near(label.args[1].fontSize, NORTH_GLYPH.letterPx * unit, "N 11u px를 pt로", 0.01);
+  near(label.args[1].fontSize / (bg.args[1].w * 72), NORTH_GLYPH.letterPx / (2 * NORTH_RADIUS), "방위표 N 글자/지름 비 = 정본 §9-12 (지름 × 0.24)", 0.002);
+  near(label.args[1].fontSize / (bg.args[1].w * 72), 0.24, "N 글자 = 지름의 0.24배", 0.005);
   const scaleLabel = calls.find((c) => c.method === "addText" && c.args[1].objectName?.includes("|축척|label"));
   assert.ok(scaleLabel, "축척 글자");
-  near(scaleLabel.args[1].fontSize, SCALE_FONT_PX * unit * scaleFontScaleForPt(DEFAULT_REPORT_FONT_SIZES.scale) * 0.75, "축척 글자 기본 11pt 배율");
+  near(scaleLabel.args[1].fontSize, SCALE_FONT_PX * unit * scaleFontScaleForPt(DEFAULT_REPORT_FONT_SIZES.scale), "축척 글자 기본 11pt 배율", 0.01);
 }
 
 // 이미지 내보내기: 방위표 중심 y는 NORTH_INSET × u여야 한다(u = 1.5인 960×540에서 원이 위로 잘리지 않는다)
@@ -444,6 +447,10 @@ const draw = (reportFrame) => {
       assert.ok(shape, `${layout} ${part}`);
       for (const key of ["x", "y", "w", "h"]) near(shape[key], expected[key], `${layout} ${part} ${key} = 기하`, 0.01);
     }
+    // 틀 장면(960 px = 틀 폭)의 글자: 1 px = 틀 폭 × 72 / 960 pt. N 글자는 방위표 지름의 0.24배다(§9-12).
+    const n = calls.find((c) => c.method === "addText" && c.args[1].objectName?.includes("|방위표|label"));
+    near(n.args[1].fontSize, (NORTH_GLYPH.letterPx * geometry.unit * geometry.map.w * 72) / 960, `${layout} N 글자 pt`, 0.05);
+    near(n.args[1].fontSize / (rect("|방위표|bg").w * 72), 0.24, `${layout} N 글자/지름 = 0.24`, 0.005);
   }
 }
 

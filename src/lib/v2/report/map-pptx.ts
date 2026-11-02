@@ -20,7 +20,6 @@ import { reportMapAvoid } from "./report-page-frame";
 const VIEW_W = 960;
 const VIEW_H = 540;
 const PX_PER_INCH = VIEW_W / SLIDE.w;
-const PX_TO_PT = 0.75;
 const MAX_LAYER_ELEMENTS = 1500;
 
 function savedPanelBox(panel: PagePanelRect | undefined, basis: "page" | "frame" = "page"): MapSceneBox | null {
@@ -155,6 +154,8 @@ let activeMode: NativeMapMode = "tile";
 const CELL_LEGEND_MAX_ITEMS = 4;
 const CELL_LEGEND_ROW_H = 28;
 const CELL_LEGEND_PAD = 10;
+/** 조판 칸 범례 글자 pt. 칸 글자는 8 pt 아래로 내려가지 않으므로 상수다(예전에는 pt 값을 px처럼 다시 줄인 뒤 같은 8 pt 하한에 걸렸다). 판 폭 측정(`cellLegendLayout`)도 이 값이다. */
+const CELL_LEGEND_PT = 8;
 
 type CellLegendItem = ReturnType<typeof slideLegend>["items"][number];
 
@@ -213,7 +214,7 @@ function cellLegendLayout(model: MapModel): { items: CellLegendItem[]; x: number
   if (!base) return null;
   const items = cellLegendItems(model);
   const x = 24;
-  const measuredLabelW = Math.max(...items.map((item) => textIn(item.label, 8) * activePxPerInch), 0);
+  const measuredLabelW = Math.max(...items.map((item) => textIn(item.label, CELL_LEGEND_PT) * activePxPerInch), 0);
   // 8pt 셀 라벨은 PPT의 fit="shrink"에 맡기면 긴 역명이 끝에서 잘린다.
   // 측정 폭을 먼저 확보해 셀 전체 범위 안에서 범례 판을 넓힌다.
   // 판 폭의 뼈대는 쪽 범례 폭(inch)을 쪽 장면 비율(PX_PER_INCH)로 줄인 값이다. 칸 장면 밀도(activePxPerInch)로 환산하면 칸을 거의 다 덮는다.
@@ -231,7 +232,8 @@ function pxX(x: number): number { return activeFrame.x + (x / activeSceneWidth) 
 function pxY(y: number): number { return activeFrame.y + (y / activeSceneHeight) * activeFrame.h; }
 function pxW(value: number): number { return (value / VIEW_W) * activeFrame.w; }
 function pxH(value: number): number { return (value / activeSceneHeight) * activeFrame.h; }
-function pxPt(value: number): number { return value * PX_TO_PT * Math.min(activeFrame.w / activeGeometry.w, activeFrame.h / activeGeometry.h); }
+/** 장면 px → pt. 장면은 늘 폭 960 px이고 틀 폭 inch에 대응하므로 1 px = 틀 폭 × 72 / 960 pt다(쪽 전체 16:9는 1 px = 1 pt). */
+function pxPt(value: number): number { return (value * activeFrame.w * 72) / VIEW_W; }
 function isRasterizedLayer(layer: string): boolean { return activeRasterLayers.has(layer); }
 
 type PixelPoint = readonly [number, number];
@@ -1158,7 +1160,6 @@ function addCellLegend(slide: Slide, code: string, model: MapModel, style: PageS
   const layout = cellLegendLayout(model);
   if (!layout) return;
   const { items, x, y, w, h } = layout;
-  const legendPt = fontSizeForStyle(style, "legend");
   const focus = legendLabelOf(model, style.legendFocus);
   const panelTag = (part: string) => tag(code, "legend-panel", "범례", part);
   slide.addShape("roundRect", { x: pxX(x), y: pxY(y), w: pxW(w), h: pxH(h), rectRadius: 0.08, fill: { color: "FFFFFF", transparency: 6 }, line: { color: "FFFFFF", width: 0 }, objectName: panelTag("panel") });
@@ -1179,7 +1180,7 @@ function addCellLegend(slide: Slide, code: string, model: MapModel, style: PageS
       slide.addShape("ellipse", { x: pxX(x + 12), y: pxY(iy + 9), w: pxW(12), h: pxH(12), fill: { color: color(item.color), transparency: fade }, line: { color: "FFFFFF", width: pxPt(0.75), transparency: fade }, objectName: panelTag(`item-${index}`) });
       if (item.badge) slide.addText(item.badge, { x: pxX(x + 12), y: pxY(iy + 9), w: pxW(12), h: pxH(12), align: "center", valign: "middle", fontFace: FONT, fontSize: fontPt(6, 5), bold: true, color: dimmed ? "8C919B" : color(badgeTextColor(item.color)), margin: 0, objectName: panelTag(`item-badge-${index}`) });
     }
-    slide.addText(item.label, { x: pxX(x + 36), y: pxY(iy), w: pxW(w - 46), h: pxH(CELL_LEGEND_ROW_H), valign: "middle", fontFace: FONT, fontSize: fontPt(legendPt, 6), bold: focus === item.label, color: mutedColor, margin: 0, fit: "shrink", objectName: panelTag(`item-label-${index}`) });
+    slide.addText(item.label, { x: pxX(x + 36), y: pxY(iy), w: pxW(w - 46), h: pxH(CELL_LEGEND_ROW_H), valign: "middle", fontFace: FONT, fontSize: CELL_LEGEND_PT, bold: focus === item.label, color: mutedColor, margin: 0, fit: "shrink", objectName: panelTag(`item-label-${index}`) });
   });
 }
 

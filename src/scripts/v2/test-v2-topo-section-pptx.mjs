@@ -298,7 +298,8 @@ assert.equal(aMapSection.length, 1, "PPTX contains native A section line");
 assert.equal(bMapSection.length, 1, "PPTX contains native B section line");
 const aStyle = terrainSectionMapStyle("A", "B");
 const bStyle = terrainSectionMapStyle("B", "B");
-const pptWidthEmu = (width) => Math.round(width * 0.75 * 12700);
+// 장면 960 px = 쪽 폭 13.333 in이므로 장면 1 px = 1 pt (pxPt = px × 틀 폭 × 72 / 960)
+const pptWidthEmu = (width) => Math.round(((width * 13.333 * 72) / 960) * 12700); // SLIDE.w = 13.333
 assert.match(aMapSection[0], new RegExp(`<a:ln w="${pptWidthEmu(aStyle.strokeWidth)}"`));
 assert.match(lineXml(aMapSection[0]), /<a:prstDash val="dash"\/>/);
 assert.match(lineXml(aMapSection[0]), /<a:alpha val="45000"\/>/);
