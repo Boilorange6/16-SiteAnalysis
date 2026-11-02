@@ -170,17 +170,30 @@ export function sourceLayout(rowCount: number, style: PageStyle = {}, format: Sl
  * 쪽 지도에 실제로 그려지는 바탕들(출처 띠 표기를 정한다). 화면 미리보기(SlideFooter)와 PPT 출처 띠가 같은 값을 쓴다.
  * 조판은 칸마다, 타일은 보고서 프레임 선택까지 반영한 결과다.
  */
-export function footerBasemaps(slide: PlannedSlide, chosen?: BasemapChoice): BasemapChoice[] {
+function drawnBasemaps(slide: PlannedSlide, chosen?: BasemapChoice): { layer: BasemapChoice; framed: boolean }[] {
   if (slide.kind === "sheet") {
     return slide.cells.flatMap((cell) => {
       if (!cell || cell.mass || cell.rose || (cell.face === "back" && cell.view.chart)) return [];
       const model = cell.view.map ?? cell.view.backdrop;
-      return model ? [exportBasemap(model, chosen, cell.reportFrame)] : [];
+      return model ? [{ layer: exportBasemap(model, chosen, cell.reportFrame), framed: !!cell.reportFrame }] : [];
     });
   }
   const model = (slide as { map?: MapModel | null }).map;
   if (!model) return [];
-  return [exportBasemap(model, chosen, slide.kind === "tile" && slide.page?.kind === "tile" ? slide.page.frame : undefined)];
+  const frame = slide.kind === "tile" && slide.page?.kind === "tile" ? slide.page.frame : undefined;
+  return [{ layer: exportBasemap(model, chosen, frame), framed: !!frame }];
+}
+
+export function footerBasemaps(slide: PlannedSlide, chosen?: BasemapChoice): BasemapChoice[] {
+  return drawnBasemaps(slide, chosen).map((drawn) => drawn.layer);
+}
+
+/**
+ * 바탕지도 출처(credit)를 붙이는가: 실제로 바탕지도를 그린 쪽만. 그림 칸뿐인 장은 그린 바탕이 없고, 보고서 프레임이 바탕을 끈(`none` → white) 칸도 없다.
+ * 프레임이 없는 쪽의 white는 VWorld 흰 지도다. 화면 각주·PPT 띠(`tile()`·`sheet()`)가 같은 판정을 쓴다(새 장 배치 `footnoteText`는 프레임이 늘 있어 white를 거른다).
+ */
+export function footerCredit(slide: PlannedSlide, chosen?: BasemapChoice): boolean {
+  return drawnBasemaps(slide, chosen).some((drawn) => !drawn.framed || drawn.layer !== "white");
 }
 
 export type FooterFit = { text: string; fontSize: number; lines: 1 };

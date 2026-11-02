@@ -13,7 +13,7 @@ import type { RoseModel } from "../ui/wind-rose";
 import { sheetCells, type SheetGrid } from "../ui/sheet";
 import { reportSummaryNotes } from "../ui/terrain-section";
 import { COVER_MAP_KEY, mapKeyOf, type PlannedSlide } from "./report-plan";
-import { CHIP, E, FONT, INK, L, LINE, MUTED, coverLayout, fitBlock, fitFooterText, fitPt, footerBasemaps, fontSizeForStyle, hex, linesOf, plate, sourceLayout, textIn, titlePlateRect, type Border, type ReportItem, type Slide } from "./pptx-kit";
+import { CHIP, E, FONT, INK, L, LINE, MUTED, coverLayout, fitBlock, fitFooterText, fitPt, footerBasemaps, footerCredit, fontSizeForStyle, hex, linesOf, plate, sourceLayout, textIn, titlePlateRect, type Border, type ReportItem, type Slide } from "./pptx-kit";
 import { tileReportModuleFor } from "../tile/report";
 import { addEditableMap, mapDrawPlan, nativeMapFallbackNote, nativeMapStatus } from "./map-pptx";
 import { exportBasemap } from "../ui/basemap";
@@ -84,7 +84,7 @@ function strip(s: Slide, p: PlannedSlide, credit: boolean, format: SlideFormat =
   const textX = r.x;
   const room = Math.max(0.2, r.w - pageNumberWidth - 0.08);
   const showCredit = !pageElementDeleted(p.page, "source");
-  const footer = fitFooterText(p.footer, showCredit, room, fontSizeForStyle(p.style ?? {}, "source"), footerBasemaps(p, chosen));
+  const footer = fitFooterText(p.footer, showCredit && credit, room, fontSizeForStyle(p.style ?? {}, "source"), footerBasemaps(p, chosen));
   if (showCredit) s.addText(footer.text, { x: textX, y: r.y, w: room, h: r.h, valign: "middle", fontFace: FONT, fontSize: footer.fontSize, color: "454A55", margin: 0, fit: "shrink" });
   s.addText(`${p.no} / ${p.total}`, { x: r.x + r.w - pageNumberWidth, y: r.y, w: pageNumberWidth, h: r.h, align: "right", valign: "middle", fontFace: FONT, fontSize: 9, color: "454A55", margin: 0 });
 }
@@ -686,7 +686,7 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
   pageTextBoxes(s, p, format);
   pageNotes(s, p, fallbackNotes);
   // 바탕지도를 그린 장만 바탕지도 출처(credit)가 붙는다: 그림 장(바람장미·매스)과 도판 구성비 장은 지도가 없다.
-  strip(s, p, footerBasemaps(p, look.basemap).length > 0, format, look.basemap);
+  strip(s, p, footerCredit(p, look.basemap), format, look.basemap);
 }
 
 function sheet(pptx: PptxGenJS, p: PlannedSlide & { kind: "sheet" }, images: MapImages, look: PptxMapLook) {
@@ -753,7 +753,7 @@ function sheet(pptx: PptxGenJS, p: PlannedSlide & { kind: "sheet" }, images: Map
   }
   pageTextBoxes(s, p, format);
   pageNotes(s, p, [...cellNotes]);
-  strip(s, p, true, format, look.basemap);
+  strip(s, p, footerCredit(p, look.basemap), format, look.basemap);
 }
 
 function sources(pptx: PptxGenJS, p: PlannedSlide & { kind: "sources" }, images: MapImages, look: PptxMapLook) {

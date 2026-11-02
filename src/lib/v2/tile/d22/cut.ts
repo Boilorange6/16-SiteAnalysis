@@ -41,7 +41,9 @@ function plan(view: TileView, value: unknown): TileCutPlan {
     return { sheets: [{ grid: "2x2", cells }] };
   }
   const annual = roseCell(view, "annual", CUT_SEASON_LABEL.annual, "annual");
-  return { sheets: [], single: { ...annual, view: viewForCut(view, value), mapKey: `${view.tileId}:rose` } };
+  // 계절 4컷이 준비되지 않아 연간 장미 한 장으로 돌아가면 연간 view(연간 카드·연간 노트)를 쓴다.
+  const shown = value.mode === "seasons4" ? { tile: "D22", mode: "annual" } : value;
+  return { sheets: [], single: { ...annual, view: viewForCut(view, shown), mapKey: `${view.tileId}:rose` } };
 }
 
 export const d22CutModule: TileCutModule = {

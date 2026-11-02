@@ -28,6 +28,7 @@ for (const l of ["use:미상", "maint_area:모아타운", "park", "trade_distric
 // 수관 면은 선이 없다(사용자 결정 2026-11-02: 흰 선이 수관 덩어리를 얼룩으로 만든다). OSM 녹지·수계는 이번에 그대로 구역 면.
 assert.equal(polygonPaint("canopy", layerStyle("canopy"), false).stroke, "none", "수관 면은 선 없음");
 assert.equal(polygonPaint("canopy", layerStyle("canopy"), true).stroke, "none");
+assert.equal(polygonPaint("canopy", layerStyle("canopy"), false).fillOpacity, 0.3, "수관 면 채움은 구역 면과 같은 30 %를 유지한다(선만 없앤다)");
 for (const l of ["osm_green", "osm_water"]) assert.equal(polygonTone(l), "zone", l);
 
 // polygonPaint

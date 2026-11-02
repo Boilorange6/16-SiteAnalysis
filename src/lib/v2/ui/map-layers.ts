@@ -417,7 +417,7 @@ export const LAYER_STYLES: Record<string, LayerStyle> = {
   rent_district_monthly_missing: districtMissingPolygon("월세 법정동 자료 부족", LEGEND_GROUPS.rentMonthlyDistrict, 5),
   walk_route: S("보행 경로", "#7A5BA6", undefined, LEGEND_GROUPS.a04GreenSpace, 4),
   // 수관 면은 선이 없다(사용자 결정 2026-11-02): "zone" 톤의 흰 1.7u 선이 수관 덩어리를 얼룩으로 만든다. stroke "none"이라 PPT도 선 없음.
-  canopy: { ...S("수관", "#2E7D32"), stroke: "none", strokeWidth: 0 },
+  canopy: { ...S("수관", "#2E7D32"), stroke: "none", strokeWidth: 0, fillOpacity: 0.3 },
   osm_green: S("OSM 녹지", "#5FAE5B"),
   osm_water: S("OSM 수계", "#4F9DA6"),
   walk_5: S("도보 5분", "#4D9D7E"),

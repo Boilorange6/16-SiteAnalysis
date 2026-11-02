@@ -245,6 +245,24 @@ assert.match(slide, /정온/);
   const decision = reportLayoutDecision({ pageKind: "tile", hasMap: false, figure: isFigureSlide(sheetSlide) });
   assert.deepEqual(decision.choices.map((choice) => [choice.value, choice.label]), [["map-key", "그림 + 숫자"]]);
   assert.equal(isFigureSlide({ kind: "sheet", cells: [{ rose: {} }, { view: {} }] }), false, "그림이 아닌 칸이 섞인 조판은 그림 장이 아니다");
+
+  // M-1: 그림 칸만 있는 시트 장의 각주에도 바탕지도 출처가 없다(화면·PPT가 같은 판정 `footerCredit`)
+  {
+    const sheetFooter = await (await JSZip.loadAsync(await renderReportPptx([sheetSlide]))).file("ppt/slides/slide1.xml").async("string");
+    assert.doesNotMatch(sheetFooter, /VWorld|OpenStreetMap/, "PPT 시트 장 각주에 바탕지도 출처가 없다");
+    const { SlideSurface } = await import("../../components/v2/report/slide-surface.tsx");
+    assert.doesNotMatch(renderToStaticMarkup(React.createElement(SlideSurface, { slide: sheetSlide, basemap: "none", mode: "export" })), /VWorld|OpenStreetMap/, "화면 시트 장 각주에도 없다");
+  }
+
+  // M-5: 계절 자료가 모자라 연간 장미 한 장으로 돌아가면 연간 view(연간 카드)를 쓴다
+  {
+    const annualOnly = { ...view, roses: { annual: model } };
+    assert.equal(d22CutModule.ready(annualOnly, seasons), false, "전제: 계절 4컷이 준비되지 않았다");
+    const fallback = d22CutModule.plan(annualOnly, seasons);
+    assert.equal(fallback.sheets.length, 0);
+    assert.deepEqual(fallback.single.view.keyFigure, view.keyFigure, "연간 장미 장은 연간 카드");
+    assert.ok(!fallback.single.view.notes.includes("계절 4컷"), "연간 장에 계절 4컷 노트가 없다");
+  }
 }
 
 console.log("✓ v2 D22 wind rose figure and report");

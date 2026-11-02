@@ -9,7 +9,7 @@ import { metersPerPixel, slideViewport, zoomViewAt, type MapView } from "@/lib/v
 import { frameBasemap } from "@/lib/v2/ui/basemap";
 import { mapFrameScaleOptions, scaleOptionsForFrame, zoomForScale } from "@/lib/v2/ui/report-scale";
 import { SLIDE_LEGEND, calloutLegendEntries, layoutRects, slideCalloutAvoidance, slideCalloutLegendLayout, slideGeometry, slideLayout, slideLegend, slideLegendGeometry, slidePanelRects, slidePanelScale, slideReserved, slideSize, slideSiteX, terrainSectionLayout, type Rect, type SlideFormat, type TerrainSectionLayout } from "@/lib/v2/ui/overlay-layout";
-import { coverLayout, fitBlock, fitFooterText, fontSizeForStyle, footerBasemaps, shrinkPt, sourceLayout, titlePlateRect, type Slide } from "@/lib/v2/report/pptx-kit";
+import { coverLayout, fitBlock, fitFooterText, fontSizeForStyle, footerBasemaps, footerCredit, shrinkPt, sourceLayout, titlePlateRect, type Slide } from "@/lib/v2/report/pptx-kit";
 import { SLIDE_OVERVIEW_FILL, calloutHoverText, calloutKeyFromTag, calloutKeyTag, calloutPageTitleTail, slideCalloutFrame } from "@/lib/v2/ui/callout-layout";
 import { a05ReportModule } from "@/lib/v2/tile/a05/report";
 import { layerStyle, legendItemsOf, legendLabelOf, modelWithHiddenLayers, type MapModel } from "@/lib/v2/ui/map-layers";
@@ -1212,7 +1212,7 @@ function SlideFooter({ slide, basemap, rect: rectProp, unit, fontHighlight, onFo
   const actionBar = actionBarOffsetForRect(rect, unit, { w: slideSize(format).w * unit, h: slideSize(format).h * unit });
   const footer = note
     ? { text: note.text, fontSize: note.pt }
-    : fitFooterText(slide.footer, slide.kind === "sheet" || !!slide.map, slideSize(format).w - slideGeometry(format).edge - 1.7, fontSizeForStyle(slide.style, "source"), footerBasemaps(slide, basemap));
+    : fitFooterText(slide.footer, footerCredit(slide, basemap), slideSize(format).w - slideGeometry(format).edge - 1.7, fontSizeForStyle(slide.style, "source"), footerBasemaps(slide, basemap));
   const noteStyle: CSSProperties | undefined = note ? { padding: `0 ${FOOTER_BOX.padX * unit}px`, gap: FOOTER_BOX.gap * unit, color: "#80858e", background: "#f2f2ef", borderTop: "1px solid rgba(21, 23, 28, 0.08)" } : undefined;
   const longPressRef = useRef<{ x: number; y: number; timer: number } | null>(null);
   const clearLongPress = () => {

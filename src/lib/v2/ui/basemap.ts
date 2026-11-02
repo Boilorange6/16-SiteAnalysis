@@ -90,7 +90,7 @@ export function basemapUnavailableText(base: MapBase | null | undefined, refresh
 }
 
 /**
- * 바탕 결정: 결과가 지정한 바탕(D01·D10 위성) > 사용자가 고른 바탕 > 쓸 수 있는 바탕 자료가 있으면 벡터 > 일반지도.
+ * 바탕 결정: 결과가 지정한 바탕(D01 위성) > 사용자가 고른 바탕 > 쓸 수 있는 바탕 자료가 있으면 벡터 > 일반지도.
  * 벡터를 골랐어도 바탕 자료가 없거나 도로 맥락이 없는 분석은 일반지도로 돌아간다.
  */
 export function resolveBasemap(model: { basemap?: BasemapChoice; base?: MapBase | null }, chosen?: BasemapChoice): BasemapChoice {
@@ -102,7 +102,7 @@ export function resolveBasemap(model: { basemap?: BasemapChoice; base?: MapBase 
 
 /**
  * 보고서 지도 프레임의 배경 선택 -> 실제 바탕. 화면(SlideSurface)과 PPT·그림이 같은 함수를 쓴다.
- * 결과가 지정한 바탕(model.basemap, D01·D10 위성)이 프레임 선택보다 먼저다(`resolveBasemap`과 같은 규칙).
+ * 결과가 지정한 바탕(model.basemap, D01 위성)이 프레임 선택보다 먼저다(`resolveBasemap`과 같은 규칙).
  * "base"는 쓸 수 있는 바탕 자료가 있으면 벡터, 없으면 VWorld 기본 지도.
  */
 export function frameBasemap(frame: { basemap: MapFrameState["basemap"] }, model: { basemap?: BasemapChoice; base?: MapBase | null }): BasemapChoice {
