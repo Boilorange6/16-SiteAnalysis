@@ -441,8 +441,8 @@ for (const format of ["wide", "a3", "a4"]) {
     assert.ok(f.rows.question.y < f.rows.answer.y && f.rows.answer.y + f.rows.answer.h > f.rows.answerBaseline && f.rows.answerBaseline > f.rows.answer.y, `case ${i} 답 baseline`);
   }
   const f0 = keyFigureFit(cases[0]);
-  assert.equal(f0.rows.badges.length, 3, "배지 2개 + +n");
-  assert.equal(f0.rows.badges[2].text, "+1");
+  // 질문(10자) + 배지 둘 + 「+1」은 ① 안쪽 폭 2.75 in를 넘으므로(Task 6 위험) 뒤에서부터 접는다.
+  assert.deepEqual(f0.rows.badges.map((b) => b.text), ["추정", "+2"], "질문 줄과 함께 안쪽 폭에 들도록 배지를 접는다");
   assert.equal(f0.rows.grades.length, 2);
   assert.match(f0.filterText, /…$/);
   assert.ok(textIn(f0.filterText, f0.subPt) <= 3.125 - 0.375 + 1e-6, "필터 줄은 한 줄에 든다");
@@ -457,6 +457,45 @@ for (const format of ["wide", "a3", "a4"]) {
   near(pf.rows.partsSegments.reduce((s, seg) => s + seg.rect.w, 0), pf.rows.partsBar.w, "막대 조각 폭 합 = 막대 폭");
   assert.equal(pf.rows.stats.length, 0);
   assert.equal(keyFigureFit(cases[3]).filterText, null);
+}
+
+// ── Task 6 위험: 질문 줄과 배지 폭. 긴 배지가 카드 밖으로 나가거나 질문 칸을 덮으면 뒤에서부터 `+n`으로 접는다.
+{
+  const fig = { question: "가장 가까운 지하철역", answer: { value: "6분", kind: "number" }, stats: [] };
+  for (const summaryPt of [13, 18, 24]) for (const width of [3.125, 3.806]) for (const badges of [["일부 자료만 집계", "미확인"], ["일부 자료만 집계", "미확인", "추정"], ["추정"]]) {
+    const f = keyFigureFit({ figure: fig, badges, grades: [], filterLine: null, sentence: null, width, columns: 2, summaryPt });
+    const tag = `pt ${summaryPt} 폭 ${width} 배지 ${badges.length}`;
+    assert.ok(f.rows.question.w >= 0, `${tag} 질문 칸 폭 ≥ 0`);
+    for (const b of f.rows.badges) {
+      assert.ok(b.rect.x >= f.rows.question.x + f.rows.question.w - 1e-6, `${tag} 배지 ${b.text}가 질문 칸을 덮음`);
+      assert.ok(b.rect.x + b.rect.w <= width - 0.1875 + 1e-6, `${tag} 배지 ${b.text}가 카드 오른쪽 안쪽 여백 밖`);
+      assert.ok(b.rect.x >= 0, `${tag} 배지가 카드 왼쪽 밖`);
+    }
+    assert.equal(f.badgesShown.length + f.badgesMore, badges.length, `${tag} 접힌 수가 맞는다`);
+  }
+  // 넉넉한 폭에서는 접지 않는다
+  const roomy = keyFigureFit({ figure: { ...fig, question: "지하철역" }, badges: ["추정", "미확인"], grades: [], filterLine: null, sentence: null, width: 3.806, columns: 2, summaryPt: 13 });
+  assert.deepEqual(roomy.badgesShown, ["추정", "미확인"]);
+  assert.equal(roomy.badgesMore, 0);
+  // 질문+배지가 모자라면 접힌 만큼 +n 칩이 있다(배지 하나도 못 넣어도 +n은 남는다)
+  const tight = keyFigureFit({ figure: fig, badges: ["일부 자료만 집계", "미확인", "추정"], grades: [], filterLine: null, sentence: null, width: 3.125, columns: 2, summaryPt: 24 });
+  assert.ok(tight.badgesMore > 0 && tight.rows.badges.at(-1).text === `+${tight.badgesMore}`, "접힌 배지는 +n 칩");
+}
+
+// ── 구성 막대(A12): 보조 숫자 칸 대신 큰 % + 두 줄 설명이 막대 위에 있다(Ruling 6)
+{
+  const parts = [{ label: "제3종일반주거지역", share: 50, color: "#F2C94C", site: true }, { label: "제2종일반주거지역", share: 24.9, color: "#F2C94C" }, { label: "일반상업지역", share: 5, color: "#E05A47" }];
+  const fig = { question: "대지 용도지역", answer: { value: "제3종일반주거지역", kind: "name" }, stats: [{ value: "50.0%", label: "반경 1km 중 같은 용도지역" }, { value: "95.0%", label: "반경 1km 중 주거지역" }], parts };
+  const f = keyFigureFit({ figure: fig, badges: [], grades: [], filterLine: null, sentence: null, width: 3.125, columns: 2, summaryPt: 13 });
+  assert.ok(f.rows.lead, "lead 행");
+  assert.equal(f.rows.lead.text, "50.0%");
+  assert.deepEqual(f.rows.lead.lines, ["반경 1km 중 같은 용도지역", "주거지역 전체 95.0%"]);
+  assert.equal(f.rows.stats.length, 0, "보조 숫자 칸은 없다");
+  near(f.leadPt, 24, "큰 %는 시안 32 px(24 pt)");
+  assert.ok(f.rows.lead.value.y + f.rows.lead.value.h <= f.rows.partsBar.y + 1e-6, "큰 %는 구성 막대 위");
+  assert.ok(f.rows.lead.desc.x >= f.rows.lead.value.x + f.rows.lead.value.w, "설명은 큰 % 오른쪽");
+  assert.ok(f.rows.lead.desc.x + f.rows.lead.desc.w <= 3.125 - 0.1875 + 1e-6, "설명이 카드 안");
+  assert.equal(keyFigureFit({ figure: { ...fig, stats: [] }, badges: [], grades: [], filterLine: null, sentence: null, width: 3.125, columns: 2, summaryPt: 13 }).rows.lead, null, "보조 숫자가 없으면 lead도 없다");
 }
 
 console.log("report-page-layout ok");

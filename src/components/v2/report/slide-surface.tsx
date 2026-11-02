@@ -26,8 +26,11 @@ import type { TileView } from "@/lib/v2/ui/tile-view";
 import { sheetCells, type SheetGrid } from "@/lib/v2/ui/sheet";
 import { labelBoxFramePatch, labelFramePatch, mapLabelSwitchState, reportPageMapSelectable, mixedValue, resetLabelBoxFramePatch, toggleLabelVisibility, toggleLegendFocus } from "@/lib/v2/ui/report-mode-logic";
 import { mapLayoutUnitForFrame, placeActionBar, type ActionBarPixelBox } from "@/lib/v2/report/report-geometry";
-import { analysisCharts, type AnalysisCharts } from "@/lib/v2/report/analysis-charts";
-import { AnalysisColumn } from "./analysis-column";
+import { analysisCharts } from "@/lib/v2/report/analysis-charts";
+import { reportMapAvoid, reportPageFrame, usesReportPageFrame, type LegendFit, type ReportPageFrame } from "@/lib/v2/report/report-page-frame";
+import type { ReportPageGeometry } from "@/lib/v2/ui/report-page-layout";
+import { AnalysisColumn, NotesChip } from "./analysis-column";
+import { KeyFigureCard } from "./key-figure-card";
 import { fontStyle } from "./surface-style";
 
 type SurfaceStyles = Record<string, string>;
@@ -384,6 +387,8 @@ type MapLayerProps = {
   fontHighlight?: FontTargetKey | null;
   onFontContextMenu?: SurfaceContextMenuHandler;
   contextCell?: number;
+  /** 새 장 배치(지도 + 숫자·지도 + 그래프): 지도 틀·방위표·축척·피할 자리가 모두 이 기하에서 온다. 지도 틀은 `frame`(= geometry.map)으로 함께 넘긴다. */
+  pageGeometry?: ReportPageGeometry;
 };
 
 const EMPTY_PAGE_KEYS: readonly string[] = [];
@@ -501,8 +506,10 @@ function ElementActionBar({
   );
 }
 
-function DecorationTransformFrame({ label, box, bounds, onDragStart, onDragMove, onDragEnd, onResizeStart, onResizeMove, onResizeEnd, onKeyDown, actions, onDelete, onContextMenu }: {
+function DecorationTransformFrame({ label, box, bounds, onDragStart, onDragMove, onDragEnd, onResizeStart, onResizeMove, onResizeEnd, onKeyDown, actions, onDelete, onContextMenu, resizable = true }: {
   label: string;
+  /** false면 모서리 핸들을 그리지 않는다(크기가 틀 기하로 정해지는 새 장 배치의 방위표·축척). */
+  resizable?: boolean;
   box: DecorationBox;
   bounds: { w: number; h: number };
   onDragStart: (event: ReactPointerEvent<HTMLElement>) => void;
@@ -521,11 +528,11 @@ function DecorationTransformFrame({ label, box, bounds, onDragStart, onDragMove,
   const actionBar = placeActionBar({ x: box.x0, y: box.y0, w: box.x1 - box.x0, h: box.y1 - box.y0 }, bounds);
   return <div className={styles.decorationSelectionFrame ?? styles.panelSelectionFrame} data-decoration-frame={label} style={{ left: box.x0, top: box.y0, width: Math.max(1, box.x1 - box.x0), height: Math.max(1, box.y1 - box.y0) }} tabIndex={0} role="group" aria-label={`${label} 선택됨`} onPointerDown={(event) => { if ((event.target as HTMLElement).closest("button")) return; onDragStart(event); }} onPointerMove={onDragMove} onPointerUp={onDragEnd} onPointerCancel={onDragEnd} onKeyDown={onKeyDown} onContextMenu={(event) => { if ((event.target as HTMLElement).closest("button")) return; event.preventDefault(); event.stopPropagation(); onContextMenu?.(event); }}>
     <ElementActionBar elementLabel={label} left={actionBar.left - box.x0} top={actionBar.top - box.y0} actions={actions} onDelete={onDelete} />
-    {directions.map((direction) => <button key={direction} type="button" tabIndex={-1} className={styles.panelHandle + " " + styles["panelHandle" + direction.toUpperCase() as keyof typeof styles]} data-decoration-handle={direction} aria-label={`${label} ${direction} 모서리 크기 조절`} title={`${label} ${direction} 크기 조절`} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); if (!isResizeAnchorHit(direction, event)) { onDragStart(event); return; } onResizeStart(direction, event); }} onPointerMove={onResizeMove} onPointerUp={onResizeEnd} onPointerCancel={onResizeEnd}><span aria-hidden="true" /></button>)}
+    {(resizable ? directions : []).map((direction) => <button key={direction} type="button" tabIndex={-1} className={styles.panelHandle + " " + styles["panelHandle" + direction.toUpperCase() as keyof typeof styles]} data-decoration-handle={direction} aria-label={`${label} ${direction} 모서리 크기 조절`} title={`${label} ${direction} 크기 조절`} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); if (!isResizeAnchorHit(direction, event)) { onDragStart(event); return; } onResizeStart(direction, event); }} onPointerMove={onResizeMove} onPointerUp={onResizeEnd} onPointerCancel={onResizeEnd}><span aria-hidden="true" /></button>)}
   </div>;
 }
 
-function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, interactive, pickable = false, selectedElementKey = null, selectedElementLabelVisible, selectedLabelKey = null, selectedPanelKey = null, onMapElementSelect, onMapLabelSelect, onLabelBoxChange, onLabelBoxReset, onDeleteElement, onHideLabel, onShowLabel, selectedDecorationKey = null, onDecorationSelect, onDecorationDelete, onMapHoverLegend, panelInteraction, mapEditEntry = false, onMapMoveActive, thumbnail = false, onPatch, onDirectPatch, hoverLegend, terrainSection, terrainLayout, calloutLegend, calloutTop, calloutLeftBottom, northAvoid: northAvoidProp, scale = true, label, format = "wide", frame, panelBasis = "page", reportFrame, preserveShortCalloutLabels = false, fontHighlight, onFontContextMenu, contextCell, fill, callout }: MapLayerProps) {
+function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, interactive, pickable = false, selectedElementKey = null, selectedElementLabelVisible, selectedLabelKey = null, selectedPanelKey = null, onMapElementSelect, onMapLabelSelect, onLabelBoxChange, onLabelBoxReset, onDeleteElement, onHideLabel, onShowLabel, selectedDecorationKey = null, onDecorationSelect, onDecorationDelete, onMapHoverLegend, panelInteraction, mapEditEntry = false, onMapMoveActive, thumbnail = false, onPatch, onDirectPatch, hoverLegend, terrainSection, terrainLayout, calloutLegend, calloutTop, calloutLeftBottom, northAvoid: northAvoidProp, scale = true, label, format = "wide", frame, panelBasis = "page", reportFrame, preserveShortCalloutLabels = false, fontHighlight, onFontContextMenu, contextCell, fill, callout, pageGeometry }: MapLayerProps) {
   const styles = useSurfaceStyles();
   const selectSurface = useContext(SurfaceSelectContext);
   const geometry = slideGeometry(format);
@@ -570,19 +577,26 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
   }, [selectedDecorationKey]);
   const mapFill = terrainLayout?.mapFill ?? fill ?? 0.8;
   const mapSiteY = terrainLayout?.mapSiteY ?? 0.5;
-  const rightInset = panels.summary
-    ? Math.max(0, width - panels.summary.x * unit + geometry.edge * unit * 0.5)
-    : geometry.edge * unit;
-  const bottomInset = unit * (geometry.stripH + (calloutLegend ? calloutLegend.h + 0.18 : 0));
-  const layoutUnit = panelBasis === "frame" && frame
-    ? mapLayoutUnitForFrame(height)
-    : 1.5 * (unit / (960 / geometry.w));
+  // 새 장 배치: 지도 틀은 각주 띠 위에서 끝나고 오른쪽 위·아래 모서리에 부속이 놓인다. 콜아웃 열은 틀 오른쪽 끝까지 쓴다.
+  const geoBox = (r: Rect) => ({ x0: r.x * unit, y0: r.y * unit, x1: (r.x + r.w) * unit, y1: (r.y + r.h) * unit });
+  const rightInset = pageGeometry
+    ? 0
+    : panels.summary
+      ? Math.max(0, width - panels.summary.x * unit + geometry.edge * unit * 0.5)
+      : geometry.edge * unit;
+  const bottomInset = pageGeometry ? unit * (calloutLegend ? calloutLegend.h + 0.18 : 0) : unit * (geometry.stripH + (calloutLegend ? calloutLegend.h + 0.18 : 0));
+  const layoutUnit = pageGeometry
+    ? pageGeometry.unit * (unit / pageGeometry.scenePxPerInch)
+    : panelBasis === "frame" && frame
+      ? mapLayoutUnitForFrame(height)
+      : 1.5 * (unit / (960 / geometry.w));
   const showNorth = reportFrame?.decorations.north ?? false;
   // 조판 칸(frame 기준)은 호출자가 방위표 자리를 주지 않으므로 칸 지도가 그리는 기본 방위표 상자를 피한다(위치도·바탕 라벨).
   const northAvoid = northAvoidProp ?? (panelBasis === "frame" && showNorth ? northArrowBox(width, height, rightInset, undefined, layoutUnit) : null);
   const showScale = reportFrame?.decorations.scaleBar ?? scale;
-  const savedNorthBox = panelRectInMap(style.panels?.north, format, unit, frame, panelBasis, width, height);
-  const savedScaleBox = panelRectInMap(style.panels?.scaleBar, format, unit, frame, panelBasis, width, height);
+  // 새 장 배치의 방위표·축척은 기하가 저장 자리(틀 안·겹침 없음)까지 판정한 사각형이다.
+  const savedNorthBox = pageGeometry ? geoBox(pageGeometry.north) : panelRectInMap(style.panels?.north, format, unit, frame, panelBasis, width, height);
+  const savedScaleBox = pageGeometry ? geoBox(pageGeometry.scaleBar) : panelRectInMap(style.panels?.scaleBar, format, unit, frame, panelBasis, width, height);
   const savedLocatorBox = panelRectInMap(style.panels?.locator, format, unit, frame, panelBasis, width, height);
   const displayBasemap: BasemapChoice = reportFrame ? frameBasemap(reportFrame, model) : basemap;
   const baseViewport = useMemo(() => slideViewport(model, undefined, { width, height, siteX, siteY: mapSiteY, fill: mapFill }), [height, mapFill, mapSiteY, model, siteX, width]);
@@ -592,18 +606,21 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
   const avoidWithoutLocator = useMemo(() => {
     const frameOffsetX = frame?.x ? frame.x * unit : 0;
     const frameOffsetY = frame?.y ? frame.y * unit : 0;
-    const reserved = slideReserved(unit, {
-      info: panels.summary !== null,
-      titleRect: panels.title,
-      infoRect: panels.summary,
-      legend: panels.legend,
-      calloutLegend,
-      terrainSection: terrainLayout?.rect,
-      format,
-    }).map((box) => ({ x0: box.x0 - frameOffsetX, y0: box.y0 - frameOffsetY, x1: box.x1 - frameOffsetX, y1: box.y1 - frameOffsetY }));
+    const reserved = (pageGeometry
+      ? [...reportMapAvoid(pageGeometry, unit), ...(calloutLegend ? [geoBox(calloutLegend)] : [])]
+      : slideReserved(unit, {
+          info: panels.summary !== null,
+          titleRect: panels.title,
+          infoRect: panels.summary,
+          legend: panels.legend,
+          calloutLegend,
+          terrainSection: terrainLayout?.rect,
+          format,
+        })
+    ).map((box) => ({ x0: box.x0 - frameOffsetX, y0: box.y0 - frameOffsetY, x1: box.x1 - frameOffsetX, y1: box.y1 - frameOffsetY }));
     const scaleAvoid = scaleBarBox(width, height, metersPerPixel(viewport.center[1], viewport.zoom), bottomInset, rightInset, false, undefined, layoutUnit);
     return [...reserved, ...(showScale && !savedScaleBox ? [scaleAvoid] : []), ...(showNorth && !savedNorthBox && northAvoid ? [northAvoid] : [])];
-  }, [bottomInset, calloutLegend, format, frame?.x, frame?.y, height, layoutUnit, northAvoid, panels.legend, panels.summary, panels.title, rightInset, savedNorthBox, savedScaleBox, showNorth, showScale, terrainLayout?.rect, unit, viewport, width]);
+  }, [bottomInset, calloutLegend, format, frame?.x, frame?.y, height, layoutUnit, northAvoid, pageGeometry, panels.legend, panels.summary, panels.title, rightInset, savedNorthBox, savedScaleBox, showNorth, showScale, terrainLayout?.rect, unit, viewport, width]);
   // 위치도 자리는 위치도 없는 avoid(+옮긴 방위표)로 먼저 정하고, 바탕 라벨·설명선이 그 자리를 피하도록 avoid에 더한다.
   const locator = reportFrame?.decorations.locator && model.radiusM > 0 ? (savedLocatorBox ?? locatorBox(width, height, unit, [
     ...avoidWithoutLocator,
@@ -984,6 +1001,7 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
     const stepY = height * 0.01;
     let next: DecorationBox = current;
     if (event.shiftKey) {
+      if (pageGeometry && selectedDecorationKey !== "locator") return; // 크기는 틀 기하가 정한다(핸들과 같은 규칙)
       const ratio = Math.max(0.1, (current.x1 - current.x0) / Math.max(1, current.y1 - current.y0));
       const delta = event.key === "ArrowRight" || event.key === "ArrowDown" ? Math.max(stepX, stepY) : -Math.max(stepX, stepY);
       const nextW = Math.max(32, current.x1 - current.x0 + delta);
@@ -1017,8 +1035,9 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
       })
     : null;
   const decorationLabel = selectedDecorationKey === "north" ? "방위표" : selectedDecorationKey === "scaleBar" ? "축척 막대" : "위치도";
+  // 새 장 배치의 방위표·축척 크기는 틀 기하가 정하므로(저장은 위치만) 그 둘에는 크기 핸들을 두지 않는다. 위치도는 그대로다.
   const decorationTransformFrame = pickable && selectedDecorationKey && selectedDecorationBox
-    ? <DecorationTransformFrame label={decorationLabel} box={selectedDecorationBox} bounds={{ w: width, h: height }} onDragStart={startDecorationDrag} onDragMove={onDecorationMove} onDragEnd={onDecorationEnd} onResizeStart={startDecorationResize} onResizeMove={onDecorationResizeMove} onResizeEnd={onDecorationResizeEnd} onKeyDown={onDecorationKeyDown} actions={styleRef.current.panels?.[selectedDecorationKey] ? [{ key: "reset", label: "위치 초기화", onClick: () => resetDecoration(selectedDecorationKey) }] : []} onDelete={() => onDecorationDelete?.(selectedDecorationKey)} onContextMenu={(event) => onFontContextMenu?.({ kind: "decoration", key: selectedDecorationKey, ...(contextCell === undefined ? {} : { cell: contextCell }) }, event.clientX, event.clientY, event.currentTarget)} />
+    ? <DecorationTransformFrame resizable={!pageGeometry || selectedDecorationKey === "locator"} label={decorationLabel} box={selectedDecorationBox} bounds={{ w: width, h: height }} onDragStart={startDecorationDrag} onDragMove={onDecorationMove} onDragEnd={onDecorationEnd} onResizeStart={startDecorationResize} onResizeMove={onDecorationResizeMove} onResizeEnd={onDecorationResizeEnd} onKeyDown={onDecorationKeyDown} actions={styleRef.current.panels?.[selectedDecorationKey] ? [{ key: "reset", label: "위치 초기화", onClick: () => resetDecoration(selectedDecorationKey) }] : []} onDelete={() => onDecorationDelete?.(selectedDecorationKey)} onContextMenu={(event) => onFontContextMenu?.({ kind: "decoration", key: selectedDecorationKey, ...(contextCell === undefined ? {} : { cell: contextCell }) }, event.clientX, event.clientY, event.currentTarget)} />
     : null;
   const decorationGuideLayer = decorationTransformFrame && (decorationSnapGuides.x.length > 0 || decorationSnapGuides.y.length > 0)
     ? <div className={styles.decorationSnapGuides ?? styles.snapGuides} aria-hidden="true">
@@ -1148,12 +1167,15 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
   </>;
 }
 
-function SlideFooter({ slide, basemap, rect: rectProp, unit, fontHighlight, onFontContextMenu, interactive = false, hidden = false, selected = false, onSelect, onDelete, interaction }: { slide: PlannedSlide; basemap?: BasemapChoice; rect?: Rect; unit: number; fontHighlight?: FontTargetKey | null; onFontContextMenu?: SurfaceContextMenuHandler; interactive?: boolean; hidden?: boolean; selected?: boolean; onSelect?: (selection: SurfaceSelection) => void; onDelete?: () => void; interaction?: PanelInteraction }) {
+function SlideFooter({ slide, basemap, rect: rectProp, unit, fontHighlight, onFontContextMenu, interactive = false, hidden = false, selected = false, onSelect, onDelete, interaction, note }: { slide: PlannedSlide; basemap?: BasemapChoice; rect?: Rect; unit: number; fontHighlight?: FontTargetKey | null; onFontContextMenu?: SurfaceContextMenuHandler; interactive?: boolean; hidden?: boolean; selected?: boolean; onSelect?: (selection: SurfaceSelection) => void; onDelete?: () => void; interaction?: PanelInteraction; /** 새 장 배치의 각주 띠: 글·크기는 장 계산(`footnoteText`)이 정하고 띠 자리는 기하(footer)다. */ note?: { text: string; pt: number } }) {
   const styles = useSurfaceStyles();
   const format = (slide.format ?? "wide") as SlideFormat;
   const rect = rectProp ?? slideLayout(format).strip;
   const actionBar = actionBarOffsetForRect(rect, unit, { w: slideSize(format).w * unit, h: slideSize(format).h * unit });
-  const footer = fitFooterText(slide.footer, slide.kind === "sheet" || !!slide.map, slideSize(format).w - slideGeometry(format).edge - 1.7, fontSizeForStyle(slide.style, "source"), footerBasemaps(slide, basemap));
+  const footer = note
+    ? { text: note.text, fontSize: note.pt }
+    : fitFooterText(slide.footer, slide.kind === "sheet" || !!slide.map, slideSize(format).w - slideGeometry(format).edge - 1.7, fontSizeForStyle(slide.style, "source"), footerBasemaps(slide, basemap));
+  const noteStyle: CSSProperties | undefined = note ? { padding: `0 ${0.25 * unit}px`, gap: 0.2 * unit, color: "#80858e", background: "#f2f2ef", borderTop: "1px solid rgba(21, 23, 28, 0.08)" } : undefined;
   const longPressRef = useRef<{ x: number; y: number; timer: number } | null>(null);
   const clearLongPress = () => {
     if (longPressRef.current) window.clearTimeout(longPressRef.current.timer);
@@ -1178,7 +1200,7 @@ function SlideFooter({ slide, basemap, rect: rectProp, unit, fontHighlight, onFo
     longPressRef.current = { x, y, timer };
   };
   return (
-    <div className={styles.slideFooter} style={{ ...rectStyle(rect, unit), right: "auto", bottom: "auto" }} {...interaction} data-source-element="true" data-source-selected={selected ? "true" : undefined} data-font-highlight={fontHighlight === "source" ? "true" : undefined} tabIndex={interactive ? 0 : undefined} onClick={() => interactive && onSelect?.({ kind: "element", key: "source" })} onContextMenu={onFontContextMenu ? openContext : undefined} onKeyDown={interactive && onFontContextMenu ? (event) => {
+    <div className={styles.slideFooter} data-part="footer" style={{ ...rectStyle(rect, unit), right: "auto", bottom: "auto", ...noteStyle }} {...interaction} data-source-element="true" data-source-selected={selected ? "true" : undefined} data-font-highlight={fontHighlight === "source" ? "true" : undefined} tabIndex={interactive ? 0 : undefined} onClick={() => interactive && onSelect?.({ kind: "element", key: "source" })} onContextMenu={onFontContextMenu ? openContext : undefined} onKeyDown={interactive && onFontContextMenu ? (event) => {
       if (event.key !== "ContextMenu" && !(event.key === "F10" && event.shiftKey)) return;
       event.preventDefault();
       const rect = event.currentTarget.getBoundingClientRect();
@@ -1188,7 +1210,7 @@ function SlideFooter({ slide, basemap, rect: rectProp, unit, fontHighlight, onFo
       if (pending && Math.hypot(event.clientX - pending.x, event.clientY - pending.y) > 8) clearLongPress();
     })} onPointerUp={interaction?.onPointerUp ?? clearLongPress} onPointerCancel={interaction?.onPointerCancel ?? clearLongPress}>
       {!hidden && <span className={styles.slideFooterText} style={fontStyle(footer.fontSize, unit)}>{footer.text}</span>}
-      <span className={styles.slideFooterPage}>{slide.no} / {slide.total}</span>
+      <span className={styles.slideFooterPage} style={note ? { ...fontStyle(8.25, unit), color: "#5b616b" } : undefined}>{slide.no} / {slide.total}</span>
       {selected && interactive && !interaction && <ElementActionBar elementLabel="출처 줄" left={actionBar.left} top={actionBar.top} onDelete={onDelete} />}
     </div>
   );
@@ -1215,17 +1237,24 @@ function TitlePanel({ slide, rect, unit, interaction, onText }: { slide: Extract
   return <ReportTitlePanel color={slide.view.color} title={slide.page?.titleOverride ?? slide.view.title} kind={kind} rect={rect} unit={unit} style={slide.style} interaction={interaction} />;
 }
 
-function SummaryPanel({ slide, rect, unit, terrainSectionShown = false, interaction, onText, charts = null, showNotes = false }: { slide: Extract<PlannedSlide, { kind: "tile" }>; rect: Rect; unit: number; terrainSectionShown?: boolean; interaction?: PanelInteraction; onText?: () => void; charts?: AnalysisCharts | null; showNotes?: boolean }) {
+/** 새 장 배치의 제목 칩(spec §3-1): 색 점 + 제목 + 종류 칩. 크기는 기하(title)가 정한다. */
+function TitleChip({ frame, color, rect, unit, interaction }: { frame: ReportPageFrame; color: string; rect: Rect; unit: number; interaction?: PanelInteraction }) {
+  const styles = useSurfaceStyles();
+  const { text, kind, pt, kindPt } = frame.title;
+  return (
+    <div className={styles.kfTitle} data-part="title-chip" style={rectStyle(rect, unit)} {...interaction}>
+      <span className={styles.titleDot} style={{ background: color, width: 0.125 * unit, height: 0.125 * unit }} aria-hidden="true" />
+      <h3 className={styles.slideTitle} style={fontStyle(pt, unit, { fontWeight: 900, whiteSpace: "nowrap" })}>{text}</h3>
+      {kind && <span className={styles.kfKind} style={fontStyle(kindPt, unit)}>{kind}</span>}
+    </div>
+  );
+}
+
+function SummaryPanel({ slide, rect, unit, terrainSectionShown = false, interaction, onText }: { slide: Extract<PlannedSlide, { kind: "tile" }>; rect: Rect; unit: number; terrainSectionShown?: boolean; interaction?: PanelInteraction; onText?: () => void }) {
   const styles = useSurfaceStyles();
   const view = slide.view;
   const summaryPt = fontSizeForStyle(slide.style, "summary");
   const summaryScale = summaryPt / DEFAULT_REPORT_FONT_SIZES.summary;
-  // 「지도 + 그래프」: 그래프 자료가 있을 때만. 표 줄·각주는 그리지 않고(각주는 주석 칩), 칩이 바깥으로 열리도록 판이 넘침을 숨기지 않는다.
-  if (slide.page?.layout === "map-charts" && charts) {
-    return <div className={styles.slidePanel + " " + styles.summaryPanel} data-report-layout="map-charts" style={{ ...rectStyle(rect, unit), overflow: "visible" }} {...interaction}>
-      <AnalysisColumn styles={styles} charts={charts} view={view} sentence={slide.page?.summaryOverride ?? view.sentence} rect={rect} unit={unit} summaryPt={summaryPt} showNotes={showNotes} />
-    </div>;
-  }
   const innerW = Math.max(0.2, rect.w - 0.44);
   const children: React.ReactNode[] = [];
   if (view.headline) {
@@ -1270,10 +1299,10 @@ function SummaryPanel({ slide, rect, unit, terrainSectionShown = false, interact
   </div>;
 }
 
-function LegendPanel({ slide, rect, unit, format = (slide.format ?? "wide") as SlideFormat, hoverLabel, onLegendHover, onLegendPin, onLegendMenu, interaction, legendOptions }: { slide: Extract<PlannedSlide, { kind: "tile" }>; rect: Rect; unit: number; format?: SlideFormat; hoverLabel?: string | null; onLegendHover?: (label: string | null) => void; onLegendPin?: (label: string) => void; onLegendMenu?: (x: number, y: number, opener: HTMLElement) => void; interaction?: PanelInteraction; legendOptions?: MapFrameState["legend"] }) {
+function LegendPanel({ slide, rect, unit, format = (slide.format ?? "wide") as SlideFormat, hoverLabel, onLegendHover, onLegendPin, onLegendMenu, interaction, legendOptions, fit }: { slide: Extract<PlannedSlide, { kind: "tile" }>; rect: Rect; unit: number; format?: SlideFormat; hoverLabel?: string | null; onLegendHover?: (label: string | null) => void; onLegendPin?: (label: string) => void; onLegendMenu?: (x: number, y: number, opener: HTMLElement) => void; interaction?: PanelInteraction; legendOptions?: MapFrameState["legend"]; /** 새 장 배치: 내용 크기 판(항목 6개 이상 2열). 글자·행·여백이 모두 이 값이다. */ fit?: LegendFit }) {
   const styles = useSurfaceStyles();
   if (!slide.map) return null;
-  const legend = slideLegend(slide.map, !slide.muted, undefined, true, format, legendOptions);
+  const legend = fit ?? slideLegend(slide.map, !slide.muted, undefined, true, format, legendOptions);
   const focus = legendLabelOf(slide.map, slide.style.legendFocus);
   const legendKeys = new Map(legendItemsOf(slide.map).map((entry) => [entry.label, entry.key]));
   const activeLabel = hoverLabel ?? focus;
@@ -1287,14 +1316,28 @@ function LegendPanel({ slide, rect, unit, format = (slide.format ?? "wide") as S
     "--legend-gap": String(legendGeometry.gap),
     "--legend-row": String(SLIDE_LEGEND.row * legendScale),
     "--legend-note": String(SLIDE_LEGEND.note * legendScale),
+    ...(fit ? {
+      "--legend-pad": "0",
+      "--legend-icon-column": String(fit.iconW),
+      "--legend-gap": String(fit.iconGap),
+      "--legend-row": String(fit.rowH),
+      "--legend-note": String(fit.noteH),
+      padding: `${fit.padding.top * unit}px ${fit.padding.right * unit}px ${fit.padding.bottom * unit}px ${fit.padding.left * unit}px`,
+      gridTemplateColumns: fit.colWidths.map((w) => `${w * unit}px`).join(" "),
+      columnGap: fit.colGap * unit,
+      background: "rgba(255, 255, 255, 0.93)",
+      borderColor: "rgba(21, 23, 28, 0.12)",
+      borderRadius: 0.104 * unit,
+      boxShadow: "0 1px 2px rgba(21, 23, 28, 0.06), 0 3px 10px rgba(21, 23, 28, 0.06)",
+    } : {}),
   } as CSSProperties;
   return (
-    <div className={styles.slidePanel + " " + styles.legendPanel} data-report-panel="legend" style={legendPanelStyle} {...interaction}>
+    <div className={styles.slidePanel + " " + styles.legendPanel} data-report-panel="legend" data-part="legend" style={legendPanelStyle} {...interaction}>
       {legend.items.map((item, index) => {
         const focused = !item.site && focus !== null && item.label === focus;
         const hovered = !item.site && hoverLabel !== null && hoverLabel !== undefined && item.label === hoverLabel;
         const dimmed = activeLabel !== null && activeLabel !== undefined && !item.site && !focused && !hovered;
-        const pt = fitBlock([item.label], { w: Math.max(0.2, legendGeometry.labelW), h: SLIDE_LEGEND.row * legendScale }, legendPt, 7);
+        const pt = fit ? fit.labelPt : fitBlock([item.label], { w: Math.max(0.2, legendGeometry.labelW), h: SLIDE_LEGEND.row * legendScale }, legendPt, 7);
         const key = legendKeys.get(item.label) ?? item.label;
         const instruction = focused ? "강조 해제" : "눌러서 강조";
         const rowClass = styles.legendRow + (focused || hovered ? " " + styles.legendRowActive : "");
@@ -1323,8 +1366,8 @@ function LegendPanel({ slide, rect, unit, format = (slide.format ?? "wide") as S
         );
       })}
       {legend.notes.map((note, index) => {
-        const pt = fitBlock([note], { w: Math.max(0.2, legendGeometry.noteW), h: SLIDE_LEGEND.note * legendScale }, 8.5 * legendScale, 7);
-        return <div className={styles.legendNote} style={fontStyle(pt, unit)} key={"note-" + index}>{note}</div>;
+        const pt = fit ? fit.notePt : fitBlock([note], { w: Math.max(0.2, legendGeometry.noteW), h: SLIDE_LEGEND.note * legendScale }, 8.5 * legendScale, 7);
+        return <div className={styles.legendNote} style={fontStyle(pt, unit, fit ? { gridColumn: "1 / -1" } : {})} key={"note-" + index}>{note}</div>;
       })}
       {onLegendMenu && <button type="button" className={styles.legendMenuButton} aria-label="범례 메뉴" title="범례 메뉴" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); const rect = event.currentTarget.getBoundingClientRect(); onLegendMenu(rect.right - 8, rect.bottom + 8, event.currentTarget); }}>⋯</button>}
     </div>
@@ -2320,7 +2363,7 @@ function CalloutSelectionLayer({ slide, unit, format, legendRect, selectedCardKe
   </div>;
 }
 
-function TileSurface({ slide, unit, basemap, panels, interactive, pickable = false, selection, mapEditEntry = false, onMapMoveActive, thumbnail = false, onPatch, onDirectPatch, panelInteraction, staticSurface = false, onText, fontHighlight, onFontContextMenu, onMapElementSelect, onMapLabelSelect, onLabelBoxChange, onLabelBoxReset, onDeleteElement, onHideLabel, onShowLabel, onPanelDelete, onDecorationSelect, onDecorationDelete }: { slide: Extract<PlannedSlide, { kind: "tile" }>; unit: number; basemap: BasemapChoice; panels: { title: Rect; summary: Rect | null; legend: Rect | null; source: Rect }; interactive: boolean; thumbnail?: boolean; pickable?: boolean; selection?: SurfaceSelection; mapEditEntry?: boolean; onMapMoveActive?: (active: boolean) => void; onPatch: (patch: PreviewStylePatch) => void; onDirectPatch?: (patch: PreviewStylePatch) => void; panelInteraction?: (key: PanelKey) => PanelInteraction; staticSurface?: boolean; onText?: (kind: "title" | "summary") => void; fontHighlight?: FontTargetKey | null; onFontContextMenu?: SurfaceContextMenuHandler; onMapElementSelect?: (feature: MapFigureElementPick) => void; onMapLabelSelect?: (feature: MapFigureElementPick) => void; onLabelBoxChange?: (key: string, box: MapLabelBox) => void; onLabelBoxReset?: (key: string) => void; onDeleteElement?: (key: string) => void; onHideLabel?: (key: string) => void; onShowLabel?: (key: string) => void; onPanelDelete?: (key: PanelKey) => void; onDecorationSelect?: (key: SurfaceDecorationKey) => void; onDecorationDelete?: (key: SurfaceDecorationKey) => void }) {
+function TileSurface({ slide, frame: pageFrame = null, unit, basemap, panels, interactive, pickable = false, selection, mapEditEntry = false, onMapMoveActive, thumbnail = false, onPatch, onDirectPatch, panelInteraction, staticSurface = false, onText, fontHighlight, onFontContextMenu, onMapElementSelect, onMapLabelSelect, onLabelBoxChange, onLabelBoxReset, onDeleteElement, onHideLabel, onShowLabel, onPanelDelete, onDecorationSelect, onDecorationDelete }: { slide: Extract<PlannedSlide, { kind: "tile" }>; /** 새 장 배치(지도 + 숫자·지도 + 그래프)의 계산 묶음. 있으면 모든 사각형이 이 기하에서 온다. */ frame?: ReportPageFrame | null; unit: number; basemap: BasemapChoice; panels: { title: Rect; summary: Rect | null; legend: Rect | null; source: Rect }; interactive: boolean; thumbnail?: boolean; pickable?: boolean; selection?: SurfaceSelection; mapEditEntry?: boolean; onMapMoveActive?: (active: boolean) => void; onPatch: (patch: PreviewStylePatch) => void; onDirectPatch?: (patch: PreviewStylePatch) => void; panelInteraction?: (key: PanelKey) => PanelInteraction; staticSurface?: boolean; onText?: (kind: "title" | "summary") => void; fontHighlight?: FontTargetKey | null; onFontContextMenu?: SurfaceContextMenuHandler; onMapElementSelect?: (feature: MapFigureElementPick) => void; onMapLabelSelect?: (feature: MapFigureElementPick) => void; onLabelBoxChange?: (key: string, box: MapLabelBox) => void; onLabelBoxReset?: (key: string) => void; onDeleteElement?: (key: string) => void; onHideLabel?: (key: string) => void; onShowLabel?: (key: string) => void; onPanelDelete?: (key: PanelKey) => void; onDecorationSelect?: (key: SurfaceDecorationKey) => void; onDecorationDelete?: (key: SurfaceDecorationKey) => void }) {
   const format = (slide.format ?? "wide") as SlideFormat;
   const styles = useSurfaceStyles();
   const selectSurface = useContext(SurfaceSelectContext);
@@ -2329,14 +2372,15 @@ function TileSurface({ slide, unit, basemap, panels, interactive, pickable = fal
   const layoutName = slide.page?.layout;
   const hiddenLayers = reportFrame?.hiddenLayers;
   const displayModel = useMemo(() => (model && hiddenLayers ? modelWithHiddenLayers(model, hiddenLayers) : model), [model, hiddenLayers]);
-  // 「지도 + 그래프」 그래프 자료는 이 장이 실제로 그리는 지도(레이어 고르기 + 끈 레이어 반영)로 센다.
-  const analysis = useMemo(() => (layoutName === "map-charts" && displayModel ? analysisCharts(displayModel) : null), [layoutName, displayModel]);
   const chart = !model && !slide.mass && !slide.rose && slide.body.face !== "single";
   const terrainShown = slide.view.code === "D17" && !!slide.view.terrainSections && !!slide.terrainSection;
   const terrainLayout = terrainShown ? terrainSectionLayout(panels, slideLayout(format), format) : null;
   const geometry = slideGeometry(format);
   const mapLayout = slide.page?.layout === "numbers-first" || slide.page?.layout === "side-by-side" ? layoutRects(slide.page.layout, format).map : null;
-  const mapFrame = mapLayout ? { x: mapLayout.x * geometry.w, y: mapLayout.y * geometry.h, w: mapLayout.w * geometry.w, h: mapLayout.h * geometry.h } : null;
+  // 새 장 배치에서 지도를 그리는 장은 지도 틀이 기하의 map이다(②에서 카드를 지우면 전체 폭). 그림 장은 아직 쪽 전체를 쓴다(Task 8).
+  const geo = pageFrame?.geometry ?? null;
+  const frameMap = geo && model ? geo.map : null;
+  const mapFrame = frameMap ?? (mapLayout ? { x: mapLayout.x * geometry.w, y: mapLayout.y * geometry.h, w: mapLayout.w * geometry.w, h: mapLayout.h * geometry.h } : null);
   const width = Math.max(1, Math.round((mapFrame?.w ?? geometry.w) * unit));
   const height = Math.max(1, Math.round((mapFrame?.h ?? geometry.h) * unit));
   // 설명선(A05·A06) 점·카드는 16:9 전체 지도 장 기준으로만 그린다(PPT 렌더러와 같은 전제)
@@ -2345,9 +2389,10 @@ function TileSurface({ slide, unit, basemap, panels, interactive, pickable = fal
   const calloutDetailFrame = callout && callout.callout!.page > 0 ? slideCalloutFrame(4) : null;
   const mapFill = terrainLayout?.mapFill ?? calloutDetailFrame?.fill ?? (callout ? SLIDE_OVERVIEW_FILL : 0.8);
   const mapSiteY = terrainLayout?.mapSiteY ?? 0.5;
-  const mapSiteX = calloutDetailFrame?.siteX ?? slideSiteX(slide.style, panels.summary !== null, format);
+  // 새 장 배치의 대지는 지도 틀의 가운데다(지도 틀이 이미 카드·열을 뺀 영역).
+  const mapSiteX = frameMap ? 0.5 : calloutDetailFrame?.siteX ?? slideSiteX(slide.style, panels.summary !== null, format);
   const scaleOptions = reportFrame && model
-    ? mapFrameScaleOptions(format, layoutName ?? "map-summary", { width, height, siteX: mapSiteX, siteY: mapSiteY, fill: mapFill })
+    ? mapFrameScaleOptions(format, frameMap ? pageFrame!.layout : layoutName ?? "map-summary", { width, height, siteX: mapSiteX, siteY: mapSiteY, fill: mapFill }, !!pageFrame && pageFrame.layout === "map-charts" && !geo!.column)
     : null;
   const mapStyle: PageStyle = reportFrame && model ? {
     ...slide.style,
@@ -2357,14 +2402,20 @@ function TileSurface({ slide, unit, basemap, panels, interactive, pickable = fal
     hiddenKeys: [...new Set([...(slide.style.hiddenKeys ?? []), ...reportFrame.hiddenLabelKeys])],
   } : slide.style;
   const calloutEntries = slide.callout ? calloutLegendEntries(slide.callout.model, reportFrame?.legend) : [];
-  const calloutAlignment = model ? slideCalloutAvoidance(panels, calloutEntries, slideLayout(format), format, fontSizeForStyle(slide.style, "legend") / DEFAULT_REPORT_FONT_SIZES.legend) : null;
+  // 새 장 배치: 숫자 카드·열은 MapLayer의 avoid(reportMapAvoid)로 따로 넘기므로 여기서는 제목·범례만 본다. 설명선 열은 제목 칩 아래에서 시작하고 카드 띠가 있으면 그 아래로 밀린다.
+  const calloutPanels = geo ? { title: geo.title, summary: null, legend: geo.legend } : panels;
+  const calloutAlignment = model ? slideCalloutAvoidance(calloutPanels, calloutEntries, slideLayout(format), format, fontSizeForStyle(slide.style, "legend") / DEFAULT_REPORT_FONT_SIZES.legend) : null;
   const resolvedCalloutLegend = callout ? panels.legend : calloutAlignment?.calloutLegend;
   const northUnit = 1.5 * (unit / (960 / geometry.w));
   const northRightInset = panels.summary
     ? Math.max(0, width - panels.summary.x * unit + geometry.edge * unit * 0.5)
     : geometry.edge * unit;
   const northCalloutTop = (calloutAlignment?.calloutTop ?? panels.title.y + panels.title.h + geometry.edge * 0.5) * unit;
-  const northAvoid = model ? northArrowBox(width, height, northRightInset, northCalloutTop + NORTH_RADIUS * northUnit, northUnit) : null;
+  const northAvoid = model
+    ? geo
+      ? { x0: geo.north.x * unit, y0: geo.north.y * unit, x1: (geo.north.x + geo.north.w) * unit, y1: (geo.north.y + geo.north.h) * unit }
+      : northArrowBox(width, height, northRightInset, northCalloutTop + NORTH_RADIUS * northUnit, northUnit)
+    : null;
   const [hoverLegend, setHoverLegend] = useState<string | null>(null);
   const onLegendPin = useCallback((key: string) => {
     if (!model || !onDirectPatch) return;
@@ -2376,13 +2427,23 @@ function TileSurface({ slide, unit, basemap, panels, interactive, pickable = fal
   }, [model, onDirectPatch, slide.style.legendFocus]);
   return (
     <>
-       {displayModel ? <div className={styles.mapLayerHost} data-surface-map={mapFrame ? "true" : undefined} style={mapFrame ? { position: "absolute", left: String(Number((mapLayout!.x * 100).toFixed(2))) + "%", top: String(Number((mapLayout!.y * 100).toFixed(2))) + "%", width: String(Number((mapLayout!.w * 100).toFixed(2))) + "%", height: String(Number((mapLayout!.h * 100).toFixed(2))) + "%" } : undefined}><MapLayer model={displayModel} style={mapStyle} unit={unit} basemap={basemap} panels={panels} siteX={calloutDetailFrame?.siteX ?? slideSiteX(mapStyle, panels.summary !== null, format)} fill={callout ? mapFill : undefined} callout={callout} pinnedKeys={mapStyle.pinnedKeys} interactive={interactive} pickable={pickable} selectedElementKey={selection?.kind === "mapElement" ? selection.key : null} selectedElementLabelVisible={selection?.kind === "mapElement" ? selection.labelVisible : undefined} selectedLabelKey={selection?.kind === "mapLabel" ? selection.key : null} selectedPanelKey={selection?.kind === "panel" ? selection.key : null} selectedDecorationKey={selection?.kind === "decoration" ? selection.key : null} onMapElementSelect={onMapElementSelect} onMapLabelSelect={onMapLabelSelect} onDecorationSelect={onDecorationSelect} onDecorationDelete={onDecorationDelete} onLabelBoxChange={onLabelBoxChange} onLabelBoxReset={onLabelBoxReset} onDeleteElement={onDeleteElement} onHideLabel={onHideLabel} onShowLabel={onShowLabel} onPanelDelete={onPanelDelete} mapEditEntry={mapEditEntry} onMapMoveActive={onMapMoveActive} thumbnail={thumbnail} onPatch={onPatch} onDirectPatch={onDirectPatch} hoverLegend={hoverLegend} onMapHoverLegend={setHoverLegend} terrainSection={slide.view.code === "D17" ? slide.terrainSection ?? "A" : undefined} terrainLayout={terrainLayout} calloutLegend={resolvedCalloutLegend} calloutTop={calloutAlignment ? calloutAlignment.calloutTop * unit : undefined} calloutLeftBottom={calloutAlignment?.calloutLeftBottom ? calloutAlignment.calloutLeftBottom * unit : undefined} northAvoid={northAvoid} scale={!(slide.callout && slide.callout.page > 0)} frame={mapFrame ?? undefined} format={format} label={slide.view.title + " 지도"} reportFrame={reportFrame} preserveShortCalloutLabels={staticSurface && !thumbnail} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} /></div> : (slide.mass || slide.rose) && !thumbnail ? <FigureLayer slide={slide} width={width} height={height} aspect={geometry.h / geometry.w} /> : slide.mass ? <VisualPlaceholder title={slide.view.title} message="3D 매스 미리보기는 내보내기와 같은 페이지 위치로 표시됩니다." unit={unit} /> : slide.rose ?<VisualPlaceholder title={slide.view.title} message="바람장미 도판 미리보기" unit={unit} /> : chart ? <ChartPlaceholder view={slide.view} unit={unit} /> : <VisualPlaceholder title={slide.view.title} message={slide.body.kind === "state" ? slide.body.message : "표시할 지도 결과가 없습니다."} unit={unit} />}
+       {displayModel ? <div className={styles.mapLayerHost} data-surface-map={mapFrame ? "true" : undefined} data-part={frameMap ? "map" : undefined} style={frameMap ? { position: "absolute", left: 0, top: 0, width: frameMap.w * unit, height: frameMap.h * unit } : mapFrame ? { position: "absolute", left: String(Number((mapLayout!.x * 100).toFixed(2))) + "%", top: String(Number((mapLayout!.y * 100).toFixed(2))) + "%", width: String(Number((mapLayout!.w * 100).toFixed(2))) + "%", height: String(Number((mapLayout!.h * 100).toFixed(2))) + "%" } : undefined}><MapLayer model={displayModel} style={mapStyle} unit={unit} basemap={basemap} panels={calloutPanels} pageGeometry={frameMap ? geo! : undefined} siteX={frameMap ? 0.5 : calloutDetailFrame?.siteX ?? slideSiteX(mapStyle, panels.summary !== null, format)} fill={callout ? mapFill : undefined} callout={callout} pinnedKeys={mapStyle.pinnedKeys} interactive={interactive} pickable={pickable} selectedElementKey={selection?.kind === "mapElement" ? selection.key : null} selectedElementLabelVisible={selection?.kind === "mapElement" ? selection.labelVisible : undefined} selectedLabelKey={selection?.kind === "mapLabel" ? selection.key : null} selectedPanelKey={selection?.kind === "panel" ? selection.key : null} selectedDecorationKey={selection?.kind === "decoration" ? selection.key : null} onMapElementSelect={onMapElementSelect} onMapLabelSelect={onMapLabelSelect} onDecorationSelect={onDecorationSelect} onDecorationDelete={onDecorationDelete} onLabelBoxChange={onLabelBoxChange} onLabelBoxReset={onLabelBoxReset} onDeleteElement={onDeleteElement} onHideLabel={onHideLabel} onShowLabel={onShowLabel} onPanelDelete={onPanelDelete} mapEditEntry={mapEditEntry} onMapMoveActive={onMapMoveActive} thumbnail={thumbnail} onPatch={onPatch} onDirectPatch={onDirectPatch} hoverLegend={hoverLegend} onMapHoverLegend={setHoverLegend} terrainSection={slide.view.code === "D17" ? slide.terrainSection ?? "A" : undefined} terrainLayout={terrainLayout} calloutLegend={resolvedCalloutLegend} calloutTop={calloutAlignment ? calloutAlignment.calloutTop * unit : undefined} calloutLeftBottom={calloutAlignment?.calloutLeftBottom ? calloutAlignment.calloutLeftBottom * unit : undefined} northAvoid={northAvoid} scale={!(slide.callout && slide.callout.page > 0)} frame={mapFrame ?? undefined} format={format} label={slide.view.title + " 지도"} reportFrame={reportFrame} preserveShortCalloutLabels={staticSurface && !thumbnail} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} /></div> : (slide.mass || slide.rose) && !thumbnail ? <FigureLayer slide={slide} width={width} height={height} aspect={geometry.h / geometry.w} /> : slide.mass ? <VisualPlaceholder title={slide.view.title} message="3D 매스 미리보기는 내보내기와 같은 페이지 위치로 표시됩니다." unit={unit} /> : slide.rose ?<VisualPlaceholder title={slide.view.title} message="바람장미 도판 미리보기" unit={unit} /> : chart ? <ChartPlaceholder view={slide.view} unit={unit} /> : <VisualPlaceholder title={slide.view.title} message={slide.body.kind === "state" ? slide.body.message : "표시할 지도 결과가 없습니다."} unit={unit} />}
        {terrainShown && <TerrainSectionPreview slide={slide} unit={unit} layout={terrainLayout} />}
       {slide.body.kind === "state" && <div className={styles.slidePanel} style={{ left: unit * 4, top: unit * 2.7, width: unit * 5.1, height: unit * 1.15 }}><div className={styles.slideText + " " + styles.slideTextStrong} style={fontStyle(16, unit)}>{slide.body.message}</div></div>}
-       {!slide.page?.deletedElementKeys?.includes("title") && <div onDoubleClick={() => onText?.("title")}><TitlePanel slide={slide} rect={panels.title} unit={unit} interaction={panelInteraction?.("title")} /></div>}
-       {panels.summary && hasSummaryPanel(slide) && !slide.page?.deletedElementKeys?.includes("summary") && <div onDoubleClick={() => onText?.("summary")}><SummaryPanel slide={slide} rect={terrainLayout?.summary ?? panels.summary} unit={unit} terrainSectionShown={terrainShown} interaction={panelInteraction?.("summary")} charts={analysis} showNotes={!staticSurface && !thumbnail} /></div>}
-       {panels.legend && !callout && <LegendPanel slide={{ ...slide, map: model } as Extract<PlannedSlide, { kind: "tile" }>} rect={panels.legend} unit={unit} format={format} hoverLabel={hoverLegend} onLegendHover={setHoverLegend} onLegendPin={staticSurface || thumbnail ? undefined : onLegendPin} onLegendMenu={staticSurface || thumbnail || !onFontContextMenu ? undefined : (x, y, opener) => onFontContextMenu({ kind: "panel", key: "legend" }, x, y, opener)} interaction={panelInteraction?.("legend")} legendOptions={reportFrame?.legend} />}
-        <SlideFooter slide={slide} basemap={basemap} rect={panels.source} unit={unit} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} interactive={interactive && !thumbnail && !!onFontContextMenu} hidden={slide.page?.deletedElementKeys?.includes("source")} selected={selection?.kind === "element" && selection.key === "source"} onSelect={selectSurface} onDelete={() => onPanelDelete?.("source")} interaction={panelInteraction?.("source")} />
+       {geo && geo.column && frameMap && <div className={styles.kfColumnBand} data-part="column-band" style={{ position: "absolute", left: frameMap.w * unit, top: 0, width: (slideSize(format).w - frameMap.w) * unit, height: frameMap.h * unit }} />}
+       {!slide.page?.deletedElementKeys?.includes("title") && (pageFrame && geo
+         ? <div onDoubleClick={() => onText?.("title")}><TitleChip frame={pageFrame} color={slide.view.color} rect={geo.title} unit={unit} interaction={panelInteraction?.("title")} /></div>
+         : <div onDoubleClick={() => onText?.("title")}><TitlePanel slide={slide} rect={panels.title} unit={unit} interaction={panelInteraction?.("title")} /></div>)}
+       {pageFrame && geo && geo.column && pageFrame.charts && <div onDoubleClick={() => onText?.("summary")}><AnalysisColumn styles={styles} frame={pageFrame} charts={pageFrame.charts} view={slide.view} unit={unit} showNotes={!staticSurface && !thumbnail} interaction={panelInteraction?.("summary")} /></div>}
+       {pageFrame && geo && !geo.column && geo.keyCard && pageFrame.fit && (
+         <div onDoubleClick={() => onText?.("summary")}>
+           <KeyFigureCard styles={styles} view={slide.view} fit={pageFrame.fit} rect={geo.keyCard} unit={unit} interaction={panelInteraction?.("summary")} />
+           {geo.keyNotesChip && !staticSurface && !thumbnail && <NotesChip notes={pageFrame.notes} rect={geo.keyNotesChip} panel={{ x: 0, y: 0, w: 0, h: 0 }} unit={unit} styles={styles} />}
+         </div>
+       )}
+       {!pageFrame && panels.summary && hasSummaryPanel(slide) && !slide.page?.deletedElementKeys?.includes("summary") && <div onDoubleClick={() => onText?.("summary")}><SummaryPanel slide={slide} rect={terrainLayout?.summary ?? panels.summary} unit={unit} terrainSectionShown={terrainShown} interaction={panelInteraction?.("summary")} /></div>}
+       {panels.legend && !callout && <LegendPanel slide={{ ...slide, map: model } as Extract<PlannedSlide, { kind: "tile" }>} rect={panels.legend} unit={unit} format={format} fit={pageFrame?.legend ?? undefined} hoverLabel={hoverLegend} onLegendHover={setHoverLegend} onLegendPin={staticSurface || thumbnail ? undefined : onLegendPin} onLegendMenu={staticSurface || thumbnail || !onFontContextMenu ? undefined : (x, y, opener) => onFontContextMenu({ kind: "panel", key: "legend" }, x, y, opener)} interaction={panelInteraction?.("legend")} legendOptions={reportFrame?.legend} />}
+        <SlideFooter slide={slide} basemap={basemap} rect={panels.source} note={pageFrame?.footer} unit={unit} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} interactive={interactive && !thumbnail && !!onFontContextMenu} hidden={slide.page?.deletedElementKeys?.includes("source")} selected={selection?.kind === "element" && selection.key === "source"} onSelect={selectSurface} onDelete={() => onPanelDelete?.("source")} interaction={panelInteraction?.("source")} />
     </>
   );
 }
@@ -2402,11 +2463,18 @@ type PanelTransformFrameProps = {
   onContextMenu?: (event: React.MouseEvent<HTMLDivElement>) => void;
   actions?: ElementAction[];
   directions?: ResizeDirection[];
+  /** 동작 막대가 덮으면 안 되는 다른 요소(inch). 새 장 배치에서 카드 막대가 제목 칩을 덮지 않게 한다. */
+  avoid?: Rect[];
 };
 
-function PanelTransformFrame({ panelKey, rect, unit, bounds, xGuides, yGuides, onDragStart, onResizeStart, onResizeMove, onResizeEnd, onDelete, onContextMenu, actions = [], directions = ["nw", "n", "ne", "e", "se", "s", "sw", "w"] }: PanelTransformFrameProps) {
+function PanelTransformFrame({ panelKey, rect, unit, bounds, xGuides, yGuides, onDragStart, onResizeStart, onResizeMove, onResizeEnd, onDelete, onContextMenu, actions = [], directions = ["nw", "n", "ne", "e", "se", "s", "sw", "w"], avoid = [] }: PanelTransformFrameProps) {
   const styles = useSurfaceStyles();
-  const actionBar = actionBarOffsetForRect(rect, unit, bounds);
+  // 막대는 다른 요소(avoid)를 비켜 놓되, 비킬 자리가 없으면 선택한 요소 자신을 덮느니 다른 요소 위에 놓는다(제목 칩은 위가 막혀 아래 카드 쪽으로).
+  const anchor = { x: rect.x * unit, y: rect.y * unit, w: rect.w * unit, h: rect.h * unit };
+  const avoidBoxes = avoid.map((r) => ({ x: r.x * unit, y: r.y * unit, w: r.w * unit, h: r.h * unit }));
+  let barAt = placeActionBar(anchor, bounds, avoidBoxes);
+  if (barAt.placement === "inside-top" && avoidBoxes.length > 0) barAt = placeActionBar(anchor, bounds);
+  const actionBar = { left: barAt.left - anchor.x, top: barAt.top - anchor.y };
   return <>
     <div className={styles.snapGuides} aria-hidden="true">
       {xGuides.map((x) => <span className={styles.snapGuideX} style={{ left: x * unit }} key={`x-${x}`} />)}
@@ -2438,7 +2506,8 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
   const frameSize = useContainFrameSize(slotRef, format);
   const unit = frameSize.width > 0 ? frameSize.width / slideSize(format).w : 1;
   const [draftStyle, setDraftStyle] = useState<PreviewStylePatch>({});
-  const [selectedPanel, setSelectedPanel] = useState<PanelKey | null>(null);
+  // 처음 그릴 때부터 선택을 따른다(effect를 기다리지 않으므로 서버 렌더에서도 선택 막대·핸들이 보인다).
+  const [selectedPanel, setSelectedPanel] = useState<PanelKey | null>(() => (selection?.kind === "panel" ? selection.key : selection?.kind === "element" && selection.key === "source" ? "source" : null));
   const [snapGuides, setSnapGuides] = useState<{ x: number[]; y: number[] }>({ x: [], y: [] });
   const panelDrag = useRef<{ pointerId: number; key: PanelKey; x: number; y: number; rect: Rect } | null>(null);
   const panelResize = useRef<{ pointerId: number; key: PanelKey; direction: ResizeDirection; x: number; y: number; rect: Rect } | null>(null);
@@ -2446,6 +2515,13 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
   const displaySlide = Object.keys(draftStyle).length > 0 ? { ...slide, style: { ...slide.style, ...draftStyle } } : slide;
   const mapSelectable = reportPageMapSelectable(displaySlide.page);
   const displayModel = mapForSlide(displaySlide);
+  // 새 장 배치(지도 + 숫자·지도 + 그래프): 모든 사각형·카드 안·각주가 장 기하 계산에서 온다. 그래프 자료는 이 쪽이 그리는 지도(끈 레이어 반영)로 센다.
+  const pageFrame = useMemo(() => {
+    if (displaySlide.kind !== "tile" || !usesReportPageFrame(displaySlide)) return null;
+    const hidden = displaySlide.page?.kind === "tile" ? displaySlide.page.frame.hiddenLayers : undefined;
+    const drawn = displaySlide.map && hidden ? modelWithHiddenLayers(displaySlide.map, hidden) : displaySlide.map;
+    return reportPageFrame(displaySlide, displaySlide.page?.layout === "map-charts" && drawn ? analysisCharts(drawn) : null, basemap);
+  }, [displaySlide, basemap]);
   const mapPickable = editable && mapSelectable && !thumbnail && (!!displayModel || displaySlide.kind === "sheet");
   const hasSummary = hasSummaryPanel(displaySlide);
   const terrainSectionShown = displaySlide.kind === "tile" && displaySlide.view.code === "D17" && !!displaySlide.view.terrainSections && !!displaySlide.terrainSection;
@@ -2468,15 +2544,25 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
   const size = slideSize(format);
   const layout = customLayout ? layoutRects(layoutName, format) : null;
   const toRect = (rect: { x: number; y: number; w: number; h: number } | null) => rect ? { x: rect.x * size.w, y: rect.y * size.h, w: rect.w * size.w, h: rect.h * size.h } : null;
-  const panels = calloutSlide
-    ? { ...legacyPanels, legend: calloutLegendRect }
-    : layout
-      ? { title: toRect(layout.title)!, summary: toRect(layout.summary), legend: reportLegend?.placement === "hidden" ? null : toRect(layout.legend) }
-      : legacyPanels;
+  const panels = pageFrame
+    ? { title: pageFrame.geometry.title, summary: pageFrame.geometry.column?.rect ?? pageFrame.geometry.keyCard, legend: pageFrame.geometry.legend }
+    : calloutSlide
+      ? { ...legacyPanels, legend: calloutLegendRect }
+      : layout
+        ? { title: toRect(layout.title)!, summary: toRect(layout.summary), legend: reportLegend?.placement === "hidden" ? null : toRect(layout.legend) }
+        : legacyPanels;
   const existingPanels = ((displaySlide.style as PageStyle & { panels?: PagePanels }).panels ?? {});
-  const sourceRect = existingPanels.source
-    ? toRect(existingPanels.source)!
-    : slideLayout(format).strip;
+  const sourceRect = pageFrame
+    ? pageFrame.geometry.footer
+    : existingPanels.source
+      ? toRect(existingPanels.source)!
+      : slideLayout(format).strip;
+  // 새 장 배치에서 옮길 수 있는 것은 제목 칩·범례(위치만)·① 숫자 카드(위치와 크기). ②의 열과 각주 띠는 고르고 지우기만 된다(spec §7).
+  const movablePanel = (key: PanelKey): boolean => !pageFrame || (key !== "source" && !(key === "summary" && pageFrame.layout === "map-charts"));
+  const panelHandleDirections = (key: PanelKey): ResizeDirection[] | undefined => {
+    if (pageFrame) return key === "summary" && pageFrame.layout === "map-key" ? undefined : [];
+    return key === "source" ? ["e", "w"] : displaySlide.kind === "tile" && displaySlide.callout && key === "legend" ? [] : undefined;
+  };
   const panelRects: Partial<Record<PanelKey, Rect>> = { title: panels.title, summary: panels.summary ?? undefined, legend: panels.legend ?? undefined, source: sourceRect };
 
   useEffect(() => {
@@ -2581,7 +2667,7 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
   const onPanelMoveStart = (key: PanelKey, event: ReactPointerEvent<HTMLElement>) => {
-    if (!editable || !onDirectPatch || selectedPanel !== key || event.button !== 0) return;
+    if (!editable || !onDirectPatch || selectedPanel !== key || event.button !== 0 || !movablePanel(key)) return;
     const rect = panelRects[key];
     if (!rect) return;
     panelDrag.current = { pointerId: event.pointerId, key, x: event.clientX, y: event.clientY, rect };
@@ -2622,15 +2708,16 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
       setSelectedPanel(null);
       return;
     }
-    if (!onDirectPatch || selectedPanel !== key || !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
+    if (!onDirectPatch || selectedPanel !== key || !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key) || !movablePanel(key)) return;
     const rect = panelRects[key];
     if (!rect) return;
     const stepX = size.w * 0.01;
     const stepY = size.h * 0.01;
+    const canResize = !pageFrame || panelHandleDirections(key) === undefined; // 핸들이 없는 요소는 키보드로도 크기를 바꾸지 않는다
     const moveX = event.shiftKey ? 0 : event.key === "ArrowRight" ? stepX : event.key === "ArrowLeft" ? -stepX : 0;
     const moveY = event.shiftKey ? 0 : event.key === "ArrowDown" ? stepY : event.key === "ArrowUp" ? -stepY : 0;
-    const resizeW = event.shiftKey && event.key === "ArrowRight" ? stepX : event.shiftKey && event.key === "ArrowLeft" ? -stepX : 0;
-    const resizeH = event.shiftKey && event.key === "ArrowDown" ? stepY : event.shiftKey && event.key === "ArrowUp" ? -stepY : 0;
+    const resizeW = canResize && event.shiftKey && event.key === "ArrowRight" ? stepX : canResize && event.shiftKey && event.key === "ArrowLeft" ? -stepX : 0;
+    const resizeH = canResize && event.shiftKey && event.key === "ArrowDown" ? stepY : canResize && event.shiftKey && event.key === "ArrowUp" ? -stepY : 0;
     const next = snapPanelRect(key, { ...rect, x: rect.x + moveX, y: rect.y + moveY, w: rect.w + resizeW, h: rect.h + resizeH }, panelRects, format);
     event.preventDefault();
     event.stopPropagation();
@@ -2673,7 +2760,7 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
     setSelectedPanel(null);
   };
   const handles = editable && displaySlide.kind === "tile" && selectedPanel && panelRects[selectedPanel]
-    ? <PanelTransformFrame panelKey={selectedPanel} rect={panelRects[selectedPanel]!} unit={unit} bounds={{ w: size.w * unit, h: size.h * unit }} xGuides={snapGuides.x} yGuides={snapGuides.y} onDragStart={(event) => onPanelMoveStart(selectedPanel, event)} onResizeStart={onResizeStart} onResizeMove={onResizeMove} onResizeEnd={onResizeEnd} onDelete={() => { onPanelDelete?.(selectedPanel); setSelectedPanel(null); }} onContextMenu={(event) => onFontContextMenu?.(selectedPanel === "source" ? { kind: "element", key: "source" } : { kind: "panel", key: selectedPanel }, event.clientX, event.clientY, event.currentTarget)} actions={existingPanels[selectedPanel] ? [{ key: "reset", label: "위치 초기화", onClick: () => resetPanel(selectedPanel) }] : []} directions={selectedPanel === "source" ? ["e", "w"] : displaySlide.callout && selectedPanel === "legend" ? [] : undefined} />
+    ? <PanelTransformFrame panelKey={selectedPanel} rect={panelRects[selectedPanel]!} unit={unit} bounds={{ w: size.w * unit, h: size.h * unit }} xGuides={snapGuides.x} yGuides={snapGuides.y} onDragStart={(event) => onPanelMoveStart(selectedPanel, event)} onResizeStart={onResizeStart} onResizeMove={onResizeMove} onResizeEnd={onResizeEnd} onDelete={() => { onPanelDelete?.(selectedPanel); setSelectedPanel(null); }} onContextMenu={(event) => onFontContextMenu?.(selectedPanel === "source" ? { kind: "element", key: "source" } : { kind: "panel", key: selectedPanel }, event.clientX, event.clientY, event.currentTarget)} actions={existingPanels[selectedPanel] ? [{ key: "reset", label: "위치 초기화", onClick: () => resetPanel(selectedPanel) }] : []} directions={panelHandleDirections(selectedPanel)} avoid={pageFrame ? (Object.entries(panelRects) as Array<[PanelKey, Rect | undefined]>).filter(([key, r]) => key !== selectedPanel && key !== "source" && r).map(([, r]) => r!) : undefined} />
     : null;
   const mapCellFromTarget = (target: HTMLElement): number | undefined => {
     const raw = target.closest<HTMLElement>("[data-map-cell-index]")?.dataset.mapCellIndex;
@@ -2750,7 +2837,7 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
          {displaySlide.kind === "sources" && <SourcesSurface slide={displaySlide} unit={unit} basemap={basemap} thumbnail={thumbnail} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} />}
          {displaySlide.kind === "cover" && displaySlide.page?.kind === "blank" && <BlankSurface unit={unit} />}
          {displaySlide.kind === "sheet" && <SheetSurface slide={displaySlide} unit={unit} basemap={basemap} thumbnail={thumbnail} editable={editable} selection={selection} mapActive={!!mapActive} cellEditing={sheetCellEditing} recentCell={sheetCellRecent} onCellActivate={onSheetCellActivate} onCellEdit={onSheetCellEdit} onCellFit={onSheetCellFit} onCellDelete={onSheetCellDelete} onCellDone={onSheetCellDone} onCellNavigate={onSheetCellNavigate} onSelect={onSelect} onFrame={onFrame} onCellPanels={onCellPanels} onMapMoveActive={onMapMoveActive} onMapElementDelete={onDeleteElement} onMapLabelHide={onHideLabel} onDecorationDelete={onDecorationDelete} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} />}
-         {displaySlide.kind === "tile" && <TileSurface slide={displaySlide} unit={unit} basemap={basemap} panels={{ ...panels, source: sourceRect }} interactive={!!(editable && (mapActive ?? editable) && !!displayModel)} pickable={mapPickable} selection={selection} mapEditEntry={editable && mapSelectable && !thumbnail} onMapMoveActive={onMapMoveActive} onMapElementSelect={(feature) => onSelect?.({ kind: "mapElement", key: feature.key, labelVisible: feature.labelVisible })} onMapLabelSelect={(feature) => onSelect?.({ kind: "mapLabel", key: feature.key })} onLabelBoxChange={onLabelBoxChange} onLabelBoxReset={onLabelBoxReset} onDeleteElement={onDeleteElement} onHideLabel={onHideLabel} onShowLabel={onShowLabel} onPanelDelete={onPanelDelete} onDecorationSelect={onDecorationSelect} onDecorationDelete={onDecorationDelete} thumbnail={thumbnail} onPatch={onMapPatch} onDirectPatch={onDirectPatch} panelInteraction={editable ? panelInteraction : undefined} staticSurface={staticSurface} onText={onText} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} />}
+         {displaySlide.kind === "tile" && <TileSurface slide={displaySlide} frame={pageFrame} unit={unit} basemap={basemap} panels={{ ...panels, source: sourceRect }} interactive={!!(editable && (mapActive ?? editable) && !!displayModel)} pickable={mapPickable} selection={selection} mapEditEntry={editable && mapSelectable && !thumbnail} onMapMoveActive={onMapMoveActive} onMapElementSelect={(feature) => onSelect?.({ kind: "mapElement", key: feature.key, labelVisible: feature.labelVisible })} onMapLabelSelect={(feature) => onSelect?.({ kind: "mapLabel", key: feature.key })} onLabelBoxChange={onLabelBoxChange} onLabelBoxReset={onLabelBoxReset} onDeleteElement={onDeleteElement} onHideLabel={onHideLabel} onShowLabel={onShowLabel} onPanelDelete={onPanelDelete} onDecorationSelect={onDecorationSelect} onDecorationDelete={onDecorationDelete} thumbnail={thumbnail} onPatch={onMapPatch} onDirectPatch={onDirectPatch} panelInteraction={editable ? panelInteraction : undefined} staticSurface={staticSurface} onText={onText} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} />}
         {displaySlide.page?.textBoxes && <TextBoxSurface boxes={displaySlide.page.textBoxes} unit={unit} selectedId={selection?.kind === "textBox" ? selection.id : undefined} startEditingId={textBoxEditingId} maxWidth={size.w} maxHeight={size.h} editable={editable} onSelect={onSelect} onTextBox={onTextBox} onEditingChange={onTextBoxEditingChange} onContextMenu={onFontContextMenu} />}
         {editable && textBoxPlacement && onTextBoxPlacementMove && onTextBoxPlacementCommit && <TextBoxPlacementLayer placement={textBoxPlacement} unit={unit} maxWidth={size.w} maxHeight={size.h} onMove={onTextBoxPlacementMove} onCommit={onTextBoxPlacementCommit} />}
         {handles}

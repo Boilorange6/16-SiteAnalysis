@@ -321,7 +321,7 @@
 .legendEditRow input { width: 17px; height: 17px; accent-color: var(--report-accent); }
 .legendMoveButtons { display: flex; flex: 0 0 auto; gap: 2px; }
 .tinyButton { min-width: 44px; min-height: 44px; padding: 3px; color: var(--report-ink); background: #fff; border: 1px solid var(--report-line); border-radius: 4px; cursor: pointer; }
-.legendPlacement { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; min-width: 0; }
+.legendPlacement { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; min-width: 0; }
 .legendPlacementButton, .legendPlacementActive { min-width: 0; min-height: 44px; padding: 8px 4px; color: var(--report-muted); background: #fff; border: 1px solid var(--report-line); border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; white-space: nowrap; }
 .legendPlacementActive { color: #153f83; background: #e0eafa; border-color: #9db7e1; font-weight: 700; }
 .lockToggle { min-width: 64px; min-height: 44px; padding: 8px 10px; color: #153f83; background: #e0eafa; border: 1px solid #9db7e1; border-radius: 999px; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; white-space: nowrap; }

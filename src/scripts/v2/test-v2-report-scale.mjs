@@ -49,6 +49,25 @@ assert.match(drawerMapSource, /value=\{scaleEditing \? scaleText : formatScaleDe
 assert.match(drawerMapSource, /<span>1:<\/span>/);
 assert.doesNotMatch(drawerMapSource, /<span>1 :<\/span>/, "축척 표기에 콜론 앞 공백을 넣지 않는다");
 
+// ── 새 배치의 지도 틀 폭·viewport는 reportPageGeometry의 지도 틀과 같다(Task 6)
+{
+  const { mapFrameWidthMm } = await import("../../lib/v2/ui/report-scale.ts");
+  const { reportPageGeometry } = await import("../../lib/v2/ui/report-page-layout.ts");
+  const near = (a, b, msg, eps = 0.01) => assert.ok(Math.abs(a - b) <= eps, `${msg}: ${a} ≈ ${b}`);
+  near(mapFrameWidthMm("wide", "map-charts"), 9.067 * 25.4, "② 지도 틀 폭(mm)", 0.05);
+  near(mapFrameWidthMm("wide", "map-key"), 13.333 * 25.4, "① 지도 틀 폭(mm)", 0.05);
+  near(mapFrameWidthMm("wide", "map-charts", true), 13.333 * 25.4, "숫자 카드를 지운 ②는 전체 폭", 0.05);
+  near(mapFrameWidthMm("a3", "map-charts"), slideSize("a3").w * 0.68 * 25.4, "A3 ② 지도 틀 폭", 0.5);
+  for (const [layout, deleted] of [["map-key", false], ["map-charts", false], ["map-charts", true]]) {
+    const g = reportPageGeometry({ layout, format: "wide", summaryDeleted: deleted, titleSize: { w: 4, h: 0.5 }, keyCardHeight: 2, legendSize: null, chartSlots: 0, sentenceHeight: 0 });
+    const options = mapFrameScaleOptions("wide", layout, {}, deleted);
+    near(options.width, 960 * g.map.w / 13.333, `${layout} 기본 viewport 폭`, 0.01);
+    near(options.height, 960 * g.map.h / 13.333, `${layout} 기본 viewport 높이`, 0.01);
+    near(options.frameWidthMm, g.map.w * 25.4, `${layout} 프레임 폭(mm)`, 0.01);
+  }
+  assert.match(reportModeSource, /usesReportPageFrame/, "보고서 모드 축척 기준도 새 장 배치 판정을 쓴다");
+}
+
 const source = GODEOK_RESULTS.find((result) => result.tileCode === "D04");
 assert.ok(source, "D04 fixture가 필요하다");
 const view = toTileView(source);

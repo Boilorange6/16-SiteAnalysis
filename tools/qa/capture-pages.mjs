@@ -30,10 +30,10 @@ for (const w of widths.split(",").map(Number)) {
   await page.waitForTimeout(4000);
   const start = page.getByRole("button", { name: "추천 구성으로 시작", exact: true });
   if (await start.count()) { await start.first().click(); await page.waitForTimeout(8000); }
-  // 쪽 목록 썸네일에도 [data-analysis-column]이 있으므로, 본 장은 가장 넓은 열(300px 초과)로만 판정한다.
+  // 쪽 목록 썸네일에도 [data-analysis-column]이 있으므로, 본 장은 가장 넓은 열(200px 초과)로만 판정한다(1024 폭 본 장의 열은 약 266px, 썸네일 열은 100px 안쪽).
   const mainCol = () => page.evaluate(() => {
     const col = [...document.querySelectorAll("[data-analysis-column]")].sort((a, b) => b.getBoundingClientRect().width - a.getBoundingClientRect().width)[0];
-    return !!col && col.getBoundingClientRect().width > 300;
+    return !!col && col.getBoundingClientRect().width > 200;
   });
   for (const n of pages.split(",")) {
     const pageErrors = [];
@@ -55,7 +55,7 @@ for (const w of widths.split(",").map(Number)) {
     const stats = await page.evaluate(() => {
       const area = (a, b) => Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) * Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
       const col = [...document.querySelectorAll("[data-analysis-column]")].sort((a, b) => b.getBoundingClientRect().width - a.getBoundingClientRect().width)[0];
-      if (!col || col.getBoundingClientRect().width <= 300) return {};
+      if (!col || col.getBoundingClientRect().width <= 200) return {};
       const charts = [...col.querySelectorAll("svg[data-chart]")];
       const maps = [...document.querySelectorAll("svg")].filter((s) => (s.querySelector("[data-map-base]") || s.querySelector("image")) && s.getBoundingClientRect().width > 300);
       let mapOverlap = 0;

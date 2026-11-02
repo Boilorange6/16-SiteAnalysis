@@ -1,5 +1,6 @@
 /** 「지도 + 그래프」 장: 계획(기본 레이아웃)·화면 미리보기(SSR)·그린 지도 기준 그래프 자료. */
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
@@ -50,6 +51,12 @@ const view = {
   badges: [{ text: "일부 자료만 집계", tone: "limit" }],
   headline: { value: "4층", label: "층수 중앙값" },
   sentence: "낮은 층 건물이 대부분이고 높은 건물은 일부다",
+  keyFigure: {
+    question: "가장 많은 층수대",
+    answer: { value: "1~4층", post: " 건물", kind: "number" },
+    sub: "층수가 확인된 12동 기준",
+    stats: [{ value: "100%", label: "층수 확인률" }, { value: "0%", label: "1층 가정 비율" }, { value: "12동", label: "반경 건물" }],
+  },
 };
 
 const board = initBoard([d05Result]);
@@ -89,7 +96,131 @@ assert.equal(noChartPages.find((page) => page.kind === "tile").layout, "map-key"
 }
 
 const planOf = (page, v = views) => planReportDoc({ ...EMPTY_REPORT_DOC, pages: [page] }, v, { ...ctx, views: v }).find((slide) => slide.kind === "tile");
-const render = (slide, mode = "edit") => renderToStaticMarkup(createElement(SlideSurface, { slide, basemap: "none", mode }));
+const render = (slide, mode = "edit", selection) => renderToStaticMarkup(createElement(SlideSurface, { slide, basemap: "none", mode, ...(selection ? { selection } : {}) }));
+const { reportPageFrame, reportMapAvoid } = await import("../../lib/v2/report/report-page-frame.ts");
+// SSR은 표면 폭을 못 재서 1 inch = 1 px로 그린다. 그래서 style의 px 값이 곧 inch다.
+const partTag = (m, name) => new RegExp(`<[a-z0-9]+\\s[^>]*data-part="${name}"[^>]*>`).exec(m)?.[0];
+const px = (tag, prop) => Number(new RegExp(`[; "]${prop}:(-?[\\d.]+(?:e-?\\d+)?)(?:px)?[;"]`).exec(tag)?.[1] ?? NaN);
+const partRect = (m, name) => { const tag = partTag(m, name); assert.ok(tag, `${name} 요소가 있다`); return { x: px(tag, "left"), y: px(tag, "top"), w: px(tag, "width"), h: px(tag, "height") }; };
+const near = (a, b, msg, eps = 0.011) => assert.ok(Math.abs(a - b) <= eps, `${msg}: ${a} ≈ ${b}`);
+const frameOf = (slide) => reportPageFrame(slide, analysisCharts(slide.map));
+
+// ── Task 6: 새 장 배치(① 지도 + 숫자 · ② 지도 + 그래프)의 화면 기하는 reportPageGeometry와 같다
+{
+  const one = planOf({ ...tilePage, layout: "map-key" });
+  const m1 = render(one);
+  const f1 = frameOf(one);
+  const card1 = partRect(m1, "key-figure");
+  near(card1.x, 0.25, "① 카드 x");
+  near(card1.y, 0.875, "① 카드 y");
+  near(card1.w, 3.125, "① 카드 폭");
+  near(card1.h, f1.fit.height, "① 카드 높이는 keyFigureFit이 정한다");
+  near(partRect(m1, "map").w, 13.333, "① 지도 틀은 장 전체 폭", 0.001);
+  near(partRect(m1, "map").h, 7.21, "① 지도 틀은 각주 띠 위에서 끝난다", 0.001);
+  assert.equal((m1.match(/data-chart=/g) ?? []).length, 0, "① 쪽에는 그래프 카드가 없다");
+
+  const two = planOf({ ...tilePage, layout: "map-charts" });
+  const m2 = render(two);
+  const f2 = frameOf(two);
+  near(partRect(m2, "map").w, 13.333 * 0.68, "② 지도 틀 폭 = 장 폭 × (1 − 0.32)", 0.001);
+  const column = partRect(m2, "analysis-column");
+  const card2 = partRect(m2, "key-figure");
+  near(column.x, partRect(m2, "map").w + 0.21, "② 열은 지도 틀 + 0.21 in에서 시작");
+  near(column.x + column.w, 13.333 - 0.25, "② 열은 오른쪽 0.25 in까지");
+  near(column.x + card2.x, f2.geometry.column.key.x, "② 카드는 열의 왼쪽 위(열 상자 기준 좌표)");
+  near(card2.w, f2.geometry.column.key.w, "② 카드 폭 = 열 폭");
+  assert.equal((m2.match(/<svg[^>]*data-chart="[a-z]+"[^>]*role="img"|<svg[^>]*role="img"[^>]*data-chart="[a-z]+"/g) ?? []).length, 2, "② 쪽의 그래프 카드는 둘(role=img SVG)");
+  assert.equal((m2.match(/data-part="chart-card"/g) ?? []).length, 2, "그래프 카드 상자 둘");
+
+  // 각주 띠: `출처 `로 시작하고 첫 한계 문구를 포함한다. 쪽 번호가 오른쪽에 있다.
+  const foot = /<span class="slideFooterText"[^>]*>([^<]*)<\/span>/.exec(m1)?.[1];
+  assert.ok(foot?.startsWith("출처 "), `각주 글이 출처로 시작: ${foot}`);
+  assert.ok(foot.includes("표본 한계 문구 가나다"), "각주 글에 첫 한계 문구");
+  near(partRect(m1, "footer").y, 7.21, "각주 띠 y", 0.001);
+  near(partRect(m1, "footer").h, 0.29, "각주 띠 높이", 0.001);
+
+  // 숫자 카드를 지우면 ②도 ①처럼 지도가 전체 폭이다
+  const gone = planOf({ ...tilePage, layout: "map-charts", deletedElementKeys: ["summary"] });
+  const mg = render(gone);
+  near(partRect(mg, "map").w, 13.333, "카드를 지운 ②는 지도 전체 폭", 0.001);
+  assert.ok(!partTag(mg, "key-figure") && !/data-chart=/.test(mg), "카드를 지우면 열도 없다");
+  assert.equal(gone.page.layout, "map-charts", "판정값은 map-charts로 남는다");
+
+  // 선택 막대·핸들: 범례는 크기 핸들 없이 옮기기만, ① 카드는 8개, ② 열은 지우기만(옮기기·크기 없음)
+  const handles = (m) => (m.match(/data-panel-handle=/g) ?? []).length;
+  assert.equal(handles(render(one, "edit", { kind: "panel", key: "legend" })), 0, "범례 선택: 크기 핸들 0개");
+  assert.equal(handles(render(one, "edit", { kind: "panel", key: "summary" })), 8, "① 숫자 카드 선택: 핸들 8개");
+  const colSel = render(two, "edit", { kind: "panel", key: "summary" });
+  assert.equal(handles(colSel), 0, "② 열 선택: 핸들 0개");
+  const bar = /<div[^>]*data-element-action-bar="true"[^>]*>[\s\S]*?<\/div>/.exec(colSel)?.[0] ?? "";
+  assert.equal((bar.match(/<button/g) ?? []).length, 1, "② 열 선택 막대에는 버튼이 하나");
+  assert.match(bar, /지우기/, "② 열 선택 막대에는 지우기");
+  assert.doesNotMatch(bar, /위치 초기화/, "② 열은 옮길 수 없어 위치 초기화가 없다");
+  const footSel = render(one, "edit", { kind: "element", key: "source" });
+  assert.equal(handles(footSel), 0, "각주 띠 선택: 핸들 0개");
+  assert.match(/<div[^>]*data-element-action-bar="true"[^>]*>[\s\S]*?<\/div>/.exec(footSel)?.[0] ?? "", /지우기/, "각주 띠는 지우기만");
+
+  // 썸네일·내보내기에는 선택 표시와 주석 칩이 없다
+  assert.doesNotMatch(render(one, "export"), /주석 \d|data-panel-selected="true"/, "내보내기 화면에는 칩·선택 표시가 없다");
+  assert.match(m1, /<button[^>]*>주석 2<\/button>/, "편집 화면의 ① 카드 아래에는 주석 칩");
+  const chipRect = partRect(m1, "notes-chip");
+  assert.ok(chipRect.y >= card1.y + card1.h - 1e-6, "① 주석 칩은 카드 아래");
+}
+
+// ── 구성 막대(A12 모양, Ruling 6): 큰 % + 두 줄 설명, 막대 조각마다 한 칸(대지 칸 표시), 항목 목록
+{
+  const parts = [{ label: "제3종일반주거지역", share: 50, color: "#F2C94C", site: true }, { label: "제2종일반주거지역", share: 24.9, color: "#F2C94C" }, { label: "제1종일반주거지역", share: 18.5, color: "#F2C94C" }, { label: "일반상업지역", share: 5, color: "#E05A47" }, { label: "그 밖", share: 1.6, color: "#B9BDC6" }];
+  const zoneView = { ...view, keyFigure: { question: "대지 용도지역", answer: { value: "제3종일반주거지역", kind: "name" }, stats: [{ value: "50.0%", label: "반경 1km 중 같은 용도지역" }, { value: "95.0%", label: "반경 1km 중 주거지역" }], parts } };
+  const zoneViews = new Map([[d05Result.tileId, zoneView]]);
+  const m = render(planOf({ ...tilePage, layout: "map-key" }, zoneViews));
+  assert.match(m, /data-part="key-lead"[^>]*>50\.0%</, "큰 %");
+  assert.ok(m.includes("반경 1km 중 같은 용도지역") && m.includes("주거지역 전체"), "두 줄 설명");
+  assert.equal((m.match(/data-part="key-parts-segment"/g) ?? []).length, parts.length, "막대 조각 수 = 항목 수");
+  assert.equal((m.match(/data-site="true"/g) ?? []).length, 1, "대지 칸은 하나");
+  assert.equal((m.match(/data-part="key-part-label"/g) ?? []).length, parts.length, "항목 목록");
+  assert.ok(m.includes(">제3종일반주거<") && m.includes(">24.9%<"), "항목 이름(지역 줄임)과 몫");
+}
+
+// ── 설명선(장면 라벨) 카드·지시선이 ① 숫자 카드를 가리지 않는다: 카드는 지도 avoid에 들어간다(실제 지도 크기 1280 px)
+{
+  const { buildMapScene } = await import("../../lib/v2/ui/map-scene.ts");
+  const A01 = GODEOK_RESULTS.find((result) => result.tileCode === "A01");
+  const model0 = toTileView(A01).map;
+  const [lng0, lat0] = model0.center;
+  const rect = (e0, n0, e1, n1) => [[[e0, n0], [e1, n0], [e1, n1], [e0, n1], [e0, n0]].map(([e, n]) => [lng0 + e / 88300, lat0 + n / 111200])];
+  const zones = ["제3종일반주거지역", "제2종일반주거지역", "일반상업지역", "준주거지역", "제1종일반주거지역"];
+  const model = { ...model0, features: [], lines: [], polygons: zones.map((name, i) => ({ layer: "zoning", rings: rect(-700 + i * 260, -500 + (i % 2) * 500, -480 + i * 260, -100 + (i % 2) * 500), name, label: name, fid: `z${i}`, counted: true })) };
+  const slide = planOf({ ...tilePage, layout: "map-key" });
+  const frame = frameOf(slide);
+  const unit = 96;
+  const card = frame.geometry.keyCard;
+  const chip = frame.geometry.keyNotesChip;
+  assert.ok(chip, "전제: 주석이 있어 카드 아래 칩이 있다");
+  // 카드와 그 아래 주석 칩을 한 덩어리로 본다(칩은 카드 오른쪽 끝에 맞춰 아래에 붙는다).
+  const cardBox = { x0: card.x * unit, y0: card.y * unit, x1: (card.x + card.w) * unit, y1: (chip.y + chip.h) * unit };
+  const W = Math.round(frame.geometry.map.w * unit);
+  const H = Math.round(frame.geometry.map.h * unit);
+  const scene = (avoid) => buildMapScene({ model, width: W, height: H, activeLayer: "white", scale: true, north: 30, avoid, calloutTop: 24, calloutLeftBottom: H - 24, pinnedKeys: buildMapScene({ model, width: W, height: H, activeLayer: "white", scale: true, north: 30, avoid: [] }).labels.map((l) => l.key) });
+  const segHit = (a, b, r) => {
+    let t0 = 0;
+    let t1 = 1;
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    for (const [p, q] of [[-dx, a[0] - r.x0], [dx, r.x1 - a[0]], [-dy, a[1] - r.y0], [dy, r.y1 - a[1]]]) {
+      if (p === 0) { if (q < 0) return false; continue; }
+      const t = q / p;
+      if (p < 0) { if (t > t1) return false; if (t > t0) t0 = t; } else { if (t < t0) return false; if (t < t1) t1 = t; }
+    }
+    return true;
+  };
+  const overlapsCard = (s) => s.labelPlacements.filter((p) => (p.box.x0 < cardBox.x1 && cardBox.x0 < p.box.x1 && p.box.y0 < cardBox.y1 && cardBox.y0 < p.box.y1) || segHit(p.entry.p, p.placed.knee, cardBox) || segHit(p.placed.knee, p.placed.edge, cardBox));
+  assert.ok(scene([]).labelPlacements.length >= 3 && overlapsCard(scene([])).length > 0, "전제: 카드를 모르면 설명선이 카드를 지난다(이 검사가 헛돌지 않는다)");
+  const placed = scene(reportMapAvoid(frame.geometry, unit));
+  assert.ok(placed.labelPlacements.length >= 3, "설명선이 그려진다");
+  assert.equal(overlapsCard(placed).length, 0, "설명선 카드·지시선이 숫자 카드와 겹치지 않는다");
+  const slideSurfaceSource = readFileSync(new URL("../../components/v2/report/slide-surface.tsx", import.meta.url), "utf8");
+  assert.match(slideSurfaceSource, /reportMapAvoid\(/, "MapLayer가 같은 avoid를 쓴다");
+}
 
 // ── 화면: 그래프 SVG·주석 칩·배지
 const chartsSlide = planOf({ ...tilePage, layout: "map-charts" });
@@ -105,7 +236,7 @@ const POPOVER = /<div[^>]*role="tooltip"[^>]*>[\s\S]*?<\/ul><\/div><\/div>/;
 const popover = POPOVER.exec(markup)?.[0];
 assert.ok(popover, "팝오버 요소는 늘 있다");
 assert.match(popover, /^<div[^>]*\shidden=""/, "닫혀 있으면 숨김");
-assert.doesNotMatch(markup.replace(POPOVER, ""), /표본 한계 문구 가나다|보조 메모 라마바/, "각주 문구는 장 본문에 없다(숨긴 팝오버 안에만 있다)");
+assert.doesNotMatch(markup.replace(POPOVER, "").replace(/<span class="slideFooterText"[^>]*>[^<]*<\/span>/, ""), /표본 한계 문구 가나다|보조 메모 라마바/, "각주 문구는 각주 띠(첫 한계 한 줄)와 숨긴 팝오버 밖에는 없다");
 assert.match(popover, /표본 한계 문구 가나다[\s\S]*보조 메모 라마바/, "팝오버에 각주 목록");
 assert.match(markup, /<button[^>]*aria-expanded="false"[^>]*>주석 2<\/button>/, "중복을 뺀 주석 2개 칩");
 const popoverId = /id="([^"]+)"/.exec(popover)[1];
@@ -113,13 +244,15 @@ assert.match(markup, new RegExp(`<button[^>]*aria-controls="${popoverId}"[^>]*ar
 // 제목(J1): 데이터와 기하에서 온 같은 글이 두 그래프 맨 위에 있다
 assert.ok(markup.includes(">지상 층수 구성비</text>") && markup.includes(">대지에서 거리와 지상 층수</text>"), "그래프 제목");
 assert.ok(markup.includes(view.badges[0].text), "배지 문구는 있다");
-assert.ok(markup.includes(view.headline.value), "큰 숫자(기존 headline)");
-assert.ok(markup.includes(view.headline.label), "큰 숫자 라벨");
+assert.ok(markup.includes(view.keyFigure.question), "카드 질문 줄");
+assert.ok(markup.includes(">1~4층<"), "카드 큰 답");
+assert.ok(view.keyFigure.stats.every((stat) => markup.includes(`>${stat.value}<`) && markup.includes(`>${stat.label}<`)), "카드 보조 숫자 셋(값·이름)");
+assert.doesNotMatch(markup, /층수 중앙값/, "headline은 카드가 있으면 쓰지 않는다");
 
-// 같은 쪽을 map-summary로 그리면 각주는 있고 그래프·칩은 없다(위 판정이 헛돌지 않는다)
+// 같은 쪽을 map-summary로 그리면 ①(지도 + 숫자): 각주는 있고 그래프는 없다(위 판정이 헛돌지 않는다)
 const summaryMarkup = render(planOf({ ...tilePage, layout: "map-summary" }));
 assert.match(summaryMarkup, /표본 한계 문구 가나다/, "map-summary는 각주를 장에 그린다");
-assert.doesNotMatch(summaryMarkup, /data-chart=|주석 \d/, "map-summary에는 그래프·칩이 없다");
+assert.doesNotMatch(summaryMarkup, /data-chart=/, "map-summary에는 그래프가 없다");
 
 // ── 그린 지도 기준: 통계는 쪽이 실제로 그리는 건물 수(12동)이고 3배(36)가 아니다
 const charts = analysisCharts(chartsSlide.map);
@@ -127,7 +260,8 @@ assert.equal(charts.total, BUILDINGS.length, "그래프 건물 수 = 장이 그�
 assert.ok(markup.includes(analysisStatLine(charts)), "한 줄 통계");
 assert.ok(markup.includes("건물 12동"), "화면 통계는 12동");
 assert.ok(!markup.includes("36동"), "3배(36동)가 아니다");
-assert.ok(markup.includes(`>${view.sentence}</div>`), "해석 문장은 지금의 view.sentence 그대로");
+const sentenceOf = (m) => (/data-part="column-sentence"[^>]*>([^<]*)</.exec(m)?.[1] ?? "").replace(/\s/g, "");
+assert.equal(sentenceOf(markup), view.sentence.replace(/\s/g, ""), "해석 문장은 지금의 view.sentence 그대로(줄만 나뉜다)");
 assert.doesNotMatch(markup, /중앙값은|대지 평균은/, "그래프 숫자로 만든 새 문장은 없다");
 
 // 끈 레이어(frame.hiddenLayers)도 반영한다: 9~14층을 끄면 10동
@@ -138,15 +272,16 @@ assert.ok(!hiddenMarkup.includes("건물 12동"));
 
 // 사용자가 고친 요약은 해석 문장 자리에 그대로
 const edited = render(planOf({ ...tilePage, layout: "map-charts", summaryOverride: "사용자가 고친 요약 문장" }));
-assert.ok(edited.includes(">사용자가 고친 요약 문장</div>"), "고친 요약을 해석 문장 자리에 쓴다");
+assert.equal(sentenceOf(edited), "사용자가고친요약문장", "고친 요약을 해석 문장 자리에 쓴다");
 assert.ok(!edited.includes(view.sentence), "고친 요약이 있으면 view.sentence는 장에 없다");
 
 // 글자 크기 24 pt에서도 해석 문장은 줄 수를 묶는다(넘치지 않는다)
 const bigSlide = planOf({ ...tilePage, layout: "map-charts", fontSizes: { summary: 24 }, summaryOverride: "아주 긴 요약 문장입니다. ".repeat(30) });
 const bigMarkup = render(bigSlide);
-const clamp = /-webkit-line-clamp:\s*(\d+)/.exec(bigMarkup);
-assert.ok(clamp && Number(clamp[1]) >= 1, "해석 문장은 줄 수 상한이 있다");
-assert.match(bigMarkup, /data-chart="distance"/, "24 pt에서도 그래프를 그린다");
+const bigSentence = /<div[^>]*data-part="column-sentence"[^>]*>([^<]*)<\/div>/.exec(bigMarkup)?.[1] ?? "";
+assert.ok(bigSentence.length > 0 && bigSentence.split("\n").length <= 2, "해석 문장은 두 줄 이하");
+assert.match(bigSentence, /…$/, "넘치는 해석 문장은 …로 닫는다");
+assert.match(bigMarkup, /data-chart="composition"/, "24 pt에서도 구성비 그래프를 그린다");
 
 // 썸네일은 버튼이 없고, 내보내기 화면에는 칩이 없다
 assert.equal((render(chartsSlide, "thumb").match(/<button\b/g) ?? []).length, 0, "thumb 표면은 버튼이 없다");
@@ -158,7 +293,7 @@ assert.match(exportMarkup, /data-chart="composition"/, "내보내기 화면에�
 const lostViews = new Map([[d05Result.tileId, { ...noFeatureView, caveats: view.caveats, notes: view.notes }]]);
 const lostSlide = planOf({ ...tilePage, layout: "map-charts" }, lostViews);
 const lostMarkup = render(lostSlide);
-assert.doesNotMatch(lostMarkup, /data-chart=|주석 \d/, "자료가 없으면 그래프·칩이 없다");
+assert.doesNotMatch(lostMarkup, /data-chart=/, "자료가 없으면 그래프가 없다");
 assert.match(lostMarkup, /표본 한계 문구 가나다/, "자료가 없으면 각주를 장에 그린다");
 assert.equal(lostSlide.page.layout, "map-key", "그래프 자료를 잃은 map-charts 장은 map-key로 판정된다");
 assert.equal(lostMarkup, render(planOf({ ...tilePage, layout: "map-key" }, lostViews)), "자료를 잃은 map-charts는 같은 자료로 고른 map-key와 같은 화면이다");
@@ -198,10 +333,11 @@ for (const format of ["wide", "a3", "a4"]) {
   }
 }
 
-// ── 필터 줄: 옛 요약이 그리던 「적용 필터」 줄을 한 줄 통계 칸의 둘째 줄로 그린다(고덕 A05, 설명선 없는 쪽)
+// ── 필터 줄: 옛 요약이 그리던 「적용 필터」 줄을 카드의 보조 줄 아래에 그린다(고덕 A05, 설명선 없는 쪽)
 {
   const a05 = GODEOK_RESULTS.find((result) => result.tileCode === "A05");
-  const a05View = { ...toTileView(a05, null, null, { distance: { max: 900 } }), callout: null };
+  const rawA05 = { ...toTileView(a05, null, null, { distance: { max: 900 } }), callout: null };
+  const a05View = { ...rawA05, keyFigure: rawA05.keyFigure ?? { question: "반경 확인 세대", answer: { value: "21,549세대", kind: "number" }, stats: [{ value: "1곳", label: "아파트 단지" }] } };
   assert.ok(a05View.filterLine, "A05 필터 줄이 있다(이 검사의 전제)");
   const a05Views = new Map([[a05.tileId, a05View]]);
   const a05Ctx = { summary: toSummaryView(GODEOK_SUMMARY, [a05]), analysisDate: "2026-10-27", views: a05Views };
@@ -211,13 +347,14 @@ for (const format of ["wide", "a3", "a4"]) {
   for (const fontSizes of [undefined, { summary: 24 }]) {
     const slide = planReportDoc({ ...EMPTY_REPORT_DOC, pages: [{ ...a05Page, ...(fontSizes ? { fontSizes } : {}) }] }, a05Views, a05Ctx).find((s) => s.kind === "tile");
     const m = render(slide);
-    const stat = analysisStatLine(analysisCharts(slide.map));
-    const at = m.indexOf(`>${a05View.filterLine}</div>`);
-    assert.ok(at > 0, `필터 줄이 장에 있다 (${fontSizes ? "24 pt" : "기본"})`);
-    assert.ok(m.indexOf(`>${stat}</div>`) > 0 && m.indexOf(`>${stat}</div>`) < at, "통계 줄 아래에 필터 줄");
-    assert.match(m.slice(Math.max(0, at - 400), at), /-webkit-line-clamp:\s*1/, "필터 줄은 한 줄로 묶는다");
+    const frame = frameOf(slide);
+    assert.ok(frame.fit?.filterText, `카드에 필터 줄이 있다 (${fontSizes ? "24 pt" : "기본"})`);
+    assert.ok(m.includes(`>${frame.fit.filterText}<`), "필터 줄이 장에 있다");
+    const card = partRect(m, "key-figure");
+    const filter = partRect(m, "key-filter");
+    assert.ok(filter.y >= 0 && filter.y + filter.h <= card.h + 1e-6, "필터 줄은 카드 안(카드 왼쪽 위 기준 좌표)");
   }
-  // 필터 줄이 없으면 통계 칸에는 통계만 있다
+  // 필터 줄이 없으면 카드에는 필터 줄이 없다
   assert.ok(!render(planOf({ ...tilePage, layout: "map-charts" })).includes("적용 필터"), "필터가 없으면 필터 줄이 없다");
 }
 

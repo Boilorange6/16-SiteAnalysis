@@ -8,7 +8,12 @@ const mapScene = readFileSync(new URL("../../lib/v2/ui/map-scene.ts", import.met
 const mapPptx = readFileSync(new URL("../../lib/v2/report/map-pptx.ts", import.meta.url), "utf8");
 const mapImage = readFileSync(new URL("../../lib/v2/report/map-image.ts", import.meta.url), "utf8");
 
-assert.match(surface, /selectedPanel === "source" \? \["e", "w"\]/, "출처 줄은 좌우 2개 핸들을 사용한다");
+assert.match(surface, /key === "source" \? \["e", "w"\]/, "옛 레이아웃의 출처 줄은 좌우 2개 핸들을 사용한다");
+assert.match(surface, /pageFrame\) return key === "summary" && pageFrame\.layout === "map-key" \? undefined : \[\]/, "새 장 배치는 ① 숫자 카드만 8핸들이고 제목·범례·② 열·각주 띠는 크기 핸들이 없다");
+assert.match(surface, /const movablePanel = \(key: PanelKey\): boolean => !pageFrame \|\| \(key !== "source" && !\(key === "summary" && pageFrame\.layout === "map-charts"\)\)/, "새 장 배치의 ② 열·각주 띠는 옮기지 못한다");
+assert.match(surface, /panelDrag\.current = \{[^}]*\};\s*const captureTarget/s, "끌기 시작 경로가 남아 있다");
+assert.match(surface, /!movablePanel\(key\)\) return;\s*const rect = panelRects\[key\];/, "끌기 시작은 옮길 수 없는 요소를 막는다");
+assert.match(surface, /resizable=\{!pageGeometry \|\| selectedDecorationKey === "locator"\}/, "새 장 배치의 방위표·축척은 크기 핸들이 없다(크기는 틀 기하가 정한다)");
 assert.match(surface, /const directions: DecorationResizeDirection\[\] = \["nw", "ne", "se", "sw"\]/, "방위표·축척·위치도는 네 모서리 핸들을 사용한다");
 assert.match(surface, /event\.shiftKey/, "장식 크기 조절은 Shift 키 배율을 사용한다");
 assert.match(surface, /data-decoration-handle=\{direction\}/, "장식 핸들은 실제 포인터 입력 대상을 표시한다");

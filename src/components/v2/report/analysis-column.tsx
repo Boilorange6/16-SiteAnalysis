@@ -1,21 +1,24 @@
 "use client";
 
 import * as React from "react";
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type HTMLAttributes } from "react";
 import { analysisStatLine, type AnalysisCharts } from "@/lib/v2/report/analysis-charts";
 import { RECT_STROKE_PT, compositionShapes, distanceShapes, type ChartBox, type ChartShape } from "@/lib/v2/report/chart-geometry";
-import { DEFAULT_REPORT_FONT_SIZES } from "@/lib/v2/report/report-doc";
-import { ANALYSIS_LINE, analysisColumnFit } from "@/lib/v2/report/analysis-column-fit";
-import { CHIP } from "@/lib/v2/report/pptx-kit";
-import { chartsColumnLayout, type Rect } from "@/lib/v2/ui/overlay-layout";
+import { SENTENCE_BAR, BAR_W } from "@/lib/v2/report/key-figure-fit";
+import type { ReportPageFrame } from "@/lib/v2/report/report-page-frame";
+import type { Rect } from "@/lib/v2/ui/overlay-layout";
 import type { TileView } from "@/lib/v2/ui/tile-view";
+import { KeyFigureCard } from "./key-figure-card";
 import { fontStyle } from "./surface-style";
 
-/** 「지도 + 그래프」 요약 칸: 배지 → 큰 숫자 → 한 줄 통계(+필터 줄) → 구성비 → 거리 → 해석 문장 → 주석 칩. 칸 배치는 PPT와 같은 chartsColumnLayout. */
+/**
+ * 「지도 + 그래프」 오른쪽 분석 열(spec §3-3): 핵심 숫자 카드 → 그래프 카드 둘(구성비·거리) → 열 맨 아래 해석 한 줄 + 주석 칩.
+ * 모든 사각형은 `reportPageGeometry`의 `column`, 카드 안은 `keyFigureFit`의 `rows`다. 열은 떠 있는 판이 아니라 배치의 한 영역이라
+ * 고르고 지울 수만 있다(옮기기·크기 없음). 열 바탕 띠는 호출하는 쪽(TileSurface)이 깐다.
+ */
 
 type Styles = Record<string, string>;
 
-const LINE = ANALYSIS_LINE; // fitBlock이 줄 높이로 가정하는 값
 const POPOVER_WIDTH = 288;
 const POPOVER_GAP = 6;
 const VIEWPORT_MARGIN = 8;
@@ -72,7 +75,7 @@ export function placeNotesPopover(chip: Edges, bounds: Edges): NotesPlacement {
 }
 
 /** `주석 N` 칩: 올리거나 포커스하면 각주 목록 팝오버(흰 카드). Esc·포커스를 잃음·포인터가 벗어남으로 닫는다. */
-function NotesChip({ notes, rect, panel, unit, styles }: { notes: string[]; rect: Rect; panel: Rect; unit: number; styles: Styles }) {
+export function NotesChip({ notes, rect, panel, unit, styles, growUp = false }: { notes: string[]; rect: Rect; panel: Rect; unit: number; styles: Styles; /** 칩은 손가락 크기(24 px)보다 작아지지 않는다. true면 모자란 높이를 위로 키워 열 아래 끝을 넘지 않는다. */ growUp?: boolean }) {
   const [open, setOpen] = useState(false);
   const [placement, setPlacement] = useState<NotesPlacement>({ up: true, width: POPOVER_WIDTH, maxHeight: 320 });
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -109,7 +112,8 @@ function NotesChip({ notes, rect, panel, unit, styles }: { notes: string[]; rect
   return (
     <div
       className={styles.analysisNotes}
-      style={{ position: "absolute", left: (rect.x - panel.x) * unit, top: (rect.y - panel.y) * unit, width: rect.w * unit, height: Math.max(24, rect.h * unit) }}
+      data-part="notes-chip"
+      style={{ position: "absolute", left: (rect.x - panel.x) * unit, top: growUp ? (rect.y + rect.h - panel.y) * unit - Math.max(24, rect.h * unit) : (rect.y - panel.y) * unit, width: rect.w * unit, height: Math.max(24, rect.h * unit) }}
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={() => setOpen(false)}
     >
@@ -141,53 +145,39 @@ function NotesChip({ notes, rect, panel, unit, styles }: { notes: string[]; rect
   );
 }
 
-export function AnalysisColumn({ styles, charts, view, sentence, rect, unit, summaryPt, showNotes }: { styles: Styles; charts: AnalysisCharts; view: TileView; sentence: string | null; rect: Rect; unit: number; summaryPt: number; showNotes: boolean }) {
-  const scale = summaryPt / DEFAULT_REPORT_FONT_SIZES.summary;
-  const col = useMemo(() => chartsColumnLayout({ x: rect.x, y: rect.y, w: rect.w, h: rect.h }, scale), [rect.x, rect.y, rect.w, rect.h, scale]);
-  const compShapes = useMemo(() => compositionShapes(charts.composition, col.composition, scale, charts.titles.composition), [charts, col.composition, scale]);
-  const distShapes = useMemo(() => distanceShapes(charts.distance, charts.radiusM, col.distance, scale, charts.titles.distance), [charts, col.distance, scale]);
-  const at = (r: Rect): CSSProperties => ({ position: "absolute", left: (r.x - rect.x) * unit, top: (r.y - rect.y) * unit, width: r.w * unit, height: r.h * unit, overflow: "hidden" });
-
-  // 글자 맞춤(큰 숫자 칸 배율·통계·해석 문장 pt와 줄 수)은 PPT와 같은 순수 함수.
-  const badges = view.badges;
-  const headline = view.headline;
-  const hr = col.headline;
-  const fullStatText = analysisStatLine(charts);
-  // 통계·필터 줄·해석 문장은 줄 수에 맞게 잘린 글(PPT와 같은 문자열)을 그린다. CSS line-clamp는 줄 나눔이 어긋날 때를 위한 안전망이다.
-  const { e, labelPt, valuePt, statPt, statClamp, sentPt, sentLines, statText, filterLine, sentence: sentenceText } = analysisColumnFit({ col, scale, summaryPt, badges, headline, statText: fullStatText, filterLine: view.filterLine, sentence });
-  const clamp = (lines: number): CSSProperties => ({ display: "-webkit-box", WebkitLineClamp: lines, WebkitBoxOrient: "vertical", overflow: "hidden", lineHeight: LINE });
-  const notes = [...new Set([...view.caveats, ...view.notes])];
+export function AnalysisColumn({ styles, frame, charts, view, unit, showNotes, interaction }: { styles: Styles; frame: ReportPageFrame; charts: AnalysisCharts; view: TileView; unit: number; showNotes: boolean; interaction?: HTMLAttributes<HTMLDivElement> & Record<string, unknown> }) {
+  const column = frame.geometry.column;
+  const compShapes = useMemo(() => (frame.chart1 ? compositionShapes(charts.composition, frame.chart1, frame.chartScale, charts.titles.composition) : []), [charts, frame.chart1, frame.chartScale]);
+  const distShapes = useMemo(() => (frame.chart2 ? distanceShapes(charts.distance, charts.radiusM, frame.chart2, frame.chartScale, charts.titles.distance) : []), [charts, frame.chart2, frame.chartScale]);
+  if (!column) return null;
+  const { rect } = column;
+  // 열 왼쪽 위(= 열 상자)를 (0, 0)으로 한 inch
+  const rel = (r: Rect): Rect => ({ x: r.x - rect.x, y: r.y - rect.y, w: r.w, h: r.h });
+  const at = (r: Rect, extra: React.CSSProperties = {}): React.CSSProperties => ({ position: "absolute", left: (r.x - rect.x) * unit, top: (r.y - rect.y) * unit, width: r.w * unit, height: r.h * unit, ...extra });
   const pct = (item: AnalysisCharts["composition"][number]) => (item.share > 0 && Math.round(item.share * 100) === 0 ? "1% 미만" : `${Math.round(item.share * 100)}%`);
   const compLabel = `${charts.titles.composition} 막대 그래프. ${charts.composition.map((item) => `${item.label} ${pct(item)}`).join(", ")}`;
-  const distLabel = `${charts.titles.distance} ${charts.distance.kind === "scatter" ? "산점도" : "막대 그래프"}. ${fullStatText}`;
-
+  const distLabel = `${charts.titles.distance} ${charts.distance.kind === "scatter" ? "산점도" : "막대 그래프"}. ${analysisStatLine(charts)}`;
+  const card = (r: Rect, key: string, box: ChartBox | null, shapes: ChartShape[], kind: "composition" | "distance", label: string) => (
+    <div key={key} className={styles.kfCard} data-part="chart-card" style={at(r, { borderRadius: 0.125 * unit })}>
+      {box && <ChartSvg shapes={shapes} box={box} panel={r} unit={unit} kind={kind} label={label} styles={styles} />}
+    </div>
+  );
+  // 해석 한 줄: 열 맨 아래, 카드 없음. 왼쪽 3 px 타일 색 막대 + 글(최대 2줄, 넘치면 …).
+  const sentence = column.sentence;
+  const fit = frame.fit;
+  const sentenceLines = fit?.sentenceLines ?? [];
   return (
-    <div data-analysis-column="true">
-      {(badges.length > 0 || headline) && (
-        <div style={{ ...at(hr), display: "flex", flexDirection: "column" }}>
-          {badges.length > 0 && (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: `${0.06 * e * unit}px ${0.08 * e * unit}px`, marginBottom: 0.04 * e * unit }}>
-              {badges.map((b) => (
-                <span key={b.text} style={{ ...fontStyle(Math.max(7, 9 * e), unit), background: `#${CHIP[b.tone].fill}`, color: `#${CHIP[b.tone].color}`, fontWeight: 700, lineHeight: 1.2, whiteSpace: "nowrap", padding: `${0.03 * e * unit}px ${0.12 * e * unit}px`, borderRadius: 0.15 * e * unit }}>{b.text}</span>
-              ))}
-            </div>
-          )}
-          {headline && (
-            <>
-              <div className={styles.slideMetricLabel} style={fontStyle(labelPt ?? 7, unit)}>{headline.label}</div>
-              <div className={styles.slideMetricValue} style={fontStyle(valuePt ?? 7, unit, { textAlign: "left" })}>{headline.value}</div>
-            </>
-          )}
-        </div>
+    <div className={styles.kfColumn} data-part="analysis-column" data-analysis-column="true" style={{ position: "absolute", left: rect.x * unit, top: rect.y * unit, width: rect.w * unit, height: rect.h * unit }} {...interaction}>
+      {fit && frame.figure && <KeyFigureCard styles={styles} view={view} fit={fit} rect={rel(column.key)} unit={unit} />}
+      {column.chart1 && card(column.chart1, "composition", frame.chart1, compShapes, "composition", compLabel)}
+      {column.chart2 && card(column.chart2, "distance", frame.chart2, distShapes, "distance", distLabel)}
+      {sentenceLines.length > 0 && (
+        <>
+          <span className={styles.kfBar} style={at({ x: sentence.x, y: sentence.y, w: BAR_W, h: sentence.h }, { background: view.color })} />
+          <div className={styles.kfText} data-part="column-sentence" style={{ ...at({ x: sentence.x + SENTENCE_BAR, y: sentence.y, w: sentence.w - SENTENCE_BAR, h: sentence.h }), ...fontStyle(fit!.sentencePt, unit), lineHeight: 1.25, color: "#15171c", fontWeight: 700, whiteSpace: "pre-line", overflow: "hidden" }}>{sentenceLines.join("\n")}</div>
+        </>
       )}
-      <div style={{ ...at(col.stat), ...fontStyle(statPt, unit), lineHeight: LINE }}>
-        <div className={styles.slideText} style={{ ...clamp(statClamp), whiteSpace: "pre-line" }}>{statText}</div>
-        {filterLine && <div className={styles.slideText} style={clamp(1)}>{filterLine}</div>}
-      </div>
-      <ChartSvg shapes={compShapes} box={col.composition} panel={rect} unit={unit} kind="composition" label={compLabel} styles={styles} />
-      <ChartSvg shapes={distShapes} box={col.distance} panel={rect} unit={unit} kind="distance" label={distLabel} styles={styles} />
-      {sentenceText && <div className={styles.slideText + " " + styles.slideTextStrong} style={{ ...at(col.sentence), ...fontStyle(sentPt, unit), lineHeight: LINE, ...clamp(sentLines) }}>{sentenceText}</div>}
-      {showNotes && notes.length > 0 && <NotesChip notes={notes} rect={col.notesChip} panel={rect} unit={unit} styles={styles} />}
+      {showNotes && frame.notes.length > 0 && <NotesChip notes={frame.notes} rect={column.notesChip} panel={rect} unit={unit} styles={styles} growUp />}
     </div>
   );
 }

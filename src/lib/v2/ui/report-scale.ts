@@ -1,6 +1,7 @@
 import type { MapFrameState } from "../report/report-doc";
 import type { MapModel } from "./map-layers";
-import { layoutRects, slideSize, type SlideFormat } from "./overlay-layout";
+import { layoutRects, slideSize, type Rect, type SlideFormat } from "./overlay-layout";
+import { reportPageGeometry } from "./report-page-layout";
 import { makeProjector, metersPerPixel, siteFitView, slideViewport, zoomViewAt, type Viewport } from "./map-projection";
 import type { ReportLayout } from "../report/report-doc";
 
@@ -24,8 +25,16 @@ export type ReportScaleViewport = {
 
 export type ReportScaleOptions = ReportScaleViewport & { frameWidthMm: number };
 
-/** 보고서 지도 프레임이 실제 PPT 종이에서 차지하는 가로 폭(mm). */
-export function mapFrameWidthMm(format: SlideFormat, layout: ReportLayout): number {
+/** 새 배치(지도 + 숫자·지도 + 그래프)의 지도 틀(inch). 장 기하(reportPageGeometry)의 지도 틀이 정본이고 그 밖의 레이아웃은 null이다. */
+function reportPageMap(format: SlideFormat, layout: ReportLayout, summaryDeleted: boolean): Rect | null {
+  if (layout !== "map-key" && layout !== "map-charts") return null;
+  return reportPageGeometry({ layout, format, summaryDeleted, titleSize: { w: 1, h: 0.5 }, keyCardHeight: 0, legendSize: null, chartSlots: 0, sentenceHeight: 0, notes: false }).map;
+}
+
+/** 보고서 지도 프레임이 실제 PPT 종이에서 차지하는 가로 폭(mm). `summaryDeleted`는 ②에서 숫자 카드를 지워 지도가 전체 폭이 된 장이다. */
+export function mapFrameWidthMm(format: SlideFormat, layout: ReportLayout, summaryDeleted = false): number {
+  const page = reportPageMap(format, layout, summaryDeleted);
+  if (page) return page.w * 25.4;
   const map = layoutRects(layout, format).map;
   const widthRatio = map && Number.isFinite(map.w) && map.w > 0 ? map.w : 1;
   return slideSize(format).w * widthRatio * 25.4;
@@ -41,11 +50,13 @@ export function mapFrameScaleOptions(
   format: SlideFormat,
   layout: ReportLayout,
   viewport: Partial<ReportScaleViewport> = {},
+  summaryDeleted = false,
 ): ReportScaleOptions {
-  const map = layoutRects(layout, format).map;
   const size = slideSize(format);
+  const page = reportPageMap(format, layout, summaryDeleted);
+  const map = page ? { w: page.w / size.w, h: page.h / size.h } : layoutRects(layout, format).map;
   const fullHeight = DEFAULT_VIEW_WIDTH * size.h / size.w;
-  return scaleOptionsForFrame(mapFrameWidthMm(format, layout), {
+  return scaleOptionsForFrame(mapFrameWidthMm(format, layout, summaryDeleted), {
     width: viewport.width ?? DEFAULT_VIEW_WIDTH * (map?.w ?? 1),
     height: viewport.height ?? fullHeight * (map?.h ?? 1),
     siteX: viewport.siteX ?? 0.5,

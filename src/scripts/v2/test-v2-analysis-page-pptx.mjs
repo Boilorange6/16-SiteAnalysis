@@ -113,7 +113,8 @@ assert.ok(!charts.blocks.some((b) => textsOf(b).some((t) => /^주석 \d/.test(t)
 const svgTexts = [...render(chartsSlide).matchAll(/<svg[^>]*data-chart="[^"]*"[^>]*>([\s\S]*?)<\/svg>/g)].flatMap((m) => [...m[1].matchAll(/<text[^>]*>([\s\S]*?)<\/text>/g)].map((t) => unescapeXml(t[1])));
 const pptTexts = charts.blocks.filter((b) => nameOf(b).startsWith("GRP|chart-")).flatMap(textsOf);
 assert.ok(svgTexts.length > 8, "화면 그래프 글자가 충분하다");
-assert.deepEqual([...pptTexts].sort(), [...svgTexts].sort(), "화면 그래프 글자 집합 = PPT 그래프 글자 집합");
+// 화면(Task 6)은 새 배치의 그래프 카드 칸에 그리고 PPT는 Task 7까지 옛 열 칸에 그린다. 두 글자 집합이 같다는 비교는 Task 7에서 되살린다.
+assert.ok(pptTexts.length > 8, "PPT 그래프 글자가 충분하다");
 
 // 글자는 줄바꿈하지 않고, 크기·자리는 기하 그대로
 const EMU = 914400;
@@ -146,19 +147,7 @@ for (const shape of geometry.filter((s) => s.kind === "rect")) {
   };
   assert.equal(sz(analysisStatLine(mapCharts)), Math.round(fit.statPt * 100), "통계 pt: PPT = 맞춤 함수");
   assert.equal(sz(chartsSlide.view.sentence), Math.round(fit.sentPt * 100), "해석 문장 pt: PPT = 맞춤 함수");
-  const m = render(chartsSlide);
-  // 화면: 글자를 담은 div 또는 가장 가까운 윗 div의 font-size(px). 두 글자 크기의 비는 슬라이드 크기(unit)와 상관없다.
-  const fontPx = (text) => {
-    const at = m.indexOf(`>${text}</div>`);
-    assert.ok(at > 0, `화면에 ${text}`);
-    for (let i = m.lastIndexOf("<div", at); i >= 0; i = m.lastIndexOf("<div", i - 1)) {
-      const found = /font-size:([\d.]+)px/.exec(m.slice(i, m.indexOf(">", i)));
-      if (found) return Number(found[1]);
-    }
-    return NaN;
-  };
-  const ratioScreen = fontPx(chartsSlide.view.sentence) / fontPx(analysisStatLine(mapCharts));
-  assert.ok(Math.abs(ratioScreen - fit.sentPt / fit.statPt) < 0.01, `화면 해석/통계 글자 비 ${ratioScreen} = ${fit.sentPt / fit.statPt}`);
+  // 화면의 해석·통계 글자 크기 비교(옛 열)는 Task 6에서 화면이 keyFigureFit의 새 카드·해석 줄로 바뀌어 없앤다. 화면 = PPT 비교는 Task 7에서 새 맞춤 값으로 되살린다.
 }
 
 // 필터 줄은 통계 칸의 둘째 줄(같은 글상자), 글자 크기 24 pt에서도 같은 맞춤 값(고덕 A05)
@@ -208,7 +197,6 @@ for (const shape of geometry.filter((s) => s.kind === "rect")) {
   assert.ok(block, "PPT는 자른 글 그대로를 그린다");
   assert.ok(!deck.blocks.some((b) => textsOf(b).includes(long)), "PPT에 600자 원문이 없다");
   assert.doesNotMatch(block, /normAutofit|spAutoFit/, "PPT 해석 문장은 자동 맞춤에 기대지 않는다");
-  assert.ok(render(slide).includes(`>${fitLong.sentence}</div>`), "화면도 같은 글");
   const off = block.match(/<a:off x="(-?\d+)" y="(-?\d+)"\/>/);
   const ext = block.match(/<a:ext cx="(\d+)" cy="(\d+)"\/>/);
   assert.ok(Number(off[2]) + Number(ext[2]) <= (plate.y + plate.h) * EMU + 1, "해석 문장 글상자 아래 ≤ 요약 판 아래");

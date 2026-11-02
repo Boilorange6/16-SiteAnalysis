@@ -446,6 +446,66 @@
   line-height: 1.05;
 }
 
+/* 새 장 배치(지도 + 숫자 · 지도 + 그래프): 핵심 숫자 카드·그래프 카드·제목 칩. 카드 안 칸은 모두 keyFigureFit이 정한 자리에 인라인으로 놓는다. */
+.kfCard {
+  position: absolute;
+  z-index: 2;
+  box-sizing: border-box;
+  overflow: hidden;
+  color: #15171c;
+  background: #fff;
+  border: 1px solid #e1e4e9;
+  box-shadow: 0 1px 2px rgba(21, 23, 28, 0.05), 0 3px 10px rgba(21, 23, 28, 0.05);
+  font-variant-numeric: tabular-nums;
+}
+
+.kfCard[data-panel-key] { cursor: grab; }
+.kfCard[data-panel-key][data-panel-selected="true"] { z-index: 10; cursor: move; }
+.kfCard[data-panel-key]:focus-visible { outline: 2px solid #164e9b; outline-offset: -3px; }
+
+/* ② 분석 열: 배치의 한 영역이라 옮기지 못한다. 바탕 띠(#f0efe9)는 지도 틀 오른쪽 전체. */
+.kfColumn { position: absolute; z-index: 2; overflow: visible; cursor: pointer; }
+.kfColumn[data-panel-selected="true"] { z-index: 10; }
+.kfColumn:focus-visible { outline: 2px solid #164e9b; outline-offset: -3px; }
+.kfColumnBand { z-index: 1; background: #f0efe9; pointer-events: none; }
+
+.kfText { margin: 0; }
+.kfBar { position: absolute; border-radius: 2px; }
+.kfChip { box-sizing: border-box; overflow: hidden; }
+.kfRule { position: absolute; background: #ececea; }
+.kfAnswer { display: block; overflow: visible; }
+.kfPartsBar { position: absolute; overflow: hidden; background: #fff; }
+.kfSwatch { position: absolute; box-sizing: border-box; box-shadow: inset 0 0 0 1px rgba(21, 23, 28, 0.12); }
+
+.kfTitle {
+  position: absolute;
+  z-index: 2;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: calc(var(--slide-unit) * 0.1);
+  padding: 0 calc(var(--slide-unit) * 0.167);
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(21, 23, 28, 0.12);
+  border-radius: calc(var(--slide-unit) * 0.125);
+  box-shadow: 0 1px 2px rgba(21, 23, 28, 0.06), 0 2px 8px rgba(21, 23, 28, 0.06);
+}
+
+.kfTitle[data-panel-key] { cursor: grab; }
+.kfTitle[data-panel-key][data-panel-selected="true"] { z-index: 10; cursor: move; }
+.kfTitle[data-panel-key]:focus-visible { outline: 2px solid #164e9b; outline-offset: -3px; }
+
+.kfKind {
+  flex: 0 0 auto;
+  padding: calc(var(--slide-unit) * 0.03) calc(var(--slide-unit) * 0.085);
+  color: #5b616b;
+  background: #efefeb;
+  border-radius: calc(var(--slide-unit) * 0.052);
+  font-weight: 700;
+  line-height: 1.2;
+}
+
 /* 「지도 + 그래프」 오른쪽 열 */
 .analysisChart {
   display: block;
@@ -459,8 +519,9 @@
 
 .analysisNotesChip {
   box-sizing: border-box;
+  width: 100%;
   min-height: 24px;
-  padding: 0 10px;
+  padding: 0 4px;
   color: #3b3a35;
   background: #fff;
   border: 1px solid #d9dce2;

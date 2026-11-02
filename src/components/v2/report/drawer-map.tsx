@@ -47,9 +47,9 @@ const BASEMAPS: Array<{ value: MapFrameState["basemap"]; label: string }> = [
   { value: "none", label: "없음" },
 ];
 
+// 범례는 지도 위(왼쪽 아래 구석) 아니면 숨김이다(spec §3-1). 저장된 `right`는 `below`와 같은 자리로 읽으므로 `지도 위`가 눌린 것으로 보인다.
 const LEGEND_PLACEMENTS: Array<{ value: MapFrameState["legend"]["placement"]; label: string }> = [
-  { value: "below", label: "지도 아래" },
-  { value: "right", label: "오른쪽" },
+  { value: "below", label: "지도 위" },
   { value: "hidden", label: "숨김" },
 ];
 
@@ -288,7 +288,7 @@ export default function DrawerMap({ page, frame, view, cell, scaleOptions, sameE
         <section className={styles.mapSection} aria-labelledby="map-legend-placement-heading">
           <h3 id="map-legend-placement-heading" className={styles.mapSectionTitle}>범례 위치</h3>
           <div className={styles.legendPlacement} role="group" aria-label="범례 위치">
-            {LEGEND_PLACEMENTS.map((item) => <button key={item.value} type="button" className={frame.legend.placement === item.value ? styles.legendPlacementActive : styles.legendPlacementButton} aria-pressed={frame.legend.placement === item.value} onClick={() => legend({ placement: item.value })}>{item.label}</button>)}
+            {LEGEND_PLACEMENTS.map((item) => { const active = (frame.legend.placement === "right" ? "below" : frame.legend.placement) === item.value; return <button key={item.value} type="button" className={active ? styles.legendPlacementActive : styles.legendPlacementButton} aria-pressed={active} onClick={() => legend({ placement: item.value })}>{item.label}</button>; })}
           </div>
         </section>
 

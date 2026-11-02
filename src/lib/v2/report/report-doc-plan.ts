@@ -493,7 +493,7 @@ function pageStyleFor(doc: ReportDoc, page: ReportPage): PageStyle {
   const frame = page.frame;
   return {
     ...base,
-    summary: page.layout !== "map-full" && !pageElementDeleted(page, "summary"),
+    summary: !pageElementDeleted(page, "summary"),
     zoomDelta: frame.zoomDelta,
     offsetM: [...frame.offsetM] as [number, number],
     pinnedKeys: [...frame.pinnedKeys],

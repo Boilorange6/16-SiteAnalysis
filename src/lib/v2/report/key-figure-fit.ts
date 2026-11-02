@@ -40,6 +40,8 @@ export type KeyFigureRows = {
   divider: Rect | null;
   stats: Array<{ cell: Rect; value: Rect; label: Rect }>;
   statSeparators: Rect[];
+  /** 구성 막대(A12) 위의 큰 % 한 줄: 큰 값(`value`) 오른쪽에 두 줄 설명(`lines`). 보조 숫자 칸 대신이다. */
+  lead: { value: Rect; text: string; desc: Rect; lines: string[] } | null;
   partsBar: Rect | null;
   partsSegments: Array<{ rect: Rect; color: string; site: boolean }>;
   parts: Array<{ row: Rect; swatch: Rect; label: Rect; share: Rect }>;
@@ -54,6 +56,8 @@ export type KeyFigureFit = {
   /** 뒷말(`/㎡` 등). 대상과 같은 크기이고, 큰 답이 넘치면 숫자와 함께 줄어든다. */
   postPt: number;
   subPt: number; statValuePt: number; statLabelPt: number; sentencePt: number;
+  /** 구성 막대 위 큰 % (시안 32 px) */
+  leadPt: number;
   /** 큰 답이 넘쳐 대상 이름을 보조 줄로 내렸다 */
   targetOnSub: boolean;
   badgesShown: string[]; badgesMore: number;
@@ -74,7 +78,10 @@ const PAD_BOTTOM = 0.1667; // 16 px
 const LINE = 1.25; // fitBlock이 가정하는 줄 높이
 const ANSWER_LINE = 1.05; // 큰 답은 줄 간격이 없다(한 줄)
 const MAX_BADGES = 2;
-const SENTENCE_BAR = 0.15; // 해석 줄 왼쪽 막대 + 간격
+/** 해석 줄 왼쪽 막대 + 간격. ②의 열 맨 아래 해석 줄도 화면·PPT가 이 값으로 막대와 글을 나눈다. */
+export const SENTENCE_BAR = 0.15;
+/** 해석 줄·질문 줄 왼쪽 타일 색 막대 폭(3 px) */
+export const BAR_W = 0.031;
 const HAIR = 0.0104; // 1 px
 const NUMBER_MAX_PT = 43.5;
 const NAME_MAX_PT = 23;
@@ -133,11 +140,16 @@ function fitAt({ figure, badges, grades, filterLine, sentence, width, columns, n
     }
   }
 
-  const badgesShown = badges.slice(0, MAX_BADGES);
+  const chipW = (text: string) => textIn(text, 8 * s) + 0.2;
+  // 배지 줄은 질문 글을 남긴 자리(질문이 길면 안쪽 폭의 35 %까지)를 넘으면 뒤에서부터 `+n`으로 접는다. 질문 줄이 카드 밖으로 나가지 않게 한다.
+  const badgeBudget = Math.max(inner * 0.35, inner - (textIn(figure.question, questionPt) + 0.14));
+  const badgeRowW = (texts: string[]) => texts.reduce((sum, text) => sum + chipW(text) + 0.06, -0.06);
+  const withMore = (shown: string[]) => (badges.length > shown.length ? [...shown, `+${badges.length - shown.length}`] : shown);
+  let badgesShown = badges.slice(0, MAX_BADGES);
+  while (badgesShown.length > 0 && badgeRowW(withMore(badgesShown)) > badgeBudget) badgesShown = badgesShown.slice(0, -1);
   const badgesMore = badges.length - badgesShown.length;
 
   const subRowH = Math.max(pt(subPt) * LINE, 0.19 * s);
-  const chipW = (text: string) => textIn(text, 8 * s) + 0.2;
 
   // ── 위에서 아래로 쌓는다
   let y = PAD_TOP;
@@ -221,6 +233,20 @@ function fitAt({ figure, badges, grades, filterLine, sentence, width, columns, n
     y += rowCount * cellH + (rowCount - 1) * 0.08;
   }
 
+  // 구성 막대가 있는 카드(A12)는 보조 숫자 대신 큰 % + 두 줄 설명(시안 A-zoning)을 막대 위에 둔다. 설명 둘째 줄은 둘째 보조 숫자의 이름(앞의 `반경 n 중` 뺀 것)과 값이다.
+  const leadPt = 24 * s;
+  let lead: KeyFigureRows["lead"] = null;
+  if (parts.length > 0 && figure.stats.length > 0) {
+    const [first, second] = figure.stats;
+    const valueW = textIn(first!.value, leadPt) + 0.04;
+    const descW = Math.max(0.3, inner - valueW - 0.12);
+    const oneLine = (text: string) => wrapToLines(text, statLabelPt, descW, 1)[0] ?? "";
+    const lines = [first!.label, ...(second ? [`${second.label.replace(/^반경 \S+ 중 /, "")} 전체 ${second.value}`] : [])].map(oneLine);
+    const h = Math.max(pt(leadPt) * 1.05, lines.length * pt(statLabelPt) * LINE);
+    lead = { value: { x: PAD_X, y, w: valueW, h }, text: first!.value, desc: { x: PAD_X + valueW + 0.12, y, w: descW, h }, lines };
+    y += h + 0.08;
+  }
+
   let partsBar: Rect | null = null;
   const partsSegments: KeyFigureRows["partsSegments"] = [];
   const partRows: KeyFigureRows["parts"] = [];
@@ -262,6 +288,6 @@ function fitAt({ figure, badges, grades, filterLine, sentence, width, columns, n
   }
 
   const height = y + PAD_BOTTOM;
-  const rows: KeyFigureRows = { questionBar, question, badges: badgeRects, answer: answerRect, answerBaseline, sub, grades: gradeRects, filter, divider, stats: statCells, statSeparators, partsBar, partsSegments, parts: partRows, sentenceBar, sentence: sentenceRect };
-  return { height, questionPt, prePt, valuePt, targetPt, postPt, subPt, statValuePt, statLabelPt, sentencePt, targetOnSub, badgesShown, badgesMore, sentenceLines, sentenceHeight, subLines, filterText, rows };
+  const rows: KeyFigureRows = { questionBar, question, badges: badgeRects, answer: answerRect, answerBaseline, sub, grades: gradeRects, filter, divider, stats: statCells, statSeparators, lead, partsBar, partsSegments, parts: partRows, sentenceBar, sentence: sentenceRect };
+  return { height, questionPt, prePt, valuePt, targetPt, postPt, subPt, statValuePt, statLabelPt, sentencePt, leadPt, targetOnSub, badgesShown, badgesMore, sentenceLines, sentenceHeight, subLines, filterText, rows };
 }

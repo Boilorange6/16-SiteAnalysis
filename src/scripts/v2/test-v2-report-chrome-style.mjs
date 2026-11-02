@@ -146,7 +146,7 @@ assert.match(drawerMapSource, />\s*고정\s*<\/button>/, "지도 고정 토글 �
 assert.doesNotMatch(drawerMapSource, /지도가 잠겨 있어 드래그|잠금 해제 후 이동 가능/, "잠금 설명 문장은 상태 토글과 중복하지 않는다");
 assert.doesNotMatch(drawerMapSource, /<fieldset\b|mapFieldset/, "지도 설정 묶음은 겹친 fieldset 테두리를 쓰지 않는다");
 assert.match(styles, /\.mapSummary\s*\{[\s\S]*min-height:\s*44px;/, "details summary는 44px 누름 영역이다");
-assert.match(styles, /\.legendPlacement\s*\{[\s\S]*repeat\(3,\s*minmax\(0,\s*1fr\)\)/, "범례 위치는 3칸 분할 버튼이다");
+assert.match(styles, /\.legendPlacement\s*\{[\s\S]*repeat\(2,\s*minmax\(0,\s*1fr\)\)/, "범례 위치는 2칸 분할 버튼이다(지도 위·숨김)");
 assert.match(styles, /\.settingsCard\s*\{[\s\S]*overflow-x:\s*hidden;[\s\S]*overflow-y:\s*auto;/, "설정 카드는 가로 넘침을 숨기고 세로만 스크롤한다");
 assert.match(styles, /\.mapScaleChip\[data-open="true"\]\s*\{[^}]*color:\s*#102e60;[^}]*border-color:\s*#2f6fdb;/, "축척 칩 열린 상태는 파란 테두리와 대비되는 글자를 쓴다");
 assert.match(mobileRules, /\.reportStage\[data-settings-open="true"\]\s+\.stageFit\s*\{[\s\S]*justify-content:\s*flex-start;/, "390 설정 시트가 열리면 슬라이드를 시트 위쪽에 둔다");
