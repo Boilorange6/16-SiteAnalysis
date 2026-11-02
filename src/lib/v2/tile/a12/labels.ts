@@ -29,12 +29,13 @@ export function zoningPolygons(zoning: ZoningCollection): PolygonCandidate[] {
     groups.set(name, group);
   });
 
-  const namedFragment = new Map<string, { index: number; priority: number }>();
+  const namedFragment = new Map<string, { index: number; priority: number; sublabel: string }>();
   for (const [name, group] of groups) {
     const siteGroup = group.filter((item) => item.siteRelated);
     const candidates = siteGroup.length > 0 ? siteGroup : group;
     const selected = [...candidates].sort((a, b) => b.polygon.areaM2 - a.polygon.areaM2 || a.index - b.index)[0];
-    if (selected) namedFragment.set(name, { index: selected.index, priority: selected.siteRelated ? 2 : 1 });
+    const totalAreaM2 = group.reduce((sum, item) => sum + item.polygon.areaM2, 0);
+    if (selected) namedFragment.set(name, { index: selected.index, priority: selected.siteRelated ? 2 : 1, sublabel: percentage(totalAreaM2, zoning.circleArea) });
   }
 
   return zoning.polys
@@ -49,7 +50,7 @@ export function zoningPolygons(zoning: ZoningCollection): PolygonCandidate[] {
           ...polygon.p,
           label: null,
           name: named ? name : null,
-          sublabel: percentage(polygon.areaM2, zoning.circleArea),
+          ...(named && selected ? { sublabel: selected.sublabel } : {}),
           labelPriority: named ? selected?.priority ?? (siteRelated ? 2 : 1) : 0,
         },
       };

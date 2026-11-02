@@ -264,5 +264,25 @@ const halfArea = (d, r) => (r * r * Math.acos(-d / r) + d * Math.sqrt(r * r - d 
   assert.equal(buildSummary({ address: "x", jimok: null }, 800, [t]).zoning, null, "용도지역 미확인 유지");
   ctx.close();
 }
+{
+  // 설명선 %: 이름 붙은 조각의 sublabel = 같은 용도지역 조각들의 합계 몫, 이름 없는 조각은 sublabel 없음
+  const { zoningPolygons } = await import("../../lib/v2/tile/a12/labels.ts");
+  const ring = [[127, 37], [127.001, 37], [127.001, 37.001], [127, 37.001], [127, 37]];
+  const poly = (id, areaM2) => ({ id, areaM2, p: { layer: "zone:주거", rings: [ring] } });
+  const hit = (featureId, name) => ({ featureId, name, properties: { zoningName: name } });
+  const collection = {
+    circleArea: 1000,
+    hits: [hit(1, "제2종일반주거지역"), hit(2, "제2종일반주거지역"), hit(3, "제2종일반주거지역"), hit(4, "제1종전용주거지역")],
+    fine: [{ featureId: 2 }],
+    polys: [poly(1, 57), poly(2, 102), poly(3, 90), poly(4, 30)],
+  };
+  const out = zoningPolygons(collection);
+  const byId = new Map(out.map((x) => [x.id, x.p]));
+  assert.equal(byId.get(2).name, "제2종일반주거지역", "대지와 관련된 가장 큰 조각이 이름을 받는다");
+  assert.equal(byId.get(2).sublabel, "24.9%", "같은 용도지역 3조각 합계 5.7+10.2+9.0");
+  assert.equal(byId.get(1).sublabel, undefined);
+  assert.equal(byId.get(3).sublabel, undefined);
+  assert.equal(byId.get(4).sublabel, "3%", "조각이 하나뿐이면 그 조각의 몫");
+}
 
 console.log("v2 engine market/maintenance/zoning: ok");

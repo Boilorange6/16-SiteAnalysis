@@ -34,7 +34,7 @@ const EXPECTED_CACHE_VERSIONS = {
   A09: "v2-p4-ext-1+w3-merge-r1+w2b-r1+clip-r1+maint-profile-r1+seoulplan-r1+noclip-r1+onezone-r1+chart-count-r1+chart-cap-r1",
   A10: "v2-p4-ext-1+w3-merge-r1+w2b-r1",
   A11: "v2-p4-ext-1+w3-merge-r1+w2b-r1+clip-r1",
-  A12: "v2-p4-ext-1+w3-merge-r1+w2b-r1+clip-r1+provenance-r1",
+  A12: "v2-p4-ext-1+w3-merge-r1+w2b-r1+clip-r1+provenance-r1+callout-total-r1",
   D01: "v2-p4-ext-1",
   D02: "v2-p4-ext-1+w2b-r1+w4-names-r1+clip-r1",
   D03: "v2-p4-ext-1+w2b-r1+w4-names-r1+clip-r1+chart-count-r1+chart-cap-r1",
