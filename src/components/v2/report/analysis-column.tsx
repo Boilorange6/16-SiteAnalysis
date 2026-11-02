@@ -162,7 +162,7 @@ export function AnalysisColumn({ styles, frame, charts, view, unit, showNotes, i
       {box && <ChartSvg shapes={shapes} box={box} panel={r} unit={unit} kind={kind} label={label} styles={styles} />}
     </div>
   );
-  // 해석 한 줄: 열 맨 아래, 카드 없음. 왼쪽 3 px 타일 색 막대 + 글(최대 2줄, 넘치면 …).
+  // 해석 한 줄: 열 맨 아래, 카드 없음. 왼쪽 3 px 타일 색 막대 + 글(최대 3줄, 넘치면 …).
   const sentence = column.sentence;
   const fit = frame.fit;
   const sentenceInfo = frame.sentence;

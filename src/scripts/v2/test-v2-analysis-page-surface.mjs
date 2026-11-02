@@ -276,11 +276,11 @@ const edited = render(planOf({ ...tilePage, layout: "map-charts", summaryOverrid
 assert.equal(sentenceOf(edited), "사용자가고친요약문장", "고친 요약을 해석 문장 자리에 쓴다");
 assert.ok(!edited.includes(view.sentence), "고친 요약이 있으면 view.sentence는 장에 없다");
 
-// 글자 크기 24 pt에서도 해석 문장은 줄 수를 묶는다(넘치지 않는다)
+// 글자 크기 24 pt에서도 해석 문장은 줄 수를 묶는다(넘치지 않는다, 최대 3줄)
 const bigSlide = planOf({ ...tilePage, layout: "map-charts", fontSizes: { summary: 24 }, summaryOverride: "아주 긴 요약 문장입니다. ".repeat(30) });
 const bigMarkup = render(bigSlide);
 const bigSentence = /<div[^>]*data-part="column-sentence"[^>]*>([^<]*)<\/div>/.exec(bigMarkup)?.[1] ?? "";
-assert.ok(bigSentence.length > 0 && bigSentence.split("\n").length <= 2, "해석 문장은 두 줄 이하");
+assert.ok(bigSentence.length > 0 && bigSentence.split("\n").length === 3, "해석 문장은 세 줄까지");
 assert.match(bigSentence, /…$/, "넘치는 해석 문장은 …로 닫는다");
 assert.match(bigMarkup, /data-chart="composition"/, "24 pt에서도 구성비 그래프를 그린다");
 
@@ -397,6 +397,16 @@ for (const format of ["wide", "a3", "a4"]) {
   const over = legendLayout([{ label: longLabel, color: "#888" }], [], 1);
   const overMarkup = renderToStaticMarkup(createElement(LegendPanel, { slide: base, rect: { x: 0, y: 0, ...over.size }, unit: 1, fit: over }));
   assert.ok(overMarkup.includes(`>${over.labels[0]}<`) && overMarkup.includes(`title="${longLabel}"`), "잘린 항목은 줄인 글 + 전문 title");
+  // Ruling 31: 2열을 유지하고 접은 항목은 줄을 `\n`으로 이어 그리고(white-space: pre) 칸 높이는 행 높이다. 접기만 했으니 title은 없다.
+  const folded = legendLayout([...["㎡당 하위 20% · ~1,935.5만원/㎡", "㎡당 20~40% · 1,935.5~2,790.2만원/㎡", "㎡당 40~60% · 2,790.2~3,475.9만원/㎡", "㎡당 60~80% · 3,475.9~4,051.1만원/㎡", "㎡당 상위 20% · 4,051.1만원/㎡ 이상"].map((label) => ({ label, color: "#888" })), { label: "대지", color: "#111", site: true }], [], 1);
+  assert.equal(folded.cols, 2);
+  const foldedMarkup = renderToStaticMarkup(createElement(LegendPanel, { slide: base, rect: { x: 0, y: 0, ...folded.size }, unit: 1, fit: folded }));
+  assert.ok(foldedMarkup.includes(">㎡당 하위 20%\n~1,935.5만원/㎡<"), "접은 항목은 줄을 \\n으로 이어 그린다");
+  assert.ok(!foldedMarkup.includes("title=\"㎡당"), "접기만 한 항목에는 title이 없다");
+  assert.ok(/white-space:pre/.test(foldedMarkup), "접은 글은 white-space: pre");
+  const foldedTags = [...foldedMarkup.matchAll(/<(?:div|button)[^>]*data-part="legend-item"[^>]*>/g)];
+  assert.equal(foldedTags.length, folded.itemRects.length);
+  foldedTags.forEach(([tag], i) => near(px(tag, "height"), folded.itemRects[i].h, "항목 칸 높이 = legendFit"));
 }
 
 // ── 「지도 + 그래프」는 요약 칸이 있는 장에서만 고른다

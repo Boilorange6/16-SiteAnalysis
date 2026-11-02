@@ -288,8 +288,12 @@ for (const format of ["wide", "a3", "a4"]) {
   const one = keyFigureFit(mk({ columns: 2, width: 3.125 }));
   const noSent = keyFigureFit(mk({ columns: 2, width: 3.125, sentence: null }));
   assert.ok(one.height > noSent.height, "① 해석 한 줄");
-  assert.equal(keyFigureFit(mk({ sentence: "가나다 ".repeat(60) })).sentenceLines.length, 2);
-  assert.match(keyFigureFit(mk({ sentence: "가나다 ".repeat(60) })).sentenceLines[1], /…$/);
+  assert.equal(keyFigureFit(mk({ sentence: "가나다 ".repeat(60) })).sentenceLines.length, 3);
+  assert.match(keyFigureFit(mk({ sentence: "가나다 ".repeat(60) })).sentenceLines[2], /…$/);
+  // ①(columns 2)에서도 3줄까지, 넘치면 끝이 …
+  const longOne = keyFigureFit(mk({ columns: 2, width: 3.125, sentence: "가나다 ".repeat(60) }));
+  assert.equal(longOne.sentenceLines.length, 3);
+  assert.match(longOne.sentenceLines[2], /…$/);
   assert.equal(keyFigureFit(mk({ columns: 3 })).height, keyFigureFit(mk({ columns: 3, sentence: null })).height, "② 해석은 카드 밖");
 
   // 구성 막대(A12): 보조 숫자 대신 막대 + 항목 목록
@@ -532,19 +536,34 @@ for (const format of ["wide", "a3", "a4"]) {
       assert.equal(f.noteClipped[i], lines.join(" ") !== notes[i], `${tag} 주석 잘림 표시`);
       if (f.noteClipped[i]) assert.match(lines.at(-1), /…$/);
     });
-    near(f.size.h, f.padding.top + f.rows * f.rowH + f.noteLines.reduce((sum, l) => sum + l.length * f.noteH, 0) + (notes.length ? f.noteGap : 0) + f.padding.bottom, `${tag} 높이 = 계산 합`);
-    f.labels.forEach((l, i) => {
-      assert.ok(textIn(l, f.labelPt) * 1.1 + 0.05 * scale <= room(f, f.itemRects[i]) + 1e-6, `${tag} 항목 글이 칸 안: ${l}`);
-      assert.equal(f.labelClipped[i], l !== [...labels, "대지"][i], `${tag} 항목 잘림 표시`);
+    near(f.size.h, f.padding.top + f.rowHeights.reduce((sum, h) => sum + h, 0) + f.noteLines.reduce((sum, l) => sum + l.length * f.noteH, 0) + (notes.length ? f.noteGap : 0) + f.padding.bottom, `${tag} 높이 = 계산 합`);
+    f.labelLines.forEach((lines, i) => {
+      assert.ok(lines.length >= 1 && lines.length <= 2, `${tag} 항목 줄 수 ${lines.length}`);
+      for (const l of lines) assert.ok(textIn(l, f.labelPt) * 1.1 + 0.05 * scale <= room(f, f.itemRects[i]) + 1e-6, `${tag} 항목 글이 칸 안: ${l}`);
+      assert.ok(f.itemRects[i].h >= f.rowH + (lines.length - 1) * f.labelLineH - 1e-6, `${tag} 항목 칸 높이는 줄 수를 따른다`);
+      assert.equal(f.labels[i], lines.join("\n"), `${tag} labels = 줄 합`);
+      assert.equal(f.labelClipped[i], lines.at(-1).endsWith("…"), `${tag} 항목 잘림 표시`);
+      if (!f.labelClipped[i]) assert.equal(lines.join(" ").replace(/ ·? ?/g, ""), [...labels, "대지"][i].replace(/ ·? ?/g, ""), `${tag} 접기만 하고 글은 그대로`);
     });
     for (let i = 0; i < f.itemRects.length; i++) for (let j = i + 1; j < f.itemRects.length; j++) assert.ok(!hit(f.itemRects[i], f.itemRects[j]), `${tag} 항목 칸 겹침`);
   }
   const at = (name, scale = 1) => legendLayout([...table[name].labels.map(row), site], table[name].notes, scale);
-  // 2열이 5 in를 넘으면 1열로 내린다(A10·A11). 넘지 않으면 2열 그대로(A08).
-  assert.equal(at("A10").cols, 1);
-  assert.equal(at("A11").cols, 1);
-  assert.equal(at("A08").cols, 2);
-  assert.deepEqual(at("A10").labelClipped, Array(6).fill(false), "1열이면 A10 항목은 자르지 않는다");
+  // Ruling 31: 2열이 5 in를 넘으면 2열을 유지하고 항목 이름을 열 폭에 맞춰 최대 2줄로 접는다(` · ` 앞에서 먼저). A07·A08 범례.
+  for (const name of ["A10", "A11", "A08"]) {
+    const f = at(name);
+    assert.equal(f.cols, 2, `${name} 2열 유지`);
+    assert.ok(f.size.w <= 5 + 1e-6, `${name} 판 폭 ${f.size.w}`);
+    assert.deepEqual(f.labelClipped, Array(f.items.length).fill(false), `${name} 접기만 하고 자르지 않는다`);
+  }
+  const a07 = at("A10");
+  assert.deepEqual(a07.labelLines[0], ["㎡당 하위 20%", "~1,935.5만원/㎡"], "` · ` 앞에서 먼저 끊는다");
+  assert.ok(a07.labelLines.some((lines) => lines.length === 2), "A07 항목은 접힌다");
+  assert.equal(a07.labelLines.at(-1).length, 1, "대지는 한 줄");
+  assert.ok(a07.rowHeights[0] > a07.rowH, "접힌 행 높이는 줄 수를 따른다");
+  // 2줄로도 안 들어가는 항목이 있으면 그때만 1열로 내린다
+  const unfoldable = legendLayout([...["아주긴이름".repeat(40), "가", "나", "다", "라"].map(row), site], [], 1);
+  assert.equal(unfoldable.cols, 1, "접어도 안 되면 1열");
+  assert.equal(unfoldable.labelClipped[0], true);
   // 판 폭의 뼈대는 항목이다: 도로 주석은 2.6 in로 접어 두 줄, 판이 주석 한 줄 길이로 벌어지지 않는다.
   const road = at("도로");
   assert.equal(road.noteLines[0].length, 2);

@@ -149,8 +149,12 @@ export function analysisCharts(model: MapModel): AnalysisCharts | null {
   if (present.length < 2) return null; // 반경 안에 실제로 있는 범례 항목이 하나뿐이면 구성비·거리 비교가 의미 없다
   const total = counted.length;
   // 범례 이름의 ` · ` 뒤(A07 가격대 등)는 지도 범례에 이미 있으니 앞부분만 쓴다. 앞부분이 다른 항목과 같으면(예: `지목 · …`) 전체를 쓴다.
+  // 단 앞부분이 모든 항목에서 같으면(`정비사업 · 추진위`·`도시계획시설 · 교통`) 그래프 제목이 주제를 밝히므로 뒷부분만 쓴다. 뒷부분끼리 겹칠 때만 전체 이름.
   const headOf = (item: (typeof items)[number]) => item.label.split(" · ")[0]!;
-  const labelOf = (item: (typeof items)[number]) => (present.filter((other) => headOf(other) === headOf(item)).length > 1 ? item.label : headOf(item));
+  const tailOf = (item: (typeof items)[number]) => item.label.split(" · ").slice(1).join(" · ");
+  const tails = present.map(tailOf);
+  const dropHead = present.length > 1 && present.every((item) => headOf(item) === headOf(present[0]!) && tailOf(item) !== "") && new Set(tails).size === tails.length;
+  const labelOf = (item: (typeof items)[number]) => (dropHead ? tailOf(item) : present.filter((other) => headOf(other) === headOf(item)).length > 1 ? item.label : headOf(item));
   const toComposition = (item: (typeof items)[number]): CompositionItem => ({ label: labelOf(item), color: item.color, count: countByItem.get(item)!, share: countByItem.get(item)! / total });
   let composition = present.map(toComposition);
   if (composition.length > 6) {

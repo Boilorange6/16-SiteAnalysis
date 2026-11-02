@@ -152,7 +152,7 @@ function scatterShapes(d: Scatter, radiusM: number, box: ChartBox, scale: number
     if (!byColor.has(p.color)) byColor.set(p.color, []);
     byColor.get(p.color)!.push([X(p.d), Y(p.v)]);
   }
-  [...byColor].forEach(([color, points], i) => out.push({ kind: "dots", color, r: 0.018 * scale, opacity: 0.45, points, name: `chart-distance-dots-${i}` }));
+  [...byColor].forEach(([color, points], i) => out.push({ kind: "dots", color, r: 0.03 * scale, opacity: 0.8, points, name: `chart-distance-dots-${i}` }));
 
   const yMed = Y(d.median);
   const yMean = Y(d.mean);

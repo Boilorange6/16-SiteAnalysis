@@ -67,7 +67,7 @@ export type KeyFigureFit = {
   badgesFolded: string[];
   /** 질문 글이 질문 칸보다 길어 …로 잘린다(화면은 질문 전체를 title로 단다) */
   questionClipped: boolean;
-  /** 해석 한 줄(최대 2줄, 넘치면 마지막 줄을 …로 닫는다) */
+  /** 해석 줄(최대 3줄, 넘치면 마지막 줄을 …로 닫는다) */
   sentenceLines: string[];
   /** 해석 줄 블록의 높이. ②는 이 값을 열의 `sentenceHeight`로 넘긴다. */
   sentenceHeight: number;
@@ -307,13 +307,13 @@ function fitAt({ figure, badges, grades, filterLine, sentence, width, columns, n
 }
 
 /**
- * 해석 한 줄(최대 2줄, 넘치면 …). 카드가 없는 ②(핵심 숫자 없음)도 사용자가 고친 요약 같은 해석 줄은 그리므로 카드 맞춤과 따로 부를 수 있다.
+ * 해석 줄(최대 3줄, 넘치면 …). 카드가 없는 ②(핵심 숫자 없음)도 사용자가 고친 요약 같은 해석 줄은 그리므로 카드 맞춤과 따로 부를 수 있다.
  * `width`는 ①이면 카드 바깥 폭, ②이면 열 폭이다.
  */
 export function sentenceFit({ sentence, width, columns, summaryPt, notes = true }: { sentence: string | null; width: number; columns: 2 | 3; summaryPt: number; notes?: boolean }): { lines: string[]; pt: number; height: number } {
   const sentencePt = 9.75 * (summaryPt / 13);
   const inner = Math.max(0.5, width - PAD_X * 2);
   const sentenceW = (columns === 3 ? width - (notes ? NOTES_CHIP_SIZE.w + NOTES_CHIP_GAP : 0) : inner) - SENTENCE_BAR;
-  const lines = sentence ? wrapToLines(sentence, sentencePt, sentenceW, 2) : [];
+  const lines = sentence ? wrapToLines(sentence, sentencePt, sentenceW, 3) : [];
   return { lines, pt: sentencePt, height: lines.length * pt(sentencePt) * LINE };
 }

@@ -110,7 +110,7 @@ for (const scale of SCALES) {
   assert.deepEqual(dots.map((s) => s.color), COLORS, "서로 다른 색 수 = 묶음 수");
   assert.deepEqual(dots.map((s) => s.name), ["chart-distance-dots-0", "chart-distance-dots-1", "chart-distance-dots-2"]);
   assert.equal(dots.reduce((sum, s) => sum + s.points.length, 0), points.length);
-  assert.ok(dots.every((s) => s.opacity === 0.45 && Math.abs(s.r - 0.018 * scale) < EPS));
+  assert.ok(dots.every((s) => s.opacity === 0.8 && Math.abs(s.r - 0.03 * scale) < EPS), "점 크기·불투명도(G1: 점이 잘 안 보인다)");
   const gx0 = byName(shapes, "chart-distance-grid-0").x1;
   const gx1 = byName(shapes, "chart-distance-grid-0").x2;
   const first = points.find((p) => p.color === COLORS[0]);

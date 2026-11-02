@@ -146,7 +146,7 @@ export interface TileClientModule {
   chart?: {
     subject: string;
     countUnit: string;
-    /** 중앙값·평균 앞에 붙는 말(예: A07 「단지」 — 값이 거래 전체가 아니라 단지 중앙값의 통계라서). */
+    /** 중앙값·평균 앞에 붙는 말(예: A07 「단지별」 — 값이 거래 전체가 아니라 거래가 있던 단지마다 낸 중앙값들의 통계라서). */
     statQualifier?: string;
     /** 통계·산점도 글자에 붙는 단위. 없으면 `valueAxis.unit`(예: A07 「만원/㎡」). */
     displayUnit?: string;

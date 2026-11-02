@@ -271,9 +271,14 @@ const trade = analysisCharts(model({
 }));
 assert.ok(legendItemsForModel(model({ features: ["trade_q1", "trade_q2", "trade_q3", "trade_q4", "trade_q5"].map(f), legend: [{ label: "㎡당 하위 20%", min: null, max: 300 }, { label: "㎡당 20~40%", min: 300, max: 500 }, { label: "㎡당 40~60%", min: 500, max: 700 }, { label: "㎡당 60~80%", min: 700, max: 900 }, { label: "㎡당 상위 20%", min: 900, max: null }] })).every((item) => item.label.includes(" · ")), "전제: 범례 이름에 가격대가 붙는다");
 assert.deepEqual(trade.composition.map((item) => item.label), ["㎡당 하위 20%", "㎡당 20~40%", "㎡당 40~60%"], "구성비 이름은 가격대를 뗀 앞부분");
-// 앞부분이 같아 구별되지 않으면 전체 이름을 쓴다(지목 · 대지 / 지목 · 도로)
-const jimok = analysisCharts(model({ features: [f("jimok:대", 1), f("jimok:도로", 2)] }));
-assert.deepEqual(jimok.composition.map((item) => item.label), ["지목 · 대지", "지목 · 도로"]);
+// 앞부분이 모든 항목에서 같으면 뒷부분만 쓴다(그래프 제목이 주제를 밝힌다): A09식·D12식
+const maint = analysisCharts(model({ features: [f("maint_stage:추진위", 1), f("maint_stage:조합", 2), f("maint_stage:사업시행", 3)] }));
+assert.deepEqual(maint.composition.map((item) => item.label), ["추진위", "조합", "사업시행"], "A09식: 같은 앞말(정비사업)을 뗀다");
+const facility = analysisCharts(model({ features: [f("facility:교통", 1), f("facility:공간", 2)] }));
+assert.deepEqual(facility.composition.map((item) => item.label), ["교통", "공간"], "D12식: 같은 앞말(도시계획시설)을 뗀다");
+// D19식: 앞말이 섞이면(지목 · 대지, 지목 · 도로, 3,000㎡ 이상) 앞말이 같은 항목만 전체 이름, 나머지는 그대로
+const jimok = analysisCharts(model({ features: [f("jimok:대", 1), f("jimok:도로", 2), f("lot_ge3000", 3)] }));
+assert.deepEqual(jimok.composition.map((item) => item.label), ["지목 · 대지", "지목 · 도로", "3,000㎡ 이상"]);
 
 // ── 그래프는 타일이 세는 대상을 밝혀야만 나온다(선택 참여, 대체값 없음)
 const twoItems = { features: [pt("bus_stop", 10), pt("rail_station", 20), pt("bus_stop", 30)] };
@@ -397,19 +402,19 @@ assert.equal(halfA.presentation.countedCapped, undefined);
 assert.equal(halfB.presentation.countedCapped, undefined);
 assert.equal(mergeTileResults(halfA, halfB).presentation.countedCapped, true, "병합 상한이 센 지물을 떨어뜨렸다");
 
-// ── I2: A07은 통계 줄·산점도에 「단지 중앙값 …만원/㎡」, 값 없는 지물 꼬리표는 타일이 밝힌 것
+// ── I2: A07은 통계 줄·산점도에 「단지별 중앙값 …만원/㎡」, 값 없는 지물 꼬리표는 타일이 밝힌 것
 const a07 = analysisCharts(model({
   tileCode: "A07",
   valueAxis: { label: "㎡당 가격", unit: "만원", countUnit: "단지" },
   features: [pt("trade_q1", 100, 0, 3000), pt("trade_q3", 200, 0, 3175.6), pt("trade_q5", 300, 0, 3088)],
 }));
 assert.equal(a07.distance.axis.unit, "만원/㎡", "표시 단위");
-assert.equal(a07.distance.qualifier, "단지");
-assert.ok(analysisStatLine(a07).includes("단지 중앙값 3,088만원/㎡ · 최고 3,176만원/㎡"), analysisStatLine(a07));
+assert.equal(a07.distance.qualifier, "단지별", "대지 값이 아니라 거래 있던 단지(필지)마다 낸 값들의 통계");
+assert.ok(analysisStatLine(a07).includes("단지별 중앙값 3,088만원/㎡ · 최고 3,176만원/㎡"), analysisStatLine(a07));
 const { distanceShapes } = await import("../../lib/v2/report/chart-geometry.ts");
 const a07Labels = distanceShapes(a07.distance, 1000, { x: 0, y: 0, w: 4, h: 2 }, 1, "").filter((s) => s.kind === "text").map((s) => s.text);
-assert.ok(a07Labels.includes("단지 중앙값 3,088만원/㎡"), a07Labels.join("|"));
-assert.ok(a07Labels.includes("단지 평균 3,088만원/㎡") || a07Labels.some((t) => /^단지 평균 3,\d{3}만원\/㎡$/.test(t)), a07Labels.join("|"));
+assert.ok(a07Labels.includes("단지별 중앙값 3,088만원/㎡"), a07Labels.join("|"));
+assert.ok(a07Labels.some((t) => /^단지별 평균 3,\d{3}만원\/㎡$/.test(t)), a07Labels.join("|"));
 // 층: 4.5층은 통계 줄과 산점도 라벨이 똑같이 4.5층
 const fl = analysisCharts(model({ valueAxis: AXIS, features: [pt("floors_1_4", 100, 0, 4), pt("floors_5_8", 200, 0, 5), pt("floors_1_4", 300, 0, 3), pt("floors_5_8", 400, 0, 6)] }));
 assert.ok(analysisStatLine(fl).includes("중앙값 4.5층"), analysisStatLine(fl));

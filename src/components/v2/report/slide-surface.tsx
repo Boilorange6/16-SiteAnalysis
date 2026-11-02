@@ -1346,10 +1346,11 @@ export function LegendPanel({ slide, rect, unit, format = (slide.format ?? "wide
         const place = fit ? { "data-part": "legend-item", style: { ...rectStyle(fit.itemRects[index]!, unit), position: "absolute" as const } } : {};
         const text = fit?.labels[index] ?? item.label;
         const fullTitle = fit?.labelClipped[index] ? item.label : undefined;
+        const textStyle = fontStyle(pt, unit, fit ? { whiteSpace: "pre" } : {}); // 접은 항목은 줄을 `\n`으로 이은 글이다
         if (item.site) return (
           <div className={styles.legendRow} key={item.label + "-" + index} {...place}>
             <span className={styles.legendSwatchSite} aria-hidden="true" />
-            <span className={styles.legendText} title={fullTitle} style={fontStyle(pt, unit)}>{text}</span>
+            <span className={styles.legendText} title={fullTitle} style={textStyle}>{text}</span>
           </div>
         );
         // 썸네일(버튼 안)처럼 조작할 수 없는 범례는 button을 중첩하지 않는다.
@@ -1359,13 +1360,13 @@ export function LegendPanel({ slide, rect, unit, format = (slide.format ?? "wide
         if (!onLegendPin) return (
           <div className={styles.legendRow} key={key + "-" + index} {...place}>
             {swatch}
-            <span className={styles.legendText} title={fullTitle} style={fontStyle(pt, unit)}>{text}</span>
+            <span className={styles.legendText} title={fullTitle} style={textStyle}>{text}</span>
           </div>
         );
           return (
           <button key={key + "-" + index} type="button" className={rowClass} data-panel-action="legend-item" data-preview-legend={item.label} aria-label={`${item.label} 범례 강조`} aria-pressed={focused} title={instruction} onClick={() => onLegendPin?.(key)} onPointerEnter={(event) => { if (event.pointerType !== "touch") onLegendHover?.(item.label); }} onPointerLeave={() => onLegendHover?.(null)} onFocus={() => onLegendHover?.(item.label)} onBlur={() => onLegendHover?.(null)} {...place}>
             {swatch}
-            <span className={styles.legendText + (dimmed ? " " + styles.legendDimmed : "") + (focused ? " " + styles.legendFocused : "")} title={fullTitle} style={fontStyle(pt, unit)}>{text}</span>
+            <span className={styles.legendText + (dimmed ? " " + styles.legendDimmed : "") + (focused ? " " + styles.legendFocused : "")} title={fullTitle} style={textStyle}>{text}</span>
             {focused && <span className={styles.legendCheck} aria-hidden="true">✓</span>}
           </button>
         );

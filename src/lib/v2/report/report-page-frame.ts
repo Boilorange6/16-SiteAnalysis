@@ -32,12 +32,15 @@ export type LegendFit = {
   /** F1 범례 pt / 10 */
   scale: number;
   labelPt: number; notePt: number;
-  rowH: number; noteH: number; noteGap: number; padding: { top: number; right: number; bottom: number; left: number };
+  rowH: number;
+  /** 행마다 높이(그 행에서 가장 많은 줄을 따른다)와 항목 글 한 줄 높이 */
+  rowHeights: number[]; labelLineH: number;
+  noteH: number; noteGap: number; padding: { top: number; right: number; bottom: number; left: number };
   iconW: number; iconGap: number; colGap: number;
   items: ReturnType<typeof slideLegend>["items"];
   notes: string[];
-  /** 그리는 항목 글(1열로도 넘는 항목만 …)과 잘림 여부. 잘린 글의 전문은 `items[i].label`이다. */
-  labels: string[]; labelClipped: boolean[];
+  /** 그리는 항목 글(2열이 5 in를 넘으면 최대 2줄로 접고, 1열로도 넘는 항목만 …)과 잘림 여부. `labels`는 줄을 `\n`으로 이은 글. 잘린 글의 전문은 `items[i].label`이다. */
+  labels: string[]; labelLines: string[][]; labelClipped: boolean[];
   /** 그리는 주석 줄(주석마다 최대 2줄, 넘치면 …)과 잘림 여부. 전문은 `notes[i]`다. */
   noteLines: string[][]; noteClipped: boolean[];
   /** 항목 칸·주석 칸(판 왼쪽 위 기준 inch). 화면과 PPT는 이 자리에 그리기만 한다. */
@@ -127,7 +130,8 @@ const LEGEND_NOTE_W = 2.6;
 
 /**
  * 범례 판의 폭·열·줄·칸을 정한다(Ruling 30). 판 폭의 뼈대는 항목이고, 주석은 항목 폭(좁으면 2.6 in까지)으로 접어 최대 2줄이다.
- * 2열이 5 in를 넘으면 1열로 내리고, 1열로도 넘는 항목만 …로 줄인다. 높이는 실제 줄 수의 합이다.
+ * 2열이 5 in를 넘으면 2열을 유지하고 항목 이름을 열 폭에 맞춰 최대 2줄로 접는다(Ruling 31). 접어도 안 되는 항목이 있을 때만 1열로 내리고,
+ * 1열로도 넘는 항목만 …로 줄인다. 높이는 실제 줄 수의 합이다.
  */
 export function legendLayout(items: LegendFit["items"], notes: string[], scale: number): LegendFit {
   const labelPt = 9 * scale;
@@ -139,16 +143,30 @@ export function legendLayout(items: LegendFit["items"], notes: string[], scale: 
   const iconW = 0.1875 * scale;
   const iconGap = 0.073 * scale;
   const colGap = 0.1667 * scale;
+  const labelLineH = labelPt / 72 * 1.25; // 화면 .legendText line-height 1.25
   const maxInner = LEGEND_MAX_W - padding.left - padding.right;
   // 글자 폭 어림의 오차(영문 대문자·− 기호는 0.56 em보다 넓다)와 항목 칸 테두리를 비율 + 고정 여유로 받는다.
   const labelW = (label: string) => textIn(label, labelPt) * 1.1 + 0.05 * scale;
-  const widthsAt = (cols: number) => Array.from({ length: cols }, (_, c) => iconW + iconGap + Math.max(0, ...items.filter((_, i) => i % cols === c).map((item) => labelW(item.label))));
   const span = (widths: number[]) => widths.reduce((sum, w) => sum + w, 0) + colGap * (widths.length - 1);
-  const cols = items.length >= 6 && span(widthsAt(2)) <= maxInner ? 2 : 1;
+  const widthsOf = (cols: number, linesOf: string[][]) => Array.from({ length: cols }, (_, c) => iconW + iconGap + Math.max(0, ...linesOf.filter((_, i) => i % cols === c).flatMap((lines) => lines.map(labelW))));
+  const oneLines = items.map((item) => [item.label]);
+  // 2열이 5 in 안이면 한 줄씩. 넘으면 2열을 유지하고 열 폭에 맞춰 최대 2줄로 접는다(Ruling 31). 접어도 안 되는 항목이 있을 때만 1열.
+  let cols = items.length >= 6 ? 2 : 1;
+  let linesOf = oneLines;
+  if (cols === 2 && span(widthsOf(2, oneLines)) > maxInner) {
+    const colRoom = (maxInner - colGap) / 2 - iconW - iconGap;
+    const folded = items.map((item) => foldLabel(item.label, labelPt, colRoom, 0.05 * scale));
+    if (folded.every((lines) => lines !== null)) linesOf = folded as string[][];
+    else cols = 1;
+  }
   const rows = Math.ceil(items.length / cols);
-  const colWidths = widthsAt(cols).map((w) => Math.min(w, maxInner));
+  const colWidths = widthsOf(cols, linesOf).map((w) => Math.min(w, maxInner));
   const labelRoom = maxInner - iconW - iconGap;
-  const labels = items.map((item) => labelW(item.label) <= labelRoom ? item.label : oneLine(item.label, labelPt, (labelRoom - 0.05 * scale) / 1.1));
+  // 1열로도 넘는 항목만 …로 줄인다.
+  const labelLines = linesOf.map((lines) => (lines.every((line) => labelW(line) <= labelRoom) ? lines : [oneLine(lines.join(" "), labelPt, (labelRoom - 0.05 * scale) / 1.1)]));
+  const labels = labelLines.map((lines) => lines.join("\n"));
+  // 행 높이는 그 행에서 가장 많은 줄을 따른다. 항목 칸은 행 높이를 쓴다(강조 면이 한 행에서 같은 높이).
+  const rowHeights = Array.from({ length: rows }, (_, r) => rowH + (Math.max(1, ...labelLines.slice(r * cols, (r + 1) * cols).map((lines) => lines.length)) - 1) * labelLineH);
   const itemsW = items.length > 0 ? span(colWidths) : 0;
   const longestNote = Math.max(0, ...notes.map((note) => textIn(note, notePt) * 1.101)); // wrapToLines의 10 % 여유: 이 폭이면 한 줄에 든다
   const noteW = Math.max(itemsW, Math.min(LEGEND_NOTE_W, maxInner, longestNote));
@@ -156,16 +174,31 @@ export function legendLayout(items: LegendFit["items"], notes: string[], scale: 
   const noteClipped = notes.map((note) => wrapToLines(note, notePt, noteW, 3).length > 2);
   const itemRects = items.map((_, i) => {
     const col = i % cols;
-    return { x: padding.left + colWidths.slice(0, col).reduce((sum, w) => sum + w + colGap, 0), y: padding.top + Math.floor(i / cols) * rowH, w: colWidths[col]!, h: rowH };
+    const row = Math.floor(i / cols);
+    return { x: padding.left + colWidths.slice(0, col).reduce((sum, w) => sum + w + colGap, 0), y: padding.top + rowHeights.slice(0, row).reduce((sum, h) => sum + h, 0), w: colWidths[col]!, h: rowHeights[row]! };
   });
-  let y = padding.top + rows * rowH + (notes.length > 0 ? noteGap : 0);
+  let y = padding.top + rowHeights.reduce((sum, h) => sum + h, 0) + (notes.length > 0 ? noteGap : 0);
   const noteRects = noteLines.map((lines) => {
     const rect = { x: padding.left, y, w: noteW, h: lines.length * noteH };
     y += rect.h;
     return rect;
   });
   const size = { w: padding.left + padding.right + Math.max(itemsW, noteW), h: y + padding.bottom };
-  return { size, cols, rows, colWidths, scale, labelPt, notePt, rowH, noteH, noteGap, padding, iconW, iconGap, colGap, items, notes, labels, labelClipped: labels.map((label, i) => label !== items[i]!.label), noteLines, noteClipped, itemRects, noteRects };
+  return { size, cols, rows, colWidths, scale, labelPt, notePt, rowH, rowHeights, labelLineH, noteH, noteGap, padding, iconW, iconGap, colGap, items, notes, labels, labelLines, labelClipped: labelLines.map((lines, i) => lines !== linesOf[i]), noteLines, noteClipped, itemRects, noteRects };
+}
+
+/**
+ * 항목 이름을 폭 `room`(칸 테두리 여유 `pad` 포함)에 맞춰 최대 2줄로 접는다. ` · ` 앞에서 먼저 끊고, 그래도 안 되면 공백에서 끊는다.
+ * 2줄로도 안 들어가면 null.
+ */
+function foldLabel(label: string, pt: number, room: number, pad: number): string[] | null {
+  const fits = (text: string) => textIn(text, pt) * 1.1 + pad <= room;
+  if (fits(label)) return [label];
+  const [head, ...rest] = label.split(" · ");
+  const tail = rest.join(" · ");
+  if (tail && fits(head!) && fits(tail)) return [head!, tail];
+  const lines = wrapToLines(label, pt, room - pad, 3);
+  return lines.length <= 2 && lines.every(fits) ? lines : null;
 }
 
 /** 한 줄에 맞게 자른다(…). textIn 어림이라 PPT와 화면이 같은 글을 쓴다. */

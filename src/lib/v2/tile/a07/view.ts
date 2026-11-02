@@ -24,7 +24,7 @@ const layerOptions = (result: TileResult) => [
 
 export const a07ClientModule = {
   code: "A07",
-  chart: { subject: "아파트", countUnit: "단지", statQualifier: "단지", displayUnit: "만원/㎡" },
+  chart: { subject: "아파트", countUnit: "단지", statQualifier: "단지별", displayUnit: "만원/㎡" },
   headline: { ids: ["median_price_per_m2", "valid_trades"] },
   keyFigureFor: a07KeyFigure,
   mapNote: "색 구간은 반경 전체 기준",
