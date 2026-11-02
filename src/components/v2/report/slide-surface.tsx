@@ -9,7 +9,7 @@ import { metersPerPixel, slideViewport, zoomViewAt, type MapView } from "@/lib/v
 import { frameBasemap } from "@/lib/v2/ui/basemap";
 import { mapFrameScaleOptions, scaleOptionsForFrame, zoomForScale } from "@/lib/v2/ui/report-scale";
 import { SLIDE_LEGEND, calloutLegendEntries, layoutRects, slideCalloutAvoidance, slideCalloutLegendLayout, slideGeometry, slideLayout, slideLegend, slideLegendGeometry, slidePanelRects, slidePanelScale, slideReserved, slideSize, slideSiteX, terrainSectionLayout, type Rect, type SlideFormat, type TerrainSectionLayout } from "@/lib/v2/ui/overlay-layout";
-import { coverLayout, fitBlock, fitFooterText, fontSizeForStyle, footerBasemaps, sourceLayout, titlePlateRect, type Slide } from "@/lib/v2/report/pptx-kit";
+import { coverLayout, fitBlock, fitFooterText, fontSizeForStyle, footerBasemaps, shrinkPt, sourceLayout, titlePlateRect, type Slide } from "@/lib/v2/report/pptx-kit";
 import { SLIDE_OVERVIEW_FILL, calloutHoverText, calloutKeyFromTag, calloutKeyTag, calloutPageTitleTail, slideCalloutFrame } from "@/lib/v2/ui/callout-layout";
 import { a05ReportModule } from "@/lib/v2/tile/a05/report";
 import { layerStyle, legendItemsOf, legendLabelOf, modelWithHiddenLayers } from "@/lib/v2/ui/map-layers";
@@ -26,7 +26,7 @@ import type { TileView } from "@/lib/v2/ui/tile-view";
 import { sheetCells, type SheetGrid } from "@/lib/v2/ui/sheet";
 import { labelBoxFramePatch, labelFramePatch, mapLabelSwitchState, reportPageMapSelectable, mixedValue, resetLabelBoxFramePatch, toggleLabelVisibility, toggleLegendFocus } from "@/lib/v2/ui/report-mode-logic";
 import { mapLayoutUnitForFrame, placeActionBar, type ActionBarPixelBox } from "@/lib/v2/report/report-geometry";
-import { analysisCharts } from "@/lib/v2/report/analysis-charts";
+import { slideCharts } from "@/lib/v2/report/analysis-charts";
 import { FOOTER_BOX, TITLE_BOX, framePanelRule, reportMapAvoid, reportPageFrame, usesReportPageFrame, type LegendFit, type ReportPageFrame } from "@/lib/v2/report/report-page-frame";
 import type { ReportPageGeometry } from "@/lib/v2/ui/report-page-layout";
 import type { CalloutOverviewFrame } from "@/lib/v2/report/types";
@@ -2210,8 +2210,9 @@ function CalloutSlideOverlay({ slide, part, dragging = false, overviewFrame }: {
           const rx = op.type === "roundRect" ? Math.min(o.rectRadius ?? 0, o.w / 2, o.h / 2) : 0;
           return <rect key={i} x={o.x} y={o.y} width={o.w} height={o.h} rx={rx} fill={fill} fillOpacity={fillOpacity} {...stroke2} />;
         }
-        const fontSize = (o.fontSize ?? 10) / 72;
         const lines = op.runs.length === 1 ? op.runs[0].text.split("\n") : [op.runs.map((r) => r.text).join("")];
+        // PPT 글상자의 `fit: "shrink"`를 재생에서도 지킨다: 가장 긴 줄이 상자 폭 안에 들게 글자 크기를 줄인다(판 밖으로 나가지 않게).
+        const fontSize = (o.fit === "shrink" ? shrinkPt(lines, o.fontSize ?? 10, o.w) : (o.fontSize ?? 10)) / 72;
         const lineH = fontSize * 1.2;
         const top = o.valign === "middle" ? o.y + (o.h - lines.length * lineH) / 2 : o.valign === "bottom" ? o.y + o.h - lines.length * lineH : o.y;
         const anchor = o.align === "center" ? "middle" : o.align === "right" ? "end" : "start";
@@ -2522,12 +2523,16 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
   const displayModel = mapForSlide(displaySlide);
   // 새 장 배치(지도 + 숫자·지도 + 그래프): 모든 사각형·카드 안·각주가 장 기하 계산에서 온다. 그래프 자료는 이 쪽이 그리는 지도(끈 레이어 반영)로 센다.
   // 그래프 자료는 끌기 중(draftStyle)에는 바뀌지 않으므로 지도·끈 레이어·레이아웃만 키로 한다(끌 때마다 다시 세지 않는다).
-  const chartModel = slide.kind === "tile" ? slide.map : null;
+  // 판정·레이아웃 창과 같은 함수(`slideCharts`)로 센다: 설명선 개요는 그 쪽 view.map, 그 밖은 slide.map(끈 레이어 뺌).
+  const chartMap = slide.kind === "tile" ? slide.map : null;
+  const chartViewMap = slide.kind === "tile" ? slide.view.map : null;
+  const chartCallout = slide.kind === "tile" ? slide.callout?.page : undefined;
   const chartHidden = slide.kind === "tile" && slide.page?.kind === "tile" ? slide.page.frame?.hiddenLayers : undefined;
   const chartLayout = slide.page?.layout;
   const frameCharts = useMemo(
-    () => (chartLayout === "map-charts" && chartModel ? analysisCharts(chartHidden ? modelWithHiddenLayers(chartModel, chartHidden) : chartModel) : null),
-    [chartLayout, chartModel, chartHidden],
+    () => (slide.kind === "tile" && chartLayout === "map-charts" ? slideCharts(slide, chartHidden) : null),
+    // 키는 slide 전체가 아니라 센 대상(지도·view.map·개요 여부·끈 레이어·레이아웃)만이다.
+    [chartLayout, chartMap, chartViewMap, chartCallout, chartHidden],
   );
   const pageFrame = useMemo(
     () => (displaySlide.kind === "tile" && usesReportPageFrame(displaySlide) ? reportPageFrame(displaySlide, frameCharts, basemap) : null),

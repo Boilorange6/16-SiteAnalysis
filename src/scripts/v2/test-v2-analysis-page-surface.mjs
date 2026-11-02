@@ -103,7 +103,8 @@ const partTag = (m, name) => new RegExp(`<[a-z0-9]+\\s[^>]*data-part="${name}"[^
 const px = (tag, prop) => Number(new RegExp(`[; "]${prop}:(-?[\\d.]+(?:e-?\\d+)?)(?:px)?[;"]`).exec(tag)?.[1] ?? NaN);
 const partRect = (m, name) => { const tag = partTag(m, name); assert.ok(tag, `${name} 요소가 있다`); return { x: px(tag, "left"), y: px(tag, "top"), w: px(tag, "width"), h: px(tag, "height") }; };
 const near = (a, b, msg, eps = 0.011) => assert.ok(Math.abs(a - b) <= eps, `${msg}: ${a} ≈ ${b}`);
-const frameOf = (slide) => reportPageFrame(slide, analysisCharts(slide.map));
+const { slideCharts: slideChartsOf } = await import("../../lib/v2/report/analysis-charts.ts");
+const frameOf = (slide) => reportPageFrame(slide, slideChartsOf(slide, slide.page?.frame?.hiddenLayers));
 
 // ── Task 6: 새 장 배치(① 지도 + 숫자 · ② 지도 + 그래프)의 화면 기하는 reportPageGeometry와 같다
 {
@@ -452,28 +453,49 @@ for (const format of ["wide", "a3", "a4"]) {
   const limit = "지구·지구단위계획은 구성비 분모에서 제외한다 · 둘째 한계 문구";
   const slide = { ...base, footer: `출처 ${rows}`, view: { ...base.view, caveats: [limit, "둘째 한계"], notes: [] } };
   const width = 11.8;
-  for (const basemap of ["tiles", "vector"]) {
-    const { text, pt } = footnoteText(slide, basemap, width);
+  // 실제 바탕 값은 슬라이드의 보고서 프레임(frame.basemap)이 정한다: air → Satellite(VWorld), base + 바탕 자료 → vector(OSM), none → white(바탕 없음)
+  const vectorBase = { roads: [{ hierarchy: "x", widthM: 1, name: null, points: [] }] };
+  const withBasemap = (s, choice) => ({ ...s, map: { ...s.map, basemap: undefined, base: choice === "base" ? vectorBase : null }, page: { ...s.page, frame: { ...s.page.frame, basemap: choice } } });
+  const credits = [["air", "© VWorld(국토교통부)"], ["base", "OpenStreetMap"], ["none", null]];
+  for (const [choice, credit] of credits) {
+    const s = withBasemap(slide, choice);
+    const { text, pt } = footnoteText(s, undefined, width);
     assert.ok(textIn(`출처 ${rows}`, pt) > width, "전제: 출처만으로도 한 줄을 넘는다(헛돌지 않는다)");
-    assert.ok(text.startsWith("출처 "), `출처로 시작 (${basemap})`);
-    assert.ok(textIn(text, pt) <= width + 1e-6, `각주가 폭 안 (${basemap}): ${textIn(text, pt).toFixed(2)} ≤ ${width}`);
-    assert.ok(text.includes(limit.slice(0, 20)), `첫 한계 앞 글자가 잘린 뒤에도 있다 (${basemap}): ${text}`);
-    assert.ok(text.indexOf(limit.slice(0, 20)) > text.indexOf("©"), "글자 순서는 출처 … · 바탕지도 출처 · 한계");
-    assert.ok(text.includes("©"), `바탕지도 출처(credit)는 자르지 않는다 (${basemap}): ${text}`);
-    if (basemap === "tiles") assert.ok(text.includes("© VWorld(국토교통부)"), "타일 바탕지도 출처는 VWorld");
+    assert.ok(text.startsWith("출처 "), `출처로 시작 (${choice})`);
+    assert.ok(textIn(text, pt) <= width + 1e-6, `각주가 폭 안 (${choice}): ${textIn(text, pt).toFixed(2)} ≤ ${width}`);
+    assert.ok(text.includes(limit.slice(0, 20)), `첫 한계 앞 글자가 잘린 뒤에도 있다 (${choice}): ${text}`);
+    if (credit) {
+      assert.ok(text.includes(credit), `바탕지도 출처(credit)는 자르지 않는다 (${choice}): ${text}`);
+      assert.ok(text.indexOf(limit.slice(0, 20)) > text.indexOf("©"), "글자 순서는 출처 … · 바탕지도 출처 · 한계");
+    } else {
+      assert.ok(!text.includes("©"), `바탕지도를 끈 장에는 credit이 없다 (${choice}): ${text}`);
+    }
     assert.ok(!text.includes("제공처 미기록"), "자료 없음 잡음은 뺀다");
     assert.match(text, /… 외 \d+건 · 출처 장 참조/, "그래도 넘치면 요약");
   }
   // 한계는 폭의 50 %까지: 아주 긴 한계는 끝이 …
-  const longLimit = { ...slide, view: { ...slide.view, caveats: ["아주 긴 한계 문구입니다 ".repeat(30)] } };
-  const cut = footnoteText(longLimit, "tiles", width);
+  const longLimit = { ...withBasemap(slide, "air"), view: { ...slide.view, caveats: ["아주 긴 한계 문구입니다 ".repeat(30)] } };
+  const cut = footnoteText(longLimit, undefined, width);
   assert.ok(textIn(cut.text, cut.pt) <= width + 1e-6 && /…$/.test(cut.text) && cut.text.includes("VWorld"), "긴 한계는 …로 닫히고 바탕지도 출처는 그대로");
   // 짧은 출처는 요약하지 않고 순서대로
-  const short = footnoteText({ ...base, footer: "출처 제공처 미기록 · 건물 · 2026-09-09", view: { ...base.view, caveats: ["표본 한계"], notes: [] } }, "tiles", width).text;
+  const short = footnoteText({ ...withBasemap(base, "air"), footer: "출처 제공처 미기록 · 건물 · 2026-09-09", view: { ...base.view, caveats: ["표본 한계"], notes: [] } }, undefined, width).text;
   assert.equal(short, "출처 건물 · 2026-09-09 · © VWorld(국토교통부) · 표본 한계");
   // 바탕지도를 그리지 않는 장(그림 타일)은 credit이 없다
   const figureSlide = { ...slide, map: null };
-  assert.ok(!footnoteText(figureSlide, "tiles", width).text.includes("©"), "그림 장 각주에는 바탕지도 출처가 없다");
+  assert.ok(!footnoteText(figureSlide, undefined, width).text.includes("©"), "그림 장 각주에는 바탕지도 출처가 없다");
+  // 판형 × 출처 글자 크기(7~14 pt) × 바탕: 어떤 조합에서도 글 전체가 폭 안이고 `출처`로 시작하며 credit은 남는다(Minor 4)
+  const longFooter = `출처 ${Array.from({ length: 8 }, (_, i) => `제공처 미기록 · 용도지역 항목 ${i} 긴 이름 · 2026-09-0${i + 1}`).join(" · ")}`;
+  for (const format of ["wide", "a3", "a4"]) for (const src of [7, 9, 11, 14]) for (const [choice, credit] of credits) {
+    const s = { ...withBasemap(slide, choice), format, footer: longFooter, style: { ...slide.style, fontSizes: { ...(slide.style.fontSizes ?? {}), source: src } }, view: { ...slide.view, caveats: ["한계 문구가 아주 깁니다 ".repeat(20)], notes: [] } };
+    const g = reportPageFrame(s, null).geometry;
+    const w = g.footer.w - 0.5 - g.pageNo.w - 0.2;
+    const { text, pt } = footnoteText(s, undefined, w);
+    const tag = `${format} ${src}pt ${choice}`;
+    assert.ok(textIn(text, pt) <= w + 1e-6, `${tag}: 글 폭 ${textIn(text, pt).toFixed(2)} ≤ ${w.toFixed(2)}`);
+    assert.ok(text.startsWith("출처"), `${tag}: 출처로 시작 — ${text.slice(0, 30)}`);
+    if (credit) assert.ok(text.includes(credit), `${tag}: credit 남음`);
+    else assert.ok(!text.includes("©"), `${tag}: 바탕 없는 장은 credit 없음`);
+  }
   // 화면 각주 띠에도 같은 글
   const m = render(planOf({ ...tilePage, layout: "map-key" }));
   const foot = /<span class="slideFooterText"[^>]*>([^<]*)<\/span>/.exec(m)?.[1] ?? "";
@@ -541,7 +563,35 @@ for (const format of ["wide", "a3", "a4"]) {
     assert.equal(frame.geometry.map.h < 7.5 && frame.geometry.map.w >= 9, true, "지도 틀은 각주 띠 위에서 끝난다");
     const m = render(overview);
     if (code === "A05") assert.ok(frame.fit?.filterText && m.includes(`>${frame.fit.filterText}<`), "A05 필터 줄이 카드 안에 있다");
-    assert.ok(partTag(m, "key-figure") || frame.layout === "map-charts", `${code}: 숫자 카드(또는 열)가 있다`);
+    assert.ok(partTag(m, "key-figure"), `${code}: 숫자 카드가 있다`);
+    assert.equal(overview.map.features.length, 0, `${code}: 전제 — 개요의 slide.map은 점 없는 바탕 지도(backdrop)`);
+    if (code === "A05") {
+      // 실제 계획 경로: 그래프 자료는 그 쪽이 그리는 view.map으로 세므로 A05 개요는 ②다(Ruling 25).
+      assert.ok(analysisCharts(overview.view.map), "전제 — A05 view.map에는 그래프 자료가 있다");
+      assert.equal(overview.page.layout, "map-charts", "A05 개요 판정은 map-charts");
+      assert.equal(frame.layout, "map-charts");
+      assert.ok(partTag(m, "analysis-column"), "그래프 열이 있다");
+      assert.equal((m.match(/data-part="chart-card"/g) ?? []).length, 2, "그래프 카드 둘");
+      assert.equal((m.match(/<svg[^>]*data-chart="[a-z]+"/g) ?? []).length, 2);
+      near(frame.geometry.map.w, 13.333 * 0.68, "② 지도 틀 폭", 0.001);
+      near(partRect(m, "map").w, 13.333 * 0.68, "화면 지도 틀도 ② 폭", 0.001);
+      // 판정·레이아웃 창·화면이 같은 자료를 본다: 레이아웃을 map-key로 바꾸면 열 없는 ①이다(메뉴의 두 값이 다른 화면)
+      const keyPages = pages.map((p) => (p === overviewPage ? { ...p, layout: "map-key" } : p));
+      const keyOverview = planReportDoc({ ...EMPTY_REPORT_DOC, pages: keyPages }, cViews, cCtx).find((s) => s.kind === "tile" && s.callout?.page === 0);
+      assert.equal(keyOverview.page.layout, "map-key");
+      const mk = render(keyOverview);
+      assert.ok(!partTag(mk, "analysis-column") && !/data-chart=/.test(mk), "map-key는 열 없는 ①");
+      near(partRect(mk, "map").w, 13.333, "① 지도 틀은 전체 폭", 0.001);
+      assert.notEqual(m, mk, "두 레이아웃은 다른 화면");
+      // 끈 레이어는 그래프 자료에도 반영된다(필터·레이어 뒤 view.map): 판정이 map-charts인데 그래프가 비는 경로가 없다
+      const { slideCharts } = await import("../../lib/v2/report/analysis-charts.ts");
+      assert.deepEqual(slideCharts(overview), analysisCharts(overview.view.map));
+      const allHidden = slideCharts(overview, overview.view.map.features.map((f) => f.layer));
+      assert.ok(allHidden === null || allHidden.total < slideCharts(overview).total, "끈 레이어는 그래프에서도 빠진다");
+    } else {
+      assert.equal(overview.page.layout, "map-key", `${code}: view.map에 자료가 없는 개요는 ①`);
+      assert.ok(!partTag(m, "analysis-column"));
+    }
     const overlays = [...m.matchAll(/<svg viewBox="([^"]+)"[^>]*data-callout-overlay="([a-z]+)"/g)];
     assert.ok(overlays.length >= 1, `${code}: 설명선 그림 층이 있다`);
     for (const [, box] of overlays) assert.equal(box, `0 0 ${frame.geometry.map.w} ${frame.geometry.map.h}`, `${code}: 그림 층 viewBox = 지도 틀`);
@@ -561,12 +611,36 @@ for (const format of ["wide", "a3", "a4"]) {
     assert.equal(got.length, expected.length);
     got.forEach(([x, y], i) => assert.ok(Math.hypot(x - expected[i][0], y - expected[i][1]) < 1.5, `${code}: 점 ${i}가 지도 투영과 ${Math.hypot(x - expected[i][0], y - expected[i][1]).toFixed(2)} px 어긋난다`));
     assert.ok(got.some(([x, y]) => x >= 0 && x <= W && y >= 0 && y <= H), "점이 틀 안에 있다");
+    // 대지는 지도 틀 가운데, 점은 범례 판·열(틀 밖)과 겹치지 않는다
+    const [cx, cy] = project(overview.view.map.center[0], overview.view.map.center[1]);
+    assert.ok(Math.abs(cx - W / 2) < 1.5 && Math.abs(cy - H / 2) < 1.5, `${code}: 대지가 틀 가운데 (${cx.toFixed(1)}, ${cy.toFixed(1)}) vs (${W / 2}, ${H / 2})`);
+    const legendBox = frame.geometry.legend;
+    assert.ok(legendBox, `${code}: 설명선 범례 자리`);
+    const inLegend = got.filter(([x, y]) => x >= legendBox.x * unit && x <= (legendBox.x + legendBox.w) * unit && y >= legendBox.y * unit && y <= (legendBox.y + legendBox.h) * unit);
+    assert.equal(inLegend.length, 0, `${code}: 범례와 겹치는 점 ${inLegend.length}개`);
+    assert.ok(got.every(([x]) => x <= W + 1e-6), `${code}: 점이 열(틀 밖)로 나가지 않는다`);
+    // 빈 개요(반경 안 단지·사업 0)의 판 글: SVG 재생이 PPT 글상자의 fit:"shrink"를 지켜 글이 판 밖으로 나가지 않는다.
+    {
+      const { textIn } = await import("../../lib/v2/report/pptx-kit.ts");
+      const sourceLine = "청약홈 2026-10-01 · 청약홈 APT 분양정보 주택형별 API 2026-10-08 · 입주예정 2026-06-30";
+      const empty = { ...overview, callout: { ...overview.callout, model: { ...overview.callout.model, complexes: [], sourceLine } } };
+      const emptyFrame = frameOf(empty);
+      const emptyOps = [];
+      const recEmpty = { addShape: () => recEmpty, addText: (text, o) => { emptyOps.push({ text, o }); return recEmpty; } };
+      a05ReportModule.report.render({ slide: recEmpty, planned: empty, part: "overview", overviewFrame: emptyFrame.calloutOverview });
+      const note = emptyOps.find((op) => typeof op.text === "string" && op.text.startsWith("기준 "));
+      assert.ok(note && note.o.fit === "shrink", `${code}: 빈 개요 기준 글은 fit shrink`);
+      assert.ok(textIn(note.text, note.o.fontSize) > note.o.w, "전제: 기준 글이 한 줄 폭을 넘는다(헛돌지 않는다)");
+      const shown = /<text[^>]*font-size="([^"]+)"[^>]*><tspan[^>]*>(기준 [^<]*)<\/tspan>/.exec(render(empty));
+      assert.ok(shown, `${code}: 화면에 기준 글이 있다`);
+      assert.ok(textIn(shown[2], Number(shown[1]) * 72) <= note.o.w + 1e-6, `${code}: 기준 글 폭 ${textIn(shown[2], Number(shown[1]) * 72).toFixed(2)} in ≤ 판 안 글상자 ${note.o.w.toFixed(2)} in`);
+    }
     // 상세 장은 옛 경로 그대로
     const detail = slides.find((s) => s.callout.page > 0);
     if (detail) {
       assert.equal(usesReportPageFrame(detail), false, `${code}: 상세 장은 옛 경로`);
       assert.match(render(detail), /data-callout-overlay="[a-z]+"/);
-      assert.ok(!/data-callout-overlay="[a-z]+"[^>]*>/.test("") && /<svg viewBox="0 0 13\.333 7\.5"[^>]*data-callout-overlay/.test(render(detail)), `${code}: 상세 장 viewBox는 쪽 전체`);
+      assert.match(render(detail), /<svg viewBox="0 0 13\.333 7\.5"[^>]*data-callout-overlay/, `${code}: 상세 장 viewBox는 쪽 전체`);
     }
   }
 }

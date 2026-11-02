@@ -44,7 +44,10 @@ export type ReportPageFrame = {
   fit: KeyFigureFit | null;
   figure: KeyFigure | null;
   summaryPt: number;
-  /** ② 열 맨 아래 해석 한 줄(카드가 없어도 사용자가 고친 요약은 그린다). ①은 카드 안(`fit.rows.sentence`)이라 null이다. */
+  /**
+   * 해석 한 줄(줄·pt·높이). 카드가 있으면 `fit`의 값 그대로다(①은 카드 안 `fit.rows.sentence`에, ②는 열 맨 아래 `AnalysisColumn`이 그린다).
+   * 카드가 없는 ②는 사용자가 고친 요약도 그리도록 따로 센 값이고, 해석이 없거나 ① 카드 없음이면 null이다.
+   */
   sentence: { lines: string[]; pt: number; height: number } | null;
   title: { text: string; kind: string; pt: number; kindPt: number };
   /** 지도 범례 판(설명선 개요가 아닐 때) */
@@ -140,18 +143,28 @@ function oneLine(text: string, pt: number, width: number): string {
  * 한계(그 장의 첫 한계, 없으면 첫 메모)는 폭의 50 %까지(넘치면 끝이 …), 바탕지도 출처(credit)는 출처 표기 조건이라 자르지 않으며
  * 남은 폭에 출처를 넣는다. 출처가 넘치면 먼저 `제공처 미기록 · `(자료 없음 잡음, 출처 장에는 남는다)을 빼고, 그래도 넘치면
  * `fitFooterText`의 `… 외 n건 · 출처 장 참조` 요약을 쓴다. 바탕지도를 그린 장만 credit이 붙는다(§3-3).
+ * 어떤 글자 크기·판형에서도 글 전체가 `width` 안이고 `출처`로 시작한다. 모자라면 한계의 끝이 먼저, 그다음 출처 요약이 줄고 credit은 남는다.
  */
 export function footnoteText(slide: TileSlide, basemap: BasemapChoice | undefined, width: number): { text: string; pt: number } {
   const pt = fontSizeForStyle(slide.style, "source") * (7.5 / DEFAULT_REPORT_FONT_SIZES.source);
   const bare = fitFooterText(slide.footer, false, 1e6, 9, []).text;
-  const credit = slide.map ? fitFooterText(slide.footer, true, 1e6, 9, footerBasemaps(slide, basemap)).text.slice(bare.length) : "";
+  // 바탕지도를 실제로 그린 장만 credit이 붙는다: 지도 없는 장(그림)과 바탕을 끈 장(`frame.basemap: "none"` → white)에는 없다(§3-3·§6-2).
+  const drawn = slide.map ? footerBasemaps(slide, basemap).filter((layer) => layer !== "white") : [];
+  const credit = drawn.length > 0 ? fitFooterText(slide.footer, true, 1e6, 9, drawn).text.slice(bare.length) : "";
   const limit = slide.view.caveats[0] ?? slide.view.notes[0];
-  const fixed = `${credit}${limit ? ` · ${oneLine(limit, pt, width * 0.5)}` : ""}`;
-  const budget = Math.max(0.5, width - textIn(fixed, pt));
   const cleaned = bare.replace(/제공처 미기록 · /g, "");
-  // textIn은 pt에 비례하므로 7 pt에서 폭 budget × 7 / pt에 맞는 요약은 pt에서 폭 budget에 맞는다.
-  const source = textIn(cleaned, pt) <= budget ? cleaned : fitFooterText(cleaned, false, (budget * 7) / pt, 7, []).text;
-  return { text: `${source}${fixed}`, pt };
+  // 한계 폭을 50 % → 5 %로 줄여 가며 남은 폭에 출처(전체 또는 요약)가 들어가는 첫 조합을 쓴다.
+  for (const share of limit ? [0.5, 0.4, 0.3, 0.2, 0.1, 0.05] : [0]) {
+    const fixed = `${credit}${limit ? ` · ${oneLine(limit, pt, width * share)}` : ""}`;
+    const budget = width - textIn(fixed, pt);
+    if (budget <= 0) continue;
+    // textIn은 pt에 비례하므로 7 pt에서 폭 budget × 7 / pt에 맞는 요약은 pt에서 폭 budget에 맞는다.
+    const source = textIn(cleaned, pt) <= budget ? cleaned : fitFooterText(cleaned, false, (budget * 7) / pt, 7, []).text;
+    if (source.startsWith("출처") && textIn(source, pt) <= budget) return { text: `${source}${fixed}`, pt };
+  }
+  // 한계를 다 줄여도 안 들어가면(아주 좁은 판) 한계를 빼고 출처를 …로 닫는다. credit은 그대로 둔다.
+  const rest = Math.max(textIn("출처 …", pt), width - textIn(credit, pt));
+  return { text: `${oneLine(cleaned.startsWith("출처") ? cleaned : `출처 ${cleaned}`, pt, rest)}${credit}`, pt };
 }
 
 export type PixelBox = { x0: number; y0: number; x1: number; y1: number };

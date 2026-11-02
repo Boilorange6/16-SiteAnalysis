@@ -1,6 +1,6 @@
 /** 분석 장 그래프 자료(구성비·거리). 지도 모델에서 계산하는 순수 함수라 미리보기·PPT·테스트가 같은 값을 쓴다. */
 import { tileClientModuleFor } from "../tile/client";
-import { legendItems, legendItemsForModel, modelLayerStyle, type MapModel } from "../ui/map-layers";
+import { legendItems, legendItemsForModel, modelLayerStyle, modelWithHiddenLayers, type MapModel } from "../ui/map-layers";
 import { metersPerPixel, worldPx } from "../ui/map-projection";
 import { formatStat } from "./chart-geometry";
 
@@ -65,6 +65,21 @@ const median = (sorted: number[]): number => {
   const mid = sorted.length >> 1;
   return sorted.length % 2 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
 };
+
+/** 그래프 자료를 셀 수 있는 슬라이드의 모양(PlannedSlide·ReportSlide의 tile). 구조만 읽어 계획 단계와 화면이 같은 함수를 쓴다. */
+export type ChartSlide = { map: MapModel | null; view: { map: MapModel | null }; callout?: { page: number } };
+
+/**
+ * 이 쪽의 그래프 자료. 판정(`pageLayoutForSlide`·`pageWithResolvedLayout`)·레이아웃 창·화면 그래프 카드가 모두 이 함수 하나를 읽는다(Ruling 25).
+ * 설명선 개요(`callout.page === 0`)의 `slide.map`은 점 없는 바탕 지도(backdrop, features 비어 있음)라 센 지물이 없으므로
+ * 그 쪽이 그리는 보기의 `view.map`(필터 뒤 값)으로 센다. 상세 장은 그래프를 내지 않는다. `hiddenLayers`는 끈 레이어를 뺀다.
+ */
+export function slideCharts(slide: ChartSlide, hiddenLayers?: readonly string[]): AnalysisCharts | null {
+  if (slide.callout && slide.callout.page > 0) return null;
+  const model = slide.callout ? slide.view.map : slide.map;
+  if (!model) return null;
+  return analysisCharts(hiddenLayers ? modelWithHiddenLayers(model, hiddenLayers) : model);
+}
 
 export function analysisCharts(model: MapModel): AnalysisCharts | null {
   // 타일이 세는 대상을 밝힌 경우에만 그래프를 낸다. 밝히지 않았거나 타일 코드가 없으면 「지도 + 요약」에 머문다.

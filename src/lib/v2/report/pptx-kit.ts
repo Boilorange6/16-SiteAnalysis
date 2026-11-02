@@ -48,6 +48,15 @@ export function hex(color: string): string {
 const chW = (ch: string) => (ch.charCodeAt(0) > 0x2e80 ? 1 : 0.56);
 export const textIn = (value: string, pt: number) => ([...value].reduce((width, ch) => width + chW(ch), 0) * pt) / 72;
 export const linesOf = (value: string, pt: number, width: number) => Math.max(1, Math.ceil((textIn(value, pt) / width) * 1.1));
+/**
+ * `fit: "shrink"` 글상자의 한 줄 글자 크기: 가장 긴 줄이 상자 폭 안에 들 때까지 pt를 0.5씩 줄인다(최소 5 pt).
+ * 화면의 설명선 SVG 재생이 PPT 글상자의 `shrink` 약속을 지키는 데 쓴다.
+ */
+export const shrinkPt = (lines: readonly string[], pt: number, width: number): number => {
+  let size = pt;
+  while (size > 5 && lines.some((line) => textIn(line, size) > width)) size -= 0.5;
+  return size;
+};
 
 export type FitBlockBox = { w: number; h: number };
 

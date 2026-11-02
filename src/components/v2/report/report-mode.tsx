@@ -22,7 +22,7 @@ import { sheetCells } from "@/lib/v2/ui/sheet";
 import { legendItemsForModel, modelWithHiddenLayers, type MapLegendLayerItem, type MapModel } from "@/lib/v2/ui/map-layers";
 import { useFocusTrap } from "../use-focus-trap";
 import { mapLabelEntries } from "../map-figure";
-import { analysisCharts } from "@/lib/v2/report/analysis-charts";
+import { slideCharts } from "@/lib/v2/report/analysis-charts";
 import { usesReportPageFrame } from "@/lib/v2/report/report-page-frame";
 import { SlideSurface, type FontTargetKey, type SurfaceContextMenuTarget, type SurfaceContextTarget, type SurfaceSelection } from "./slide-surface";
 import DrawerPages, { type PageAddKind } from "./drawer-pages";
@@ -107,8 +107,8 @@ function simplePage(doc: ReportDoc, kind: "cover" | "sources" | "blank"): Report
 
 /** 「지도 + 그래프」를 고를 수 있나: 이 쪽이 실제로 그리는 지도(끈 레이어 반영)에 그래프 자료가 있을 때. */
 function pageHasCharts(slide: PlannedSlide | undefined, page: ReportPage | undefined): boolean {
-  if (slide?.kind !== "tile" || !slide.map) return false;
-  return analysisCharts(page?.kind === "tile" ? modelWithHiddenLayers(slide.map, page.frame.hiddenLayers) : slide.map) !== null;
+  if (slide?.kind !== "tile") return false;
+  return slideCharts(slide, page?.kind === "tile" ? page.frame.hiddenLayers : undefined) !== null;
 }
 
 function pageTypeLabel(page: ReportPage): string {
