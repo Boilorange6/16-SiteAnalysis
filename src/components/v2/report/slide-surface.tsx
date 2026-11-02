@@ -539,31 +539,54 @@ function DecorationTransformFrame({ label, box, bounds, onDragStart, onDragMove,
 
 /** 보고서 화면이 받아 칠한 값 래스터 그림(D10 수관·D29 SVF·S02~S04). 쪽·썸네일·캡처가 한 번만 받도록 모듈에 둔다. */
 export const surfaceRasterCache = new Map<string, string>();
+/** 받기(진행 중·끝남)를 모델의 래스터 묶음 키로 공유한다. 실패한 받기도 남겨 마운트마다 다시 요청하지 않는다. */
+const surfaceRasterLoads = new Map<string, Promise<void>>();
+const surfaceRasterDone = new Set<string>();
+
+/** 모델이 화면에 그릴 값 래스터의 캐시 키들(분석·타일이 없으면 받을 수 없어 빈 목록). */
+function surfaceRasterKeys(model: MapModel | null | undefined): string[] {
+  return model?.analysisId && model.tileCode ? (model.rasters ?? []).map((ref) => rasterKey(model.analysisId!, model.tileCode!, ref)) : [];
+}
+
+/** 받기가 끝났는가(성공이든 실패든). 필요한데 캐시에 없고 아직 안 끝났으면 `aria-busy`다. */
+export function surfaceRasterSettled(model: MapModel | null | undefined): boolean {
+  const keys = surfaceRasterKeys(model);
+  return keys.length === 0 || keys.every((key) => surfaceRasterCache.has(key)) || surfaceRasterDone.has(keys.join("|"));
+}
+
+/** 보드(`map-box`)·내보내기(`map-image`)와 같은 `loadRasters`로 모델의 값 래스터를 받는다. 같은 묶음의 동시 호출은 하나로 합친다. */
+export function loadSurfaceRasters(model: MapModel): Promise<void> {
+  const id = surfaceRasterKeys(model).join("|");
+  let load = surfaceRasterLoads.get(id);
+  if (!load) {
+    load = import("@/lib/v2/report/map-image")
+      .then(({ loadRasters }) => loadRasters(model, surfaceRasterCache))
+      .catch(() => undefined) // 래스터를 못 받은 쪽도 벡터·바탕만으로 그린다
+      .then(() => { surfaceRasterDone.add(id); });
+    surfaceRasterLoads.set(id, load);
+  }
+  return load;
+}
 
 /**
- * 지도 모델의 값 래스터를 보드(`map-box`)·내보내기(`map-image`)와 같은 `loadRasters`로 받아 `MapFigure`의 `rasterHref`로 돌려준다.
- * 받는 동안은 `aria-busy`를 켜 내보내기 캡처(`waitForBusy`)가 래스터가 없는 쪽을 찍지 않게 한다.
+ * 지도 모델의 값 래스터를 `MapFigure`의 `rasterHref`로 돌려준다. 받는 동안은 `aria-busy`(렌더에서 계산)라
+ * 내보내기 캡처(`waitForBusy`)가 래스터가 없는 쪽을 찍지 않는다.
  */
 function useSurfaceRasters(model: MapModel | null | undefined): { rasterHref: (ref: RasterRef) => string | null; busy: boolean } {
   const [version, setVersion] = useState(0);
-  const [busy, setBusy] = useState(false);
   const analysisId = model?.analysisId;
   const tileCode = model?.tileCode;
-  const names = analysisId && tileCode ? (model?.rasters ?? []).map((ref) => ref.name).join(",") : "";
+  const keys = surfaceRasterKeys(model).join("|");
+  const busy = !surfaceRasterSettled(model);
   useEffect(() => {
-    if (!model || !names) { setBusy(false); return; }
-    if ((model.rasters ?? []).every((ref) => surfaceRasterCache.has(rasterKey(model.analysisId!, model.tileCode!, ref.name)))) { setBusy(false); return; }
+    if (!model || !keys || surfaceRasterSettled(model)) return;
     let alive = true;
-    setBusy(true);
-    void import("@/lib/v2/report/map-image")
-      .then(({ loadRasters }) => loadRasters(model, surfaceRasterCache))
-      .catch(() => undefined) // 래스터를 못 받은 쪽도 벡터·바탕만으로 그린다
-      .then(() => { if (alive) { setBusy(false); setVersion((n) => n + 1); } });
+    void loadSurfaceRasters(model).then(() => { if (alive) setVersion((n) => n + 1); });
     return () => { alive = false; };
-    // model 전체가 아니라 래스터 식별(분석·타일·이름)이 바뀔 때만 다시 받는다.
-  }, [analysisId, tileCode, names]);
+    // model 전체가 아니라 래스터 식별(분석·타일·이름·sha256)이 바뀔 때만 다시 받는다.
+  }, [keys]);
   // 받은 뒤 identity가 바뀌어야 memo된 MapFigure가 다시 그린다(version).
-  const rasterHref = useCallback((ref: RasterRef) => (analysisId && tileCode ? surfaceRasterCache.get(rasterKey(analysisId, tileCode, ref.name)) ?? null : null), [analysisId, tileCode, version]);
+  const rasterHref = useCallback((ref: RasterRef) => (analysisId && tileCode ? surfaceRasterCache.get(rasterKey(analysisId, tileCode, ref)) ?? null : null), [analysisId, tileCode, version]);
   return { rasterHref, busy };
 }
 

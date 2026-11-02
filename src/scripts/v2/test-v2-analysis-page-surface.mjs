@@ -769,9 +769,33 @@ for (const format of ["wide", "a3", "a4"]) {
   const one = planOf({ ...tilePage, layout: "map-key" });
   const withRaster = { ...one, map: { ...one.map, analysisId: "raster-a", tileCode: "D10", rasters: [ref] } };
   assert.doesNotMatch(render(withRaster), /data-raster=/, "래스터를 받기 전에는 그림이 없다");
-  surfaceRasterCache.set(rasterKey("raster-a", "D10", "canopy"), "data:image/png;base64,UkFTVEVS");
+  // M-2: 키에 sha256이 들어간다(내용이 바뀌면 옛 그림을 쓰지 않는다). 받는 동안(필요한데 캐시에 없음)은 첫 렌더부터 aria-busy
+  assert.ok(rasterKey("raster-a", "D10", ref).includes(ref.sha256), "캐시 키에 sha256");
+  assert.notEqual(rasterKey("raster-a", "D10", ref), rasterKey("raster-a", "D10", { ...ref, sha256: "b".repeat(64) }));
+  assert.match(render(withRaster), /aria-busy="true"/, "래스터가 필요한데 캐시에 없으면 첫 렌더부터 aria-busy");
+  surfaceRasterCache.set(rasterKey("raster-a", "D10", ref), "data:image/png;base64,UkFTVEVS");
+  assert.doesNotMatch(render(withRaster), /aria-busy="true"/, "캐시에 있으면 busy가 아니다");
+  assert.match(render({ ...withRaster, map: { ...withRaster.map, rasters: [{ ...ref, sha256: "c".repeat(64) }] } }), /aria-busy="true"/, "내용(sha256)이 다른 래스터는 옛 그림을 쓰지 않고 다시 받는다");
   // 썸네일(`mode: "thumb"`)은 IntersectionObserver가 있어야 같은 SlidePreview를 마운트하므로 SSR로는 못 본다. 같은 MapLayer 경로라 화면 캡처로 확인한다.
   for (const mode of ["edit", "export"]) assert.match(render(withRaster, mode), /<image[^>]*data-raster="canopy"[^>]*href="data:image\/png;base64,UkFTVEVS"/, `${mode}: 보고서 화면이 래스터를 그린다(편집·내보내기 캡처)`);
+
+  // 같은 래스터의 받기는 하나만 나가고(진행 중 공유), 실패해도 다시 요청하지 않는다
+  {
+    const { loadSurfaceRasters, surfaceRasterSettled } = await import("../../components/v2/report/slide-surface.tsx");
+    const original = globalThis.fetch;
+    let calls = 0;
+    globalThis.fetch = async () => { calls += 1; return { ok: false }; };
+    try {
+      const failing = { ...withRaster.map, analysisId: "raster-fail", tileCode: "D10", rasters: [{ ...ref, sha256: "d".repeat(64) }] };
+      await Promise.all([loadSurfaceRasters(failing), loadSurfaceRasters(failing)]);
+      assert.equal(calls, 1, "동시에 마운트돼도 받기는 한 번");
+      await loadSurfaceRasters(failing);
+      assert.equal(calls, 1, "실패를 기억해 다시 요청하지 않는다");
+      assert.equal(surfaceRasterSettled(failing), true, "끝난(실패 포함) 받기는 busy가 아니다");
+    } finally {
+      globalThis.fetch = original;
+    }
+  }
 }
 
 console.log("✓ v2 analysis page surface");

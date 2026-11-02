@@ -8,8 +8,8 @@ import { lic } from "./lic";
 type RasterValues = Uint8Array | Uint16Array | Int16Array;
 
 /** 화면과 PPT가 같은 래스터 팔레트를 사용하도록 공용 map-layers 스타일을 그대로 쓴다. */
-/** 받아서 칠한 값 래스터 그림의 캐시 키. 보고서 화면(`slide-surface`)과 내보내기(`map-image`)가 같은 키를 쓴다. */
-export const rasterKey = (analysisId: string, code: string, name: string): string => `${analysisId}/${code}/${name}`;
+/** 받아서 칠한 값 래스터 그림의 캐시 키. 보고서 화면(`slide-surface`)과 내보내기(`map-image`)가 같은 키를 쓴다. 내용(sha256)이 바뀌면 키가 바뀐다. */
+export const rasterKey = (analysisId: string, code: string, ref: Pick<RasterRef, "name" | "sha256">): string => `${analysisId}/${code}/${ref.name}@${ref.sha256}`;
 
 export function resolveRasterStyle(_ref: Pick<RasterRef, "palette">, style: RasterStyle): RasterStyle {
   return style;

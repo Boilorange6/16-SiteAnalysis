@@ -110,7 +110,7 @@ export function svgOf(model: MapModel, tiles: Map<string, string>, layer: Basema
           basemap: usable ? "tiles" : "none",
           layer: activeLayer,
           tileHref: (u: string) => tiles.get(u),
-          rasterHref: (ref) => (model.analysisId && model.tileCode ? rasterCache.get(rasterKey(model.analysisId, model.tileCode, ref.name)) ?? null : null),
+          rasterHref: (ref) => (model.analysisId && model.tileCode ? rasterCache.get(rasterKey(model.analysisId, model.tileCode, ref)) ?? null : null),
           label: extra.label ?? "분석 반경 지도",
           // 범례·북쪽·저작권은 슬라이드의 판/출처 띠가 대신한다 (축척만 그림 안, 출처 띠 위)
           legend: extra.legend ?? false,
@@ -137,7 +137,7 @@ export async function loadRasters(model: MapModel, rasterCache: Map<string, stri
   if (!model.analysisId || !model.tileCode || !model.rasters?.length) return;
   await Promise.all(
     model.rasters.map(async (ref) => {
-      const key = rasterKey(model.analysisId!, model.tileCode!, ref.name);
+      const key = rasterKey(model.analysisId!, model.tileCode!, ref);
       if (rasterCache.has(key)) return;
       const style = RASTER_STYLES[ref.palette];
       if (!style) return;
