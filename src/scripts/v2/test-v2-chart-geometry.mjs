@@ -147,6 +147,41 @@ for (const scale of SCALES) {
   const far = distanceShapes({ ...floors, mean: 30 }, 1000, BOX, scale);
   assert.ok(byName(far, "chart-distance-mean-label").y < byName(far, "chart-distance-median-label").y, "멀면 각자 선 위");
 }
+// N3: 두 선이 붙어 있고 글자가 길어 나란히 못 놓을 때(A07 평균 3,108 · 중앙값 3,088) 한쪽은 선 위, 한쪽은 선 아래로 엇갈려 둔다.
+for (const scale of SCALES) {
+  const price = { kind: "scatter", axis: { label: "㎡당 매매가", unit: "만원/㎡" }, qualifier: "단지별", points: points.map((p) => ({ ...p, v: 1500 + (p.v % 20) * 150 })), median: 3088, mean: 3108, max: 4350, site: null, sampled: false };
+  const narrow = { ...BOX, w: scale === 1 ? 2.9 : BOX.w }; // 실제 열 카드 폭(2.9 in)
+  // 축이 높아 아래쪽 글자가 x 눈금 줄까지 내려가면 선 위에 두 줄로 쌓되 서로 맞닿지 않는다.
+  const tall = { ...price, points: [...price.points, { d: 400, v: 11850, color: COLORS[2] }], max: 11850 };
+  for (const [median, mean] of [[3088, 3108], [3108, 3088]]) {
+    const shapes = distanceShapes({ ...tall, median, mean }, 1000, narrow, scale);
+    assertNoTextOverlap(shapes, `높은 축 x${scale} 중앙값 ${median} 평균 ${mean}`);
+    assertInside(shapes, narrow, `높은 축 x${scale}`);
+    const labels = [byName(shapes, "chart-distance-median-label"), byName(shapes, "chart-distance-mean-label")].sort((a, b) => a.y - b.y);
+    assert.ok(labels[1].y - (labels[0].y + labels[0].h) >= 0.02 * scale - EPS, `쌓은 두 글자 사이에 틈 x${scale} (${median}/${mean}) ${labels[1].y - (labels[0].y + labels[0].h)}`);
+  }
+  for (const [median, mean] of [[3088, 3108], [3108, 3088], [3068, 3108]]) {
+    const shapes = distanceShapes({ ...price, median, mean }, 1000, narrow, scale);
+    assertNoTextOverlap(shapes, `붙은 두 선 x${scale} 중앙값 ${median} 평균 ${mean}`);
+    assertInside(shapes, narrow, `붙은 두 선 x${scale}`);
+    const medLabel = byName(shapes, "chart-distance-median-label");
+    const meanLabel = byName(shapes, "chart-distance-mean-label");
+    const medY = byName(shapes, "chart-distance-median").y1;
+    const meanY = byName(shapes, "chart-distance-mean").y1;
+    assert.ok(Math.abs(medY - meanY) < medLabel.h, `전제: 두 선이 글자 높이보다 가깝다 x${scale}`);
+    assert.ok(medLabel.x + medLabel.w > meanLabel.x + EPS && meanLabel.x + meanLabel.w > medLabel.x + EPS, `전제: 두 글자가 가로로 겹치는 폭이라 나란히 못 놓는다 x${scale}`);
+    const above = (l, y) => l.y + l.h <= y + EPS;
+    const below = (l, y) => l.y >= y - EPS;
+    const medAbove = above(medLabel, medY);
+    const meanAbove = above(meanLabel, meanY);
+    assert.notEqual(medAbove, meanAbove, `한쪽은 선 위, 한쪽은 선 아래 x${scale} (${median}/${mean})`);
+    assert.ok(medAbove ? below(meanLabel, meanY) : below(medLabel, medY), `아래쪽 글자는 자기 선 아래 x${scale}`);
+    // 위쪽 글자는 더 높은 값의 선(화면 위쪽 선) 위, 아래쪽 글자는 더 낮은 값의 선 아래
+    const upperLine = Math.min(medY, meanY);
+    const lowerLine = Math.max(medY, meanY);
+    for (const l of [medLabel, meanLabel]) assert.ok(l.y + l.h <= upperLine + EPS || l.y >= lowerLine - EPS, `글자가 두 선 사이에 끼지 않는다 x${scale}`);
+  }
+}
 // 통계 서식은 중앙값·평균·요약 통계 줄이 하나: 100 미만은 소수 한 자리까지(정수면 정수), 100 이상은 정수
 assert.equal(byName(distanceShapes({ ...floors, median: 3.5, mean: 6 }, 1000, BOX, 1), "chart-distance-median-label").text, "중앙값 3.5층");
 assert.equal(byName(distanceShapes({ ...floors, median: 3.5, mean: 6 }, 1000, BOX, 1), "chart-distance-mean-label").text, "평균 6층");

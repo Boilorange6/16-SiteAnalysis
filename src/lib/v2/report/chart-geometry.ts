@@ -139,7 +139,7 @@ function scatterShapes(d: Scatter, radiusM: number, box: ChartBox, scale: number
   const meanText = `${lead}평균 ${formatStat(d.mean, unit)}${unit}`;
   const medW = textW(medText, pt, true);
   const sideFits = medW + textW(meanText, pt) + 0.08 * scale <= pw; // 가까운 두 선의 글자를 한 줄에 나란히 놓을 수 있나
-  const t = sideFits ? th + 0.03 * scale : 2 * th + 0.04 * scale; // 위에 중앙값·평균 글자 자리(나란히 못 놓으면 두 줄)
+  const t = sideFits ? th + 0.03 * scale : 2 * th + 0.07 * scale; // 위에 중앙값·평균 글자 자리(나란히 못 놓으면 두 줄)
   const ph = box.h - t - b;
   const X = (m: number) => px + (pw * Math.min(m, radiusM)) / radiusM;
   const Y = (v: number) => box.y + t + ph * (1 - (v - axis.start) / (axis.end - axis.start));
@@ -165,7 +165,7 @@ function scatterShapes(d: Scatter, radiusM: number, box: ChartBox, scale: number
   const yMean = Y(d.mean);
   out.push({ kind: "line", x1: px, y1: yMean, x2: px + pw, y2: yMean, stroke: C.strong, width: 0.75, dash: true, name: "chart-distance-mean" });
   out.push({ kind: "line", x1: px, y1: yMed, x2: px + pw, y2: yMed, stroke: C.strong, width: 0.9, name: "chart-distance-median" });
-  // 두 선이 글자 높이보다 가까우면 글자를 같은 줄에 나란히 둔다(평균을 중앙값 왼쪽에). 가로로 모자라면 두 글자를 선 위쪽에만 두 줄로 쌓는다(아래쪽은 x 눈금과 부딪힌다).
+  // 두 선이 글자 높이보다 가까우면 글자를 같은 줄에 나란히 둔다(평균을 중앙값 왼쪽에). 가로로 모자라면 위쪽 선 글자는 선 위, 아래쪽 선 글자는 선 아래(자리가 없으면 위쪽에 두 줄).
   const gap = 0.03 * scale;
   const close = Math.abs(yMed - yMean) < th;
   const right = px + pw;
@@ -177,8 +177,14 @@ function scatterShapes(d: Scatter, radiusM: number, box: ChartBox, scale: number
     if (sideFits) {
       yMedLabel = yMeanLabel = first;
       meanAx = right - medW - 0.08 * scale;
-    } else if (yMed <= yMean) yMeanLabel = first - th;
-    else yMedLabel = first - th;
+    } else {
+      // 나란히 못 놓으면 위쪽 선의 글자는 선 위, 아래쪽 선의 글자는 선 아래에 엇갈려 둔다(두 글자가 맞닿지 않는다).
+      // 아래쪽 글자가 x 눈금 줄까지 내려가면 선 위쪽에 두 줄로 쌓는다.
+      const lower = Math.max(yMed, yMean);
+      const room = lower + gap + th <= Y(axis.start) + 1e-9;
+      if (yMed <= yMean) yMeanLabel = room ? yMean + gap : first - th - gap;
+      else yMedLabel = room ? yMed + gap : first - th - gap;
+    }
   }
   out.push(text("median-label", medText, pt, C.strong, "right", right, yMedLabel, true));
   out.push(text("mean-label", meanText, pt, C.label, "right", meanAx, yMeanLabel));
