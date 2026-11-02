@@ -40,6 +40,9 @@ export function clampToLines(text: string, pt: number, width: number, maxLines: 
   return `${head}${last.join("").trimEnd()}…`;
 }
 
+/** 줄 맨 앞에 오면 안 되는 닫는 기호 */
+const CLOSING = ")]}」』,.%·:;!?";
+
 /** 줄 나눔(공백 우선, 없으면 글자 단위). starts는 모든 줄의 시작, ends는 마지막 줄을 뺀 줄의 끝(글자 인덱스). */
 function lineSpans(chars: string[], pt: number, width: number): { starts: number[]; ends: number[] } {
   const w = Math.max(0.01, width) / 1.1;
@@ -53,6 +56,7 @@ function lineSpans(chars: string[], pt: number, width: number): { starts: number
     if (fits(start, i + 1)) continue;
     let at = lastSpace > start && chars[i] !== " " ? lastSpace : i; // 공백이 있으면 그 자리에서 줄을 바꾸고, 없으면 글자 단위로
     if (at === start) at = i + 1; // 글자 하나가 폭보다 넓은 극단: 한 줄에 한 글자씩
+    while (at > start + 1 && CLOSING.includes(chars[at]!)) at--; // 닫는 괄호·쉼표가 줄 맨 앞에 혼자 남지 않게 앞 글자와 함께 내린다
     ends.push(at);
     starts.push(chars[at] === " " ? at + 1 : at);
     lastSpace = -1;

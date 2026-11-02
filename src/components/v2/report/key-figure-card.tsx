@@ -75,7 +75,7 @@ export function KeyFigureCard({ styles, view, fit, rect, unit, interaction }: { 
       {rows.stats.map((stat, i) => (
         <React.Fragment key={i}>
           <span className={styles.kfText} data-part="key-stat-value" style={line(stat.value, unit, fit.statValuePt, { color: INK, fontWeight: 900, fontVariantNumeric: "tabular-nums" })}>{figure.stats[i]?.value}</span>
-          <span className={styles.kfText} data-part="key-stat-label" style={{ ...at(stat.label, unit), ...fontStyle(fit.statLabelPt, unit), lineHeight: 1.25, color: SUB, fontWeight: 500, overflow: "hidden" }}>{figure.stats[i]?.label}</span>
+          <span className={styles.kfText} data-part="key-stat-label" title={fit.statLabelClipped[i] ? figure.stats[i]?.label : undefined} style={{ ...at(stat.label, unit), ...fontStyle(fit.statLabelPt, unit), lineHeight: 1.25, color: SUB, fontWeight: 500, whiteSpace: "pre", overflow: "hidden" }}>{fit.statLabelLines[i]?.join("\n")}</span>
         </React.Fragment>
       ))}
       {rows.statSeparators.map((sep, i) => <span key={i} className={styles.kfRule} style={at(sep, unit)} />)}

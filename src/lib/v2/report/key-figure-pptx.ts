@@ -85,7 +85,7 @@ export function drawKeyFigureCard(s: Slide, { view, fit, rect, tag }: KeyFigureC
   if (rows.divider) rule(rows.divider, "divider");
   rows.stats.forEach((stat, i) => {
     text(figure.stats[i]?.value ?? "", stat.value, `stat-value-${i}`, { fontSize: fit.statValuePt, bold: true, color: INK, valign: "middle" });
-    text(figure.stats[i]?.label ?? "", stat.label, `stat-label-${i}`, { fontSize: fit.statLabelPt, color: MUTED, valign: "top", wrap: true, lineSpacing: fit.statLabelPt * 1.25 });
+    lines(fit.statLabelLines[i] ?? [], stat.label, `stat-label-${i}`, fit.statLabelPt, fit.statLabelPt * 1.25, { color: MUTED });
   });
   rows.statSeparators.forEach((sep, i) => rule(sep, `stat-separator-${i}`));
 

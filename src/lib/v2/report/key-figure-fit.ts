@@ -9,7 +9,7 @@ import type { KeyFigure } from "../tile/types";
 import type { Rect } from "../ui/overlay-layout";
 import { NOTES_CHIP_GAP, NOTES_CHIP_SIZE } from "./report-geometry";
 import { wrapToLines } from "./analysis-column-fit";
-import { linesOf, textIn } from "./pptx-kit";
+import { textIn } from "./pptx-kit";
 
 export type KeyFigureFitInput = {
   figure: KeyFigure;
@@ -73,6 +73,8 @@ export type KeyFigureFit = {
   sentenceHeight: number;
   /** 보조 줄(대상을 내렸으면 맨 앞에 붙는다, 최대 2줄) */
   subLines: string[];
+  /** 보조 숫자 이름(칸마다 최대 2줄, 넘치면 마지막 줄을 …로 닫는다)과 잘림 여부. 전문은 `figure.stats[i].label`이다. */
+  statLabelLines: string[][]; statLabelClipped: boolean[];
   /** 적용 필터 글(최대 2줄, 넘치면 마지막 줄을 …로 닫는다) */
   filterLines: string[];
   /** 필터 글이 두 줄을 넘어 잘렸다: 전문은 각주 한계 자리와 카드 줄의 title에 있다 */
@@ -229,7 +231,10 @@ function fitAt({ figure, badges, grades, filterLine, sentence, width, columns, n
   const textW = cellFullW - 0.12;
   let statValuePt = 15 * s;
   while (statValuePt > 9 * s && stats.some((stat) => textIn(stat.value, statValuePt) * 1.1 > textW)) statValuePt -= 0.5;
-  const labelLines = stats.reduce((max, stat) => Math.max(max, Math.min(2, linesOf(stat.label, statLabelPt, textW))), 1);
+  // 보조 숫자 이름은 최대 2줄: 줄을 여기서 나눠 화면과 PPT가 같은 줄을 그린다(PPT 상자가 다시 접지 않는다).
+  const statLabelLines = stats.map((stat) => wrapToLines(stat.label, statLabelPt, textW, 2));
+  const statLabelClipped = stats.map((stat) => wrapToLines(stat.label, statLabelPt, textW, 3).length > 2);
+  const labelLines = statLabelLines.reduce((max, lines) => Math.max(max, lines.length), 1);
   const valueH = pt(statValuePt) * 1.2;
   const cellH = valueH + labelLines * pt(statLabelPt) * LINE + 0.04;
   const statCells: KeyFigureRows["stats"] = [];
@@ -303,7 +308,7 @@ function fitAt({ figure, badges, grades, filterLine, sentence, width, columns, n
 
   const height = y + PAD_BOTTOM;
   const rows: KeyFigureRows = { questionBar, question, badges: badgeRects, answer: answerRect, answerBaseline, sub, grades: gradeRects, filter, divider, stats: statCells, statSeparators, lead, partsBar, partsSegments, parts: partRows, sentenceBar, sentence: sentenceRect };
-  return { height, questionPt, prePt, valuePt, targetPt, postPt, subPt, statValuePt, statLabelPt, sentencePt, leadPt, chipPt: 8 * s, gradePt: subPt * (8.5 / 9.4), partPt: statLabelPt * (11.5 / 11), targetOnSub, badgesShown, badgesMore, badgesFolded, questionClipped, sentenceLines, sentenceHeight, subLines, filterLines, filterClipped, rows };
+  return { height, questionPt, prePt, valuePt, targetPt, postPt, subPt, statValuePt, statLabelPt, sentencePt, leadPt, chipPt: 8 * s, gradePt: subPt * (8.5 / 9.4), partPt: statLabelPt * (11.5 / 11), targetOnSub, badgesShown, badgesMore, badgesFolded, questionClipped, sentenceLines, sentenceHeight, subLines, statLabelLines, statLabelClipped, filterLines, filterClipped, rows };
 }
 
 /**

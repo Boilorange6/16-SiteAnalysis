@@ -645,6 +645,24 @@ for (const format of ["wide", "a3", "a4"]) {
   assert.deepEqual(big.badgesFolded, ["일부 자료만 집계", "미확인"]);
 }
 
+// ── N4: 보조 숫자 이름은 fit이 줄을 미리 나눈다(화면·PPT가 같은 줄). 닫는 괄호 한 글자만 다음 줄로 넘어가지 않는다.
+{
+  const label = "높이 확인(원천+층수 추정)";
+  const fig = { question: "건물 높이", answer: { value: "26.4m", kind: "number" }, stats: [{ value: "73%", label }, { value: "27%", label: "1층 가정 비율" }] };
+  for (const [width, columns] of [[3.125, 2], [3.806, 3], [2.4, 2], [2.0, 2], [3.3, 3], [4.2, 3]]) {
+    for (const summaryPt of [13, 11, 16]) {
+      const f = keyFigureFit({ figure: fig, badges: [], grades: [], filterLine: null, sentence: null, width, columns, summaryPt });
+      const lines = f.statLabelLines[0];
+      assert.ok(lines.length >= 1 && lines.length <= 2, `${width}/${columns}/${summaryPt}: 이름은 최대 2줄`);
+      const joined = lines.join("").replace(/…$/, "").replace(/ /g, "");
+      assert.equal(joined, label.replace(/ /g, "").slice(0, joined.length), `${width}/${columns}/${summaryPt}: 줄을 이으면 앞부분 전문`);
+      for (const line of lines) assert.ok(!/^[)\]」』,.%·:;!?]/.test(line), `${width}/${columns}/${summaryPt}: 닫는 기호로 줄이 시작 「${line}」`);
+      for (const line of lines) assert.ok(textIn(line, f.statLabelPt) * 1.1 <= f.rows.stats[0].label.w + 1e-6, `${width}/${columns}/${summaryPt}: 줄이 칸 폭 안 「${line}」`);
+      assert.equal(f.statLabelClipped[0], lines.at(-1).endsWith("…"), "잘림 표시 = 마지막 줄 …");
+    }
+  }
+}
+
 // ── 구성 막대(A12): 보조 숫자 칸 대신 큰 % + 두 줄 설명이 막대 위에 있다(Ruling 6)
 {
   const parts = [{ label: "제3종일반주거지역", share: 50, color: "#F2C94C", site: true }, { label: "제2종일반주거지역", share: 24.9, color: "#F2C94C" }, { label: "일반상업지역", share: 5, color: "#E05A47" }];

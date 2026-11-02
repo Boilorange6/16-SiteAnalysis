@@ -331,6 +331,13 @@ assert.ok(charts.blocks.some((b) => textsOf(b).includes("1~4층")) && charts.blo
     assert.ok(legend, `${code}: 설명선 범례`);
     assert.ok(legend.x >= map.x - 0.01 && legend.y + legend.h <= map.y + map.h + 0.01 && legend.x + legend.w <= map.x + map.w + 0.01, `${code}: 범례는 지도 틀 안`);
     if (code === "A05") assert.ok(deck.blocks.some((b) => textsOf(b).join("") === f.fit.filterLines.join("")), "A05 필터 줄이 카드 안에 있다");
+    // N4: 보조 숫자 이름은 fit이 나눈 줄 그대로, PPT 상자가 다시 접지 않는다(wrap none).
+    f.fit.statLabelLines.forEach((lines, i) => {
+      const block = deck.blocks.find((b) => nameOf(b).endsWith(`stat-label-${i}`));
+      assert.ok(block, `${code}: 보조 숫자 이름 ${i}`);
+      assert.deepEqual(textsOf(block), lines, `${code}: 보조 숫자 이름 ${i} 줄 = fit 줄`);
+      assert.match(block, /wrap="none"/, `${code}: 보조 숫자 이름 ${i}은 다시 접히지 않는다`);
+    });
     // A3·A4(Ruling 39): 새 틀 장은 판형과 상관없이 설명선 개요를 그린다. PPT 번호 점 = 화면 번호 점, 설명선 범례 1개, 반경 원 0.72.
     if (code === "A05") {
       for (const format of ["a3", "a4"]) {
