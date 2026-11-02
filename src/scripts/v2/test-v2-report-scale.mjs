@@ -96,11 +96,10 @@ function virtualViewportOptions(format, layout) {
   const geometry = slideGeometry(format);
   const width = Math.max(1, Math.round(rect.w * geometry.w * (960 / geometry.w)));
   const height = Math.max(1, Math.round(rect.h * geometry.h * (960 / geometry.w)));
-  const hasSummary = layout !== "side-by-side";
   return mapFrameScaleOptions(format, layout, {
     width,
     height,
-    siteX: slideSiteX({}, hasSummary, format),
+    siteX: slideSiteX({}, true, format),
     siteY: 0.5,
     fill: 0.8,
   });
@@ -113,7 +112,7 @@ function measuredGroundWidth(options, zoomDelta) {
 
 const measurements = [];
 for (const format of ["wide", "a3"]) {
-  for (const layout of ["map-summary", "numbers-first", "side-by-side"]) {
+  for (const layout of ["map-summary", "numbers-first"]) {
     const options = virtualViewportOptions(format, layout);
     const zoomDelta = zoomForScale(2500, map, options);
     const groundWidthM = measuredGroundWidth(options, zoomDelta);

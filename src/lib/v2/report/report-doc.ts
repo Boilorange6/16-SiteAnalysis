@@ -7,7 +7,7 @@ import type { BaseThemeRef, BaseToggleLayer } from "../ui/map-theme";
 export type { PagePanelKey, PagePanelRect, PagePanels } from "./report-geometry";
 
 export type ReportFormat = "wide" | "a3" | "a4";
-/** 새로 쓰는 값은 map-key·map-charts·numbers-first(지도·그림 없는 장)와 조판(compare) 쪽의 side-by-side. 옛 값 map-full·map-summary는 타입에서 뺐고 저장 문서를 읽을 때(board-state restoreReportPage)만 만난다. */
+/** 새로 쓰는 값은 map-key·map-charts·numbers-first(지도·그림 없는 장)다. side-by-side와 옛 값 map-full·map-summary는 저장 문서를 읽을 때(board-state restoreReportPage)만 만나고, 읽으면서 map-key로 바뀐다. */
 export type ReportLayout = "map-key" | "map-charts" | "numbers-first" | "side-by-side";
 export type ReportFontScale = 0.85 | 1 | 1.15;
 export type FontSizeKey = "title" | "summary" | "legend" | "labels" | "source" | "scale";

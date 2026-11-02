@@ -114,7 +114,7 @@ function pageStyleFor(p: PlannedSlide, format: SlideFormat): PageStyle {
   return {
     ...(p.style ?? {}),
     ...(Object.keys(panels).length > 0 ? { panels } : {}),
-    ...(pageLayout === "side-by-side" ? { summary: false } : pageLayout === "numbers-first" ? { summary: true } : {}),
+    ...(pageLayout === "numbers-first" ? { summary: true } : {}),
     ...(pageElementDeleted(page, "summary") ? { summary: false } : {}),
   };
 }
@@ -126,16 +126,6 @@ function frameOf(p: PlannedSlide): MapFrameState | undefined {
 function frameLegendOptions(frame: MapFrameState | undefined): SlideLegendOptions {
   if (!frame) return {};
   return frame.legend;
-}
-
-function frameForLayout(p: PlannedSlide, format: SlideFormat): { x: number; y: number; w: number; h: number } | undefined {
-  if (p.kind !== "tile") return undefined;
-  const pageLayout = layoutOf(p);
-  if (pageLayout === "map-key" || pageLayout === "map-charts") return undefined;
-  const rect = layoutRects(pageLayout, format).map;
-  if (!rect) return undefined;
-  const size = slideSize(format);
-  return { x: rect.x * size.w, y: rect.y * size.h, w: rect.w * size.w, h: rect.h * size.h };
 }
 
 function pageTextBoxes(s: Slide, p: PlannedSlide, format: SlideFormat): void {
@@ -613,7 +603,7 @@ function tile(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, images: MapIm
   if (draw?.thematicShapes && p.map) {
     const size = slideSize(format);
     addEditableMap(s, p, p.map, {
-      style, format, frame: frameForLayout(p, format), reportFrame: frameOf(p), layout: layoutOf(p),
+      style, format, reportFrame: frameOf(p), layout: layoutOf(p),
       basemap: mapLayer ?? undefined,
       baseTheme: look.baseTheme,
       underlay: draw.image === "transparent" && mapImage ? () => { s.addImage({ data: mapImage, x: 0, y: 0, w: size.w, h: size.h }); } : undefined,

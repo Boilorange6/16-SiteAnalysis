@@ -15,7 +15,6 @@ assert.equal(slideSize("wide").h, 7.5, "wide 판형 높이");
 assert.equal(slideSize("a3").w, 15120000 / 914400, "A3 XML 폭과 일치하는 판형 폭");
 assert.equal(slideSize("a3").h, 10692000 / 914400, "A3 XML 높이와 일치하는 판형 높이");
 assert.ok(layoutRects("numbers-first", "a3").map.x > 0.5, "numbers-first 지도 프레임은 오른쪽에 있어야 한다");
-assert.ok(layoutRects("side-by-side", "a4").second, "side-by-side 두 번째 지도 프레임");
 
 const source = GODEOK_RESULTS.find((result) => result.tileCode === "D04");
 assert.ok(source, "D04 fixture가 필요하다");
@@ -85,8 +84,6 @@ const summaryGroup = groupGeometry(a3.slide, "요약");
 assert.ok(locatorGroup, "A3 위치도 그룹 bbox");
 assert.ok(summaryGroup, "A3 요약 plate 그룹 bbox");
 assert.equal(overlaps(locatorGroup, summaryGroup), false, "위치도 group does not intersect summary plate");
-const mapOffset = a3.slide.match(/<p:cNvPr id="\d+" name="GRP\|map-D04-[^"]*"[\s\S]*?<a:off x="(\d+)"/);
-assert.ok(mapOffset && Number(mapOffset[1]) / 914400 > slideSize("a3").w * 0.5, "numbers-first 지도는 오른쪽 프레임에 배치된다");
 
 const noteNames = Object.keys(a3.zip.files).filter((name) => /^ppt\/notesSlides\/notesSlide\d+\.xml$/.test(name));
 const notes = (await Promise.all(noteNames.map((name) => a3.zip.file(name).async("string")))).join("|");

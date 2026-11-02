@@ -7,7 +7,7 @@ import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import { clampTextBox, defaultFrame, DEFAULT_REPORT_FONT_SIZES, EMPTY_REPORT_DOC, newPageId, REPORT_FONT_SIZE_KEYS, REPORT_FONT_SIZE_LIMITS, reportDocReducer, textBoxDefaults, TEXT_BOX_DEFAULTS, type FontSizeKey, type MapColorChoice, type MapFrameState, type PageElementKey, type PagePanels, type ReportDoc, type ReportDocAction, type ReportFontSizeOverrides, type ReportFontSizes, type ReportFormat, type ReportPage, type TextBox, type TextBoxKind, type TilePart } from "@/lib/v2/report/report-doc";
 import { mapFrameScaleOptions, scaleForFrame, scaleOptionsForFrame, siteAnchoredZoomPatch, siteFitPatch, zoomForScale } from "@/lib/v2/ui/report-scale";
 import { SLIDE_OVERVIEW_FILL, calloutKeyFromTag, calloutPageItems, sortComplexes, type CalloutSort, type Complex } from "@/lib/v2/ui/callout-layout";
-import { layoutRects, legendMatches, slideGeometry, slideLayout, slideLegend, slidePanelRects, slideSiteX, slideSize, terrainSectionLayout } from "@/lib/v2/ui/overlay-layout";
+import { legendMatches, slideGeometry, slideLayout, slideLegend, slidePanelRects, slideSiteX, slideSize, terrainSectionLayout } from "@/lib/v2/ui/overlay-layout";
 import { calloutPageFor, importLegacyReport, hasLegacyReport, pagesForTile, planReportDoc, recommendedPages } from "@/lib/v2/report/report-doc-plan";
 import { pageStripItems } from "@/lib/v2/report/report-page-strip";
 import { reportFileName, tileReportSettingsFromBoard, type PlannedSlide } from "@/lib/v2/report/report-plan";
@@ -1605,17 +1605,9 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
           const hasSummary = !!tile && tile.style.summary !== false && !(tile.callout && tile.callout.page > 0);
           const baseLegend = tile?.map ? slideLegend(tile.map, !tile.muted, undefined, hasSummary, format).rect : null;
           const legacyPanels = slidePanelRects(tile?.style, hasSummary, baseLegend, format);
-          // 그리는 단계가 정한 레이아웃(planned page)을 쓴다. 저장된 값 그대로 쓰면 numbers-first 지도 장의 축척 기준이 어긋난다.
+          // 그리는 단계가 정한 레이아웃(planned page)을 쓴다. 지도가 있는 장의 새 틀 말고는 옛 경로(설명선 상세 장 등)뿐이다.
           const drawnLayout = selectedSlide?.page?.layout ?? selectedPage.layout;
-          const customLayout = drawnLayout === "numbers-first" || drawnLayout === "side-by-side";
-          const size = slideSize(format);
-          const layout = customLayout ? layoutRects(drawnLayout, format) : null;
-          const toRect = (rect: { x: number; y: number; w: number; h: number } | null) => rect
-            ? { x: rect.x * size.w, y: rect.y * size.h, w: rect.w * size.w, h: rect.h * size.h }
-            : null;
-          const panels = layout
-            ? { title: toRect(layout.title)!, summary: toRect(layout.summary), legend: toRect(layout.legend) }
-            : legacyPanels;
+          const panels = legacyPanels;
           const terrainShown = !!tile && tile.view.code === "D17" && !!tile.view.terrainSections && !!tile.terrainSection;
           const terrainLayout = terrainShown ? terrainSectionLayout(panels, slideLayout(format), format) : null;
           return mapFrameScaleOptions(format, drawnLayout, {

@@ -508,7 +508,7 @@ export function slideSiteX(
   return summary ? (summary.x - g.edge) / 2 / g.w : 0.5;
 }
 
-export type LayoutRects = { map: Rect | null; title: Rect; summary: Rect | null; legend: Rect | null; second?: Rect };
+export type LayoutRects = { map: Rect | null; title: Rect; summary: Rect | null; legend: Rect | null };
 
 function normalized(rect: Rect | null, g: SlideGeometry): Rect | null {
   return rect ? { x: rect.x / g.w, y: rect.y / g.h, w: rect.w / g.w, h: rect.h / g.h } : null;
@@ -525,15 +525,6 @@ export function layoutRects(layout: ReportLayoutName = "map-key", format: SlideF
       legend: { x: 0.03, y: 0.67, w: 0.48, h: 0.19 },
     };
   }
-  if (layout === "side-by-side") {
-    return {
-      map: { x: 0.03, y: 0.14, w: 0.45, h: 0.72 },
-      second: { x: 0.52, y: 0.14, w: 0.45, h: 0.72 },
-      title: { x: 0.03, y: 0.03, w: 0.94, h: 0.08 },
-      summary: null,
-      legend: { x: 0.03, y: 0.87, w: 0.94, h: 0.08 },
-    };
-  }
   const panels = slidePanelRects({}, layout === "map-key" || layout === "map-charts", undefined, format);
   return {
     map: { x: 0, y: 0, w: 1, h: 1 },
@@ -541,40 +532,6 @@ export function layoutRects(layout: ReportLayoutName = "map-key", format: SlideF
     summary: normalized(panels.summary, g),
     legend: normalized(panels.legend, g),
   };
-}
-
-export type ChartsColumn = { headline: Rect; stat: Rect; composition: Rect; distance: Rect; sentence: Rect; notesChip: Rect };
-
-/**
- * 「지도 + 그래프」 오른쪽 열의 여섯 칸(슬라이드 inch). 화면 미리보기와 PPT가 같은 함수를 쓴다.
- * 높이 배분은 큰 숫자 20 · 한 줄 통계 6 · 구성비 26 · 거리 32 · 해석 16 %이고, 주석 칩 자리는 해석 몫에서 뗀다(거리 그래프 칸은 줄지 않는다).
- * 바깥 여백은 고정(글자 배율을 따르지 않는다): 거리 그래프 칸이 글자 크기와 상관없이 같은 크기라 기하를 같은 값으로 검증한다.
- * 칸 사이 간격만 글자 배율을 따르며, 위 칸은 아래쪽, 해석 칸은 위쪽에서 뗀다(거리 그래프 칸 자체는 줄이지 않는다).
- */
-export function chartsColumnLayout(summaryRect: Rect, scale: number): ChartsColumn {
-  const pad = Math.min(0.18, summaryRect.w / 4, summaryRect.h / 4);
-  const x = summaryRect.x + pad;
-  const w = Math.max(0.01, summaryRect.w - pad * 2);
-  const H = Math.max(0.01, summaryRect.h - pad * 2);
-  const gap = Math.min(0.04 * scale, H * 0.01);
-  const chip = Math.min(0.26, H * 0.06);
-  let y = summaryRect.y + pad;
-  const take = (share: number, trailingGap = gap): Rect => {
-    const h = H * share;
-    const rect = { x, y, w, h: h - trailingGap };
-    y += h;
-    return rect;
-  };
-  const headline = take(0.2);
-  const stat = take(0.06);
-  const composition = take(0.26);
-  const distanceTop = y;
-  const sentenceTop = distanceTop + H * 0.32;
-  const bottom = summaryRect.y + pad + H;
-  const distance = { x, y: distanceTop, w, h: sentenceTop - distanceTop };
-  const sentence = { x, y: sentenceTop + gap, w, h: bottom - chip - sentenceTop - gap };
-  const notesChip = { x, y: bottom - chip, w, h: chip };
-  return { headline, stat, composition, distance, sentence, notesChip };
 }
 
 /** 펼침에서 오른쪽 정보 판(360px)을 뺀 영역의 가운데 (모바일은 0.5) */

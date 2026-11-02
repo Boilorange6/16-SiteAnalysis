@@ -50,11 +50,6 @@ export function placeActionBar(
   };
 }
 
-/** 셀 지도 장식·콜아웃이 실제 frame 높이에 비례하도록 공용 논리 단위를 계산한다. */
-export function mapLayoutUnitForFrame(frameHeightPx: number): number {
-  return Math.min(1.5, Math.max(1, frameHeightPx / 360));
-}
-
 const MIN_PANEL_SIZE = 0.01;
 
 function finite(value: unknown): value is number {

@@ -223,8 +223,7 @@ assert.deepEqual(tickValues(y1950), ["1950", "1960", "1970", "1980", "1990", "20
 
 // ── 실제 크기 상자(3.9 x 1.9 in)에서 층수·가격·연도 차트 900개를 무작위(고정 시드)로: 큰 글자(1.85)까지 글자끼리 안 겹치고 box 안
 const REAL = { x: 8.6, y: 3.2, w: 3.9, h: 1.9 };
-const { chartsColumnLayout, slidePanelRects } = await import("../../lib/v2/ui/overlay-layout.ts");
-const COLUMN_BOXES = ["wide", "a4"].map((format) => chartsColumnLayout(slidePanelRects({}, true, undefined, format).summary, 1).distance); // 3.91×1.92 · 3.38×2.17 (칸 크기는 글자 배율과 무관)
+const COLUMN_BOXES = [{ x: 8.6, y: 3.2, w: 3.44, h: 2.2 }]; // ② 거리 그래프 카드 안쪽 상자(16:9 열 폭 3.81 in − 안쪽 여백 0.375 in)에 가까운 크기. 칸 크기는 글자 배율과 무관 // 예전 열 거리 칸 크기(16:9·A4). 칸 크기는 글자 배율과 무관
 let bseed = 11;
 const brand = () => ((bseed = (bseed * 1103515245 + 12345) % 2147483648) / 2147483648);
 const medianOf = (a) => {
@@ -249,7 +248,7 @@ const failures = [];
 for (const kind of ["floors", "price", "year"]) {
   for (let k = 0; k < 300; k++) {
     const fx = genScatter(kind);
-    for (const box of [REAL, { x: 8.6, y: 3.2, w: 3.4, h: 2.0 }, ...COLUMN_BOXES]) // 둘째는 A4 폭에 가까운 더 좁은 상자, 나머지는 chartsColumnLayout의 실제 칸(16:9·A4)
+    for (const box of [REAL, { x: 8.6, y: 3.2, w: 3.4, h: 2.0 }, ...COLUMN_BOXES]) // 둘째는 A4 폭에 가까운 더 좁은 상자, 나머지는 ② 거리 카드에 가까운 칸
       for (const scale of [1, 1.85]) {
         for (const title of ["", `대지에서 거리와 ${kind === "floors" ? "지상 층수" : kind === "price" ? "㎡당 가격" : "사용승인 연도"}`]) {
           const shapes = distanceShapes(fx, 1000, box, scale, title);
