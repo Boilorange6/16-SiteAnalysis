@@ -5,6 +5,10 @@ export type PagePanels = Partial<Record<PagePanelKey, PagePanelRect>>;
 
 export const PAGE_PANEL_KEYS: readonly PagePanelKey[] = ["title", "summary", "legend", "source", "north", "scaleBar", "locator"];
 
+/** `주석 N` 칩 크기(inch)와 해석 줄과의 간격. 장 기하(report-page-layout)와 카드 맞춤(key-figure-fit)이 같은 값으로 해석 줄 폭에서 칩 자리를 뺀다. */
+export const NOTES_CHIP_SIZE = { w: 0.8, h: 0.24 } as const;
+export const NOTES_CHIP_GAP = 0.1;
+
 export const ACTION_BAR_HEIGHT = 40;
 export const ACTION_BAR_GAP = 8;
 

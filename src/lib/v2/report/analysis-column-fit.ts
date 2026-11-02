@@ -32,6 +32,17 @@ export function clampToLines(text: string, pt: number, width: number, maxLines: 
   if (linesOf(text, pt, width) <= maxLines) return text; // fitBlock이 맞는다고 본 글은 자르지 않는다(아래 줄 나눔이 한 줄 더 엄격하다)
   const chars = [...text];
   const w = Math.max(0.01, width) / 1.1;
+  const { starts, ends } = lineSpans(chars, pt, width);
+  if (starts.length <= maxLines) return text;
+  const head = chars.slice(0, starts[maxLines - 1]!).join("");
+  let last = chars.slice(starts[maxLines - 1]!, ends[maxLines - 1]!);
+  while (last.length > 0 && textIn(`${last.join("")}…`, pt) > w) last = last.slice(0, -1);
+  return `${head}${last.join("").trimEnd()}…`;
+}
+
+/** 줄 나눔(공백 우선, 없으면 글자 단위). starts는 모든 줄의 시작, ends는 마지막 줄을 뺀 줄의 끝(글자 인덱스). */
+function lineSpans(chars: string[], pt: number, width: number): { starts: number[]; ends: number[] } {
+  const w = Math.max(0.01, width) / 1.1;
   const fits = (from: number, to: number) => textIn(chars.slice(from, to).join(""), pt) <= w;
   const starts: number[] = [0];
   const ends: number[] = [];
@@ -47,11 +58,20 @@ export function clampToLines(text: string, pt: number, width: number, maxLines: 
     lastSpace = -1;
     i = starts[starts.length - 1]! - 1; // 새 줄 처음부터 다시 잰다
   }
-  if (starts.length <= maxLines) return text;
-  const head = chars.slice(0, starts[maxLines - 1]!).join("");
+  return { starts, ends };
+}
+
+/** clampToLines와 같은 줄 나눔을 줄 배열로 돌려준다. maxLines를 넘으면 마지막 줄을 …로 닫는다(카드가 줄마다 그리도록). */
+export function wrapToLines(text: string, pt: number, width: number, maxLines: number): string[] {
+  const chars = [...text.trim()];
+  if (chars.length === 0) return [];
+  const { starts, ends } = lineSpans(chars, pt, width);
+  const line = (i: number) => chars.slice(starts[i]!, i < ends.length ? ends[i]! : chars.length).join("").trimEnd();
+  if (starts.length <= maxLines) return starts.map((_, i) => line(i));
+  const w = Math.max(0.01, width) / 1.1;
   let last = chars.slice(starts[maxLines - 1]!, ends[maxLines - 1]!);
   while (last.length > 0 && textIn(`${last.join("")}…`, pt) > w) last = last.slice(0, -1);
-  return `${head}${last.join("").trimEnd()}…`;
+  return [...Array.from({ length: maxLines - 1 }, (_, i) => line(i)), `${last.join("").trimEnd()}…`];
 }
 
 /**

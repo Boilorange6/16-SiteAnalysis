@@ -1,10 +1,14 @@
 /**
- * 핵심 숫자 카드의 글자 맞춤과 높이(spec 2026-10-30 §4-1). 화면 카드와 PPT 카드가 같은 pt·줄·높이를 쓰도록 한 곳에서 계산하는 순수 함수다.
- * 글자 폭 어림은 pptx-kit의 textIn(한글 1 em·그 밖 0.56 em)과 linesOf의 10 % 여유를 그대로 쓴다.
- * 시안 pt(summaryPt 13일 때)는 질문 9.4 · 앞말 18 · 숫자 43.5 · 이름 답 23 · 대상 21 · 보조 줄 9.4 · 보조 숫자 15 / 8.25 · 해석 9.75이고, summaryPt / 13 배로 같이 커진다.
+ * 핵심 숫자 카드의 글자 맞춤·높이·카드 안 칸(spec 2026-10-30 §4-1·§7). 화면 카드와 PPT 카드가 같은 pt·줄·사각형을 쓰도록 한 곳에서 계산하는 순수 함수다.
+ * 글자 폭 어림은 pptx-kit의 textIn(한글 1 em·그 밖 0.56 em)이다. 큰 답은 여유 없이 안쪽 폭에 맞추고, 어림 오차는 카드 오른쪽 안쪽 여백이 받는다.
+ * 시안 pt(summaryPt 13일 때)는 질문 9.4 · 앞말 18 · 숫자 43.5 · 이름 답 23 · 대상·뒷말 21 · 보조 줄 9.4 · 보조 숫자 15 / 8.25 · 해석 9.75이고, summaryPt / 13 배로 같이 커진다.
  * `width`는 카드 바깥 폭이다. columns 2는 ①(해석 한 줄이 카드 맨 아래), 3은 ②(해석은 열 맨 아래 카드 밖)이다.
+ * `rows`의 사각형은 모두 카드 왼쪽 위를 (0, 0)으로 한 inch다. 화면과 PPT는 이 사각형에 그리기만 한다.
  */
 import type { KeyFigure } from "../tile/types";
+import type { Rect } from "../ui/overlay-layout";
+import { NOTES_CHIP_GAP, NOTES_CHIP_SIZE } from "./report-geometry";
+import { wrapToLines } from "./analysis-column-fit";
 import { linesOf, textIn } from "./pptx-kit";
 
 export type KeyFigureFitInput = {
@@ -18,20 +22,50 @@ export type KeyFigureFitInput = {
   width: number;
   columns: 2 | 3;
   summaryPt: number;
+  /** 카드 높이 상한(저장한 카드 크기). 넘으면 높이가 맞을 때까지 글자 배율을 줄인다. 없으면 줄이지 않는다. */
+  maxHeight?: number;
+  /** `주석 N` 칩이 있으면(기본 true) ②의 해석 줄 폭에서 칩 자리를 뺀다. */
+  notes?: boolean;
+};
+
+export type KeyFigureRows = {
+  questionBar: Rect; question: Rect;
+  /** 질문 줄 오른쪽 끝의 상태 배지(많으면 마지막이 `+n`) */
+  badges: Array<{ text: string; rect: Rect }>;
+  /** 큰 답 한 줄(run 셋의 한 텍스트 상자)과 그 기준선 y */
+  answer: Rect; answerBaseline: number;
+  sub: Rect | null;
+  grades: Array<{ text: string; rect: Rect }>;
+  filter: Rect | null;
+  divider: Rect | null;
+  stats: Array<{ cell: Rect; value: Rect; label: Rect }>;
+  statSeparators: Rect[];
+  partsBar: Rect | null;
+  partsSegments: Array<{ rect: Rect; color: string; site: boolean }>;
+  parts: Array<{ row: Rect; swatch: Rect; label: Rect; share: Rect }>;
+  /** ①만: 카드 맨 아래 해석 줄(막대 + 글). ②는 null이고 열이 `sentenceHeight`로 그린다. */
+  sentenceBar: Rect | null; sentence: Rect | null;
 };
 
 export type KeyFigureFit = {
   /** 카드 바깥 높이(inch) */
   height: number;
   questionPt: number; prePt: number; valuePt: number; targetPt: number;
+  /** 뒷말(`/㎡` 등). 대상과 같은 크기이고, 큰 답이 넘치면 숫자와 함께 줄어든다. */
+  postPt: number;
   subPt: number; statValuePt: number; statLabelPt: number; sentencePt: number;
   /** 큰 답이 넘쳐 대상 이름을 보조 줄로 내렸다 */
   targetOnSub: boolean;
   badgesShown: string[]; badgesMore: number;
   /** 해석 한 줄(최대 2줄, 넘치면 마지막 줄을 …로 닫는다) */
   sentenceLines: string[];
+  /** 해석 줄 블록의 높이. ②는 이 값을 열의 `sentenceHeight`로 넘긴다. */
+  sentenceHeight: number;
   /** 보조 줄(대상을 내렸으면 맨 앞에 붙는다, 최대 2줄) */
   subLines: string[];
+  /** 한 줄에 맞게 자른 적용 필터 글 */
+  filterText: string | null;
+  rows: KeyFigureRows;
 };
 
 const PAD_X = 0.1875; // 18 px
@@ -41,97 +75,194 @@ const LINE = 1.25; // fitBlock이 가정하는 줄 높이
 const ANSWER_LINE = 1.05; // 큰 답은 줄 간격이 없다(한 줄)
 const MAX_BADGES = 2;
 const SENTENCE_BAR = 0.15; // 해석 줄 왼쪽 막대 + 간격
+const HAIR = 0.0104; // 1 px
 const NUMBER_MAX_PT = 43.5;
 const NAME_MAX_PT = 23;
-const VALUE_MIN_PT = 24; // 최소 32 px
-const VALUE_HARD_MIN_PT = 14; // 대상을 내려도 넘칠 때만 더 줄인다
+const VALUE_MIN_PT = 24; // 숫자의 최소 32 px. 이름 답은 23 pt에서 시작하므로 이 하한이 없다.
+const MAX_SHRINK_STEPS = 12; // maxHeight 맞춤: 0.05씩 최대 0.4배까지
 
 const pt = (value: number) => value / 72;
+const floorHalf = (value: number) => Math.floor(value * 2 + 1e-9) / 2;
 
-/** 폭 안에서 pt로 쓸 때 줄이 maxLines를 넘으면 마지막 줄을 …로 닫는다. 공백에서 먼저 나누고 없으면 글자 단위로 나눈다. */
-function wrap(text: string, size: number, width: number, maxLines: number): string[] {
-  const limit = Math.max(0.01, width) / 1.1;
-  const fits = (value: string) => textIn(value, size) <= limit;
-  const lines: string[] = [];
-  let rest = text.trim();
-  while (rest && lines.length < maxLines) {
-    if (fits(rest)) { lines.push(rest); rest = ""; break; }
-    const chars = [...rest];
-    let n = 1;
-    while (n < chars.length && fits(chars.slice(0, n + 1).join(""))) n++;
-    const space = chars.slice(0, n).lastIndexOf(" ");
-    const cut = space > 0 && chars[n] !== " " ? space : n;
-    lines.push(chars.slice(0, cut).join("").trimEnd());
-    rest = chars.slice(cut).join("").trimStart();
-  }
-  if (rest && lines.length > 0) {
-    const last = [...lines.pop()!];
-    while (last.length > 0 && !fits(`${last.join("")}…`)) last.pop();
-    lines.push(`${last.join("").trimEnd()}…`);
-  }
-  return lines;
+export function keyFigureFit(input: KeyFigureFitInput): KeyFigureFit {
+  let fit = fitAt(input, input.summaryPt);
+  if (input.maxHeight === undefined) return fit;
+  for (let step = 1; step <= MAX_SHRINK_STEPS && fit.height > input.maxHeight + 1e-9; step++) fit = fitAt(input, input.summaryPt * (1 - step * 0.05));
+  return fit;
 }
 
-export function keyFigureFit({ figure, badges, grades, filterLine, sentence, width, columns, summaryPt }: KeyFigureFitInput): KeyFigureFit {
+function fitAt({ figure, badges, grades, filterLine, sentence, width, columns, notes = true }: KeyFigureFitInput, summaryPt: number): KeyFigureFit {
   const s = summaryPt / 13;
   const inner = Math.max(0.5, width - PAD_X * 2);
   const questionPt = 9.4 * s;
-  const prePt = 18 * s;
-  const targetPt = 21 * s;
   const subPt = 9.4 * s;
   const statLabelPt = 8.25 * s;
   const sentencePt = 9.75 * s;
   const { answer } = figure;
+  let prePt = 18 * s;
+  const targetPt = 21 * s;
+  let postPt = targetPt;
 
-  // 큰 답: 한 줄. 숫자를 24 pt까지 줄이고, 그래도 넘치면 대상을 보조 줄로 내린다. 줄바꿈하지 않는다.
+  // 큰 답: 한 줄. 숫자는 24 pt까지(이름 답은 23 pt 그대로) 줄이고, 그래도 넘치면 대상을 보조 줄로 내린다.
+  // 그래도 넘치면 안쪽 폭에 맞게 직접 푼다(F1에 비례하는 하한을 두지 않는다). 줄바꿈하지 않는다.
   const preText = answer.pre ? `${answer.pre} ` : "";
+  const postText = answer.post ?? "";
   const targetText = answer.target ? ` · ${answer.target}` : "";
   const valueMax = (answer.kind === "name" ? NAME_MAX_PT : NUMBER_MAX_PT) * s;
-  const answerWidth = (value: number, withTarget: boolean) => (textIn(preText, prePt) + textIn(answer.value, value) + (withTarget ? textIn(targetText, targetPt) : 0)) * 1.1;
-  const largest = (min: number, withTarget: boolean): number | null => {
-    for (let p = valueMax; p >= Math.min(min, valueMax) - 1e-9; p -= 0.5) if (answerWidth(p, withTarget) <= inner) return p;
+  const answerWidth = (value: number, withTarget: boolean) => textIn(preText, prePt) + textIn(answer.value, value) + textIn(postText, postPt) + (withTarget ? textIn(targetText, targetPt) : 0);
+  const largest = (withTarget: boolean): number | null => {
+    for (let p = valueMax; p >= Math.min(VALUE_MIN_PT * s, valueMax) - 1e-9; p -= 0.5) if (answerWidth(p, withTarget) <= inner) return p;
     return null;
   };
-  const hardMin = VALUE_HARD_MIN_PT * s;
   let targetOnSub = false;
-  let valuePt = largest(VALUE_MIN_PT * s, true);
+  let valuePt = largest(true);
   if (valuePt === null) {
     targetOnSub = !!answer.target;
-    valuePt = largest(VALUE_MIN_PT * s, false) ?? largest(hardMin, false) ?? Math.min(hardMin, valueMax);
+    valuePt = largest(false);
+  }
+  if (valuePt === null) {
+    const unit = textIn(answer.value, 1);
+    const fixed = textIn(preText, prePt) + textIn(postText, postPt);
+    if (unit > 0 && fixed <= inner * 0.5) valuePt = floorHalf((inner - fixed) / unit);
+    else {
+      // 앞말·뒷말만으로도 폭이 모자라면 세 글을 같은 비율로 줄인다.
+      const factor = Math.floor((inner / Math.max(1e-9, answerWidth(valueMax, false))) * 100) / 100;
+      valuePt = valueMax * factor;
+      prePt *= factor;
+      postPt *= factor;
+    }
   }
 
   const badgesShown = badges.slice(0, MAX_BADGES);
   const badgesMore = badges.length - badgesShown.length;
 
+  const subRowH = Math.max(pt(subPt) * LINE, 0.19 * s);
+  const chipH = pt(8 * s) * LINE + 0.06;
+  const chipW = (text: string) => textIn(text, 8 * s) + 0.2;
+
+  // ── 위에서 아래로 쌓는다
+  let y = PAD_TOP;
+  const qH = pt(questionPt) * LINE;
+  const badgeTexts = [...badgesShown, ...(badgesMore > 0 ? [`+${badgesMore}`] : [])];
+  const badgeRects: KeyFigureRows["badges"] = [];
+  let chipRight = PAD_X + inner;
+  for (let i = badgeTexts.length - 1; i >= 0; i--) {
+    const w = chipW(badgeTexts[i]!);
+    badgeRects.unshift({ text: badgeTexts[i]!, rect: { x: chipRight - w, y, w, h: qH } });
+    chipRight -= w + 0.06;
+  }
+  const qLeft = PAD_X + 0.08;
+  const question: Rect = { x: qLeft, y, w: Math.max(0, (badgeRects[0]?.rect.x ?? PAD_X + inner + 0.06) - 0.06 - qLeft), h: qH };
+  const questionBar: Rect = { x: PAD_X, y: y + (qH - 0.125) / 2, w: 0.031, h: 0.125 };
+  y += qH + 0.06;
+
+  const answerH = pt(Math.max(prePt, valuePt, targetPt, postPt)) * ANSWER_LINE;
+  const answerRect: Rect = { x: PAD_X, y, w: inner, h: answerH };
+  const answerBaseline = y + answerH * 0.82;
+  y += answerH;
+
   // 보조 줄: (내린 대상 ·) 보조 글 + 끝에 등급 칩. 칩이 줄 절반을 넘으면 칩만 한 줄 아래로 둔다.
   const subText = [targetOnSub ? answer.target : null, figure.sub].filter(Boolean).join(" · ");
-  const chipsW = grades.reduce((sum, grade) => sum + textIn(grade, 8 * s) + 0.2 + 0.06, 0);
+  const chipsW = grades.reduce((sum, grade) => sum + chipW(grade) + 0.06, 0);
   const chipsOwnRow = chipsW > inner * 0.5;
-  const subLines = subText ? wrap(subText, subPt, grades.length > 0 && !chipsOwnRow ? inner - chipsW : inner, 2) : [];
+  const subLines = subText ? wrapToLines(subText, subPt, grades.length > 0 && !chipsOwnRow ? inner - chipsW : inner, 2) : [];
   const subRows = Math.max(subLines.length, grades.length > 0 && !chipsOwnRow ? 1 : 0) + (grades.length > 0 && chipsOwnRow ? 1 : 0);
-  const subRowH = Math.max(pt(subPt) * LINE, 0.19 * s);
+  let sub: Rect | null = null;
+  const gradeRects: KeyFigureRows["grades"] = [];
+  if (subRows > 0) {
+    y += 0.04;
+    if (subLines.length > 0) sub = { x: PAD_X, y, w: grades.length > 0 && !chipsOwnRow ? inner - chipsW : inner, h: subLines.length * subRowH };
+    const row = chipsOwnRow ? subLines.length : Math.max(0, subLines.length - 1);
+    const shrink = Math.min(1, inner / Math.max(1e-9, chipsW));
+    let right = PAD_X + inner;
+    for (let i = grades.length - 1; i >= 0; i--) {
+      const w = chipW(grades[i]!) * shrink;
+      gradeRects.unshift({ text: grades[i]!, rect: { x: right - w, y: y + row * subRowH, w, h: subRowH } });
+      right -= (chipW(grades[i]!) + 0.06) * shrink;
+    }
+    y += subRows * subRowH;
+  }
+
+  let filter: Rect | null = null;
+  const filterText = filterLine ? (wrapToLines(filterLine, subPt, inner, 1)[0] ?? null) : null;
+  if (filterText) {
+    y += 0.03;
+    filter = { x: PAD_X, y, w: inner, h: pt(subPt) * LINE };
+    y += filter.h;
+  }
 
   // 보조 숫자(열 수만큼 칸, 넘치면 다음 줄) 또는 구성 막대(A12) + 항목 목록
-  const parts = figure.parts ?? [];
+  const parts = (figure.parts ?? []).slice(0, 6);
   const stats = parts.length > 0 ? [] : figure.stats.slice(0, 3);
-  const cellW = (inner - (columns - 1) * 0.02) / columns - 0.12;
+  let divider: Rect | null = null;
+  if (stats.length > 0 || parts.length > 0) {
+    y += 0.146;
+    divider = { x: PAD_X, y, w: inner, h: HAIR };
+    y += HAIR + 0.1;
+  }
+
+  const cellFullW = (inner - (columns - 1) * 0.02) / columns;
+  const textW = cellFullW - 0.12;
   let statValuePt = 15 * s;
-  while (statValuePt > 9 * s && stats.some((stat) => textIn(stat.value, statValuePt) * 1.1 > cellW)) statValuePt -= 0.5;
-  const statRows = Math.ceil(stats.length / columns);
-  const labelLines = stats.reduce((max, stat) => Math.max(max, Math.min(2, linesOf(stat.label, statLabelPt, cellW))), 1);
-  const statsH = stats.length > 0 ? statRows * (pt(statValuePt) * 1.2 + labelLines * pt(statLabelPt) * LINE + 0.04) + (statRows - 1) * 0.08 : 0;
-  const partsH = parts.length > 0 ? 0.14 + 0.08 + Math.min(parts.length, 6) * (pt(subPt) * LINE + 0.03) : 0;
+  while (statValuePt > 9 * s && stats.some((stat) => textIn(stat.value, statValuePt) > textW)) statValuePt -= 0.5;
+  const labelLines = stats.reduce((max, stat) => Math.max(max, Math.min(2, linesOf(stat.label, statLabelPt, textW))), 1);
+  const valueH = pt(statValuePt) * 1.2;
+  const cellH = valueH + labelLines * pt(statLabelPt) * LINE + 0.04;
+  const statCells: KeyFigureRows["stats"] = [];
+  const statSeparators: Rect[] = [];
+  stats.forEach((_, i) => {
+    const r = Math.floor(i / columns);
+    const c = i % columns;
+    const cell: Rect = { x: PAD_X + c * (cellFullW + 0.02), y: y + r * (cellH + 0.08), w: cellFullW, h: cellH };
+    statCells.push({ cell, value: { x: cell.x + 0.06, y: cell.y, w: textW, h: valueH }, label: { x: cell.x + 0.06, y: cell.y + valueH, w: textW, h: cell.h - valueH - 0.04 } });
+    if (c < columns - 1 && i + 1 < stats.length) statSeparators.push({ x: cell.x + cell.w + 0.005, y: cell.y, w: HAIR, h: cellH - 0.04 });
+  });
+  if (stats.length > 0) {
+    const rowCount = Math.ceil(stats.length / columns);
+    y += rowCount * cellH + (rowCount - 1) * 0.08;
+  }
 
-  // 해석 한 줄: ①은 카드 맨 아래, ②는 열 맨 아래(카드 밖이라 카드 안쪽 여백이 없다)
-  const sentenceLines = sentence ? wrap(sentence, sentencePt, (columns === 3 ? width : inner) - SENTENCE_BAR, 2) : [];
-  const sentenceH = sentenceLines.length * pt(sentencePt) * LINE;
+  let partsBar: Rect | null = null;
+  const partsSegments: KeyFigureRows["partsSegments"] = [];
+  const partRows: KeyFigureRows["parts"] = [];
+  if (parts.length > 0) {
+    partsBar = { x: PAD_X, y, w: inner, h: 0.14 };
+    const total = parts.reduce((sum, part) => sum + Math.max(0, part.share), 0);
+    let x = PAD_X;
+    parts.forEach((part, i) => {
+      const w = i === parts.length - 1 ? PAD_X + inner - x : inner * (total > 0 ? Math.max(0, part.share) / total : 1 / parts.length);
+      partsSegments.push({ rect: { x, y, w, h: partsBar!.h }, color: part.color, site: !!part.site });
+      x += w;
+    });
+    y += partsBar.h + 0.08;
+    const rowH = pt(subPt) * LINE + 0.03;
+    const swatch = Math.min(0.1, rowH - 0.03);
+    const shareW = Math.min(0.6, inner / 3);
+    for (const _ of parts) {
+      partRows.push({
+        row: { x: PAD_X, y, w: inner, h: rowH },
+        swatch: { x: PAD_X, y: y + 0.015, w: swatch, h: swatch },
+        label: { x: PAD_X + swatch + 0.06, y, w: Math.max(0, inner - swatch - 0.06 - shareW), h: rowH - 0.03 },
+        share: { x: PAD_X + inner - shareW, y, w: shareW, h: rowH - 0.03 },
+      });
+      y += rowH;
+    }
+  }
 
-  let height = PAD_TOP + pt(questionPt) * LINE + 0.06 + pt(Math.max(prePt, valuePt, targetPt)) * ANSWER_LINE;
-  if (subRows > 0) height += 0.04 + subRows * subRowH;
-  if (filterLine) height += 0.03 + pt(subPt) * LINE;
-  if (statsH + partsH > 0) height += 0.146 + 0.01 + 0.1 + statsH + partsH;
-  if (columns === 2 && sentenceH > 0) height += 0.12 + sentenceH;
-  height += PAD_BOTTOM;
+  // 해석 한 줄: ①은 카드 맨 아래, ②는 열 맨 아래(카드 밖이라 카드 안쪽 여백이 없고, 주석 칩이 있으면 칩 자리를 뺀다)
+  const sentenceW = (columns === 3 ? width - (notes ? NOTES_CHIP_SIZE.w + NOTES_CHIP_GAP : 0) : inner) - SENTENCE_BAR;
+  const sentenceLines = sentence ? wrapToLines(sentence, sentencePt, sentenceW, 2) : [];
+  const sentenceHeight = sentenceLines.length * pt(sentencePt) * LINE;
+  let sentenceBar: Rect | null = null;
+  let sentenceRect: Rect | null = null;
+  if (columns === 2 && sentenceHeight > 0) {
+    y += 0.12;
+    sentenceBar = { x: PAD_X, y, w: 0.031, h: sentenceHeight };
+    sentenceRect = { x: PAD_X + SENTENCE_BAR, y, w: inner - SENTENCE_BAR, h: sentenceHeight };
+    y += sentenceHeight;
+  }
 
-  return { height, questionPt, prePt, valuePt, targetPt, subPt, statValuePt, statLabelPt, sentencePt, targetOnSub, badgesShown, badgesMore, sentenceLines, subLines };
+  const height = y + PAD_BOTTOM;
+  const rows: KeyFigureRows = { questionBar, question, badges: badgeRects, answer: answerRect, answerBaseline, sub, grades: gradeRects, filter, divider, stats: statCells, statSeparators, partsBar, partsSegments, parts: partRows, sentenceBar, sentence: sentenceRect };
+  return { height, questionPt, prePt, valuePt, targetPt, postPt, subPt, statValuePt, statLabelPt, sentencePt, targetOnSub, badgesShown, badgesMore, sentenceLines, sentenceHeight, subLines, filterText, rows };
 }
