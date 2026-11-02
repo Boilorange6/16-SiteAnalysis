@@ -149,13 +149,13 @@ function pageWithResolvedLayout(page: Extract<ReportPage, { kind: "tile" }>, sli
   const hasCharts = slide.kind === "tile" && !!slide.map && !(slide.callout && slide.callout.page > 0)
     && analysisCharts(modelWithHiddenLayers(slide.map, page.frame.hiddenLayers)) !== null;
   const layout = resolveReportLayout(page.layout, { hasMap, figure, hasCharts });
-  if (layout === page.layout) return page;
-  // 저장된 numbers-first·map-charts가 map-key로 그려지면 옛 요약 판·출처 줄 자리는 그리는 복사본에서만 뺀다(저장 문서는 그대로).
-  if ((page.layout === "numbers-first" || page.layout === "map-charts") && layout === "map-key") {
-    const { summary: _summary, source: _source, ...panels } = page.panels;
-    return { ...page, layout, panels };
-  }
-  return { ...page, layout };
+  // 저장값이 map-key가 아니고 지도·그림 장으로 그려지면 옛 요약 판·출처 줄 자리는 그리는 복사본에서만 뺀다(저장 문서는 그대로).
+  // 판정값이 numbers-first(뒷면 표 등)이면 자리를 그대로 둔다. map-key는 사용자가 새로 옮긴 자리다.
+  const dropOld = page.layout !== "map-key" && layout !== "numbers-first" && ("summary" in page.panels || "source" in page.panels);
+  if (layout === page.layout && !dropOld) return page;
+  if (!dropOld) return { ...page, layout };
+  const { summary: _summary, source: _source, ...panels } = page.panels;
+  return { ...page, layout, panels };
 }
 
 function partForSlide(view: TileView, settings: TileReportSettings, slide: ReportSlide, sheetIndex: number): TilePart {
@@ -683,7 +683,9 @@ export function planReportDoc(doc: ReportDoc, views: ReadonlyMap<string, TileVie
       const footer = selected.kind === "tile" && selected.callout?.filterLine
         ? `${selected.callout.filterLine} · ${sourceFooterFor(footerView, sourceMeta)}`
         : sourceFooterFor(footerView, sourceMeta);
-      raw.push(plannedWithMeta(selected, pageWithResolvedLayout(page, selected), page.id, footer, pageStyleFor(doc, page), doc.format));
+      // style(화면)도 판정·정리된 page로 만든다. 그렇지 않으면 화면(style.panels)과 PPT(page.panels)가 다른 자리에 그린다.
+      const drawnPage = pageWithResolvedLayout(page, selected);
+      raw.push(plannedWithMeta(selected, drawnPage, page.id, footer, pageStyleFor(doc, drawnPage), doc.format));
       continue;
     }
     if (page.kind === "compare") {

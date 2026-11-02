@@ -75,13 +75,39 @@ assert.equal(restoredLegacyLayout.pages[0]?.layout, "map-key", "저장된 단일
     assert.equal(drawn.page.layout, "map-key");
     assert.ok(!drawn.page.panels.summary && !drawn.page.panels.source, `${stored}: 그리는 복사본에는 옛 요약·출처 자리가 없다`);
     assert.ok(drawn.page.panels.title, "제목 자리는 그린다");
-    // 카드를 옮기면(panels 액션 + 그려진 layout 함께 저장) 복원·계획을 거쳐도 옮긴 자리가 남는다.
+    // 화면(slide.style.panels)과 PPT(slide.page.panels)가 같은 자리를 읽는다(spec §7).
+    assert.ok(!drawn.style.panels?.summary && !drawn.style.panels?.source, `${stored}: 그리는 style에도 옛 요약·출처 자리가 없다`);
+    assert.deepEqual(drawn.style.panels, drawn.page.panels, `${stored}: slide.style.panels와 slide.page.panels가 같다`);
+    // 실제 드래그 경로: 입력은 {...slide.style.panels, [옮긴 키]: rect}이고 그려진 layout을 함께 저장한다.
+    const movedTitle = { x: 0.1, y: 0.1, w: 0.3, h: 0.08 };
+    const afterDrag = (key, rect) => {
+      const saved = reportDocReducer(doc, { type: "panels", id: doc.pages[0].id, panels: { ...drawn.style.panels, [key]: rect }, layout: drawn.page.layout });
+      assert.equal(saved.pages[0].layout, "map-key", "그려진 layout도 함께 저장");
+      const restored = restoreDoc(saved.pages[0]);
+      return { restored, plan: planReportDoc(restored, views, tileContext)[0] };
+    };
+    const titleDrag = afterDrag("title", movedTitle);
+    assert.deepEqual(titleDrag.restored.pages[0].panels.title, movedTitle, `${stored}: 옮긴 제목 자리가 저장된다`);
+    assert.ok(!titleDrag.restored.pages[0].panels.summary && !titleDrag.restored.pages[0].panels.source, `${stored}: 제목을 옮겨도 옛 요약·출처 자리는 새 문서 자리로 둔갑하지 않는다`);
+    assert.deepEqual(titleDrag.plan.style.panels?.title, movedTitle, "옮긴 제목은 style에도");
+    assert.ok(!titleDrag.plan.style.panels?.summary && !titleDrag.plan.style.panels?.source, "계획 style에도 옛 자리가 없다");
+    // 카드(요약 판)를 옮기면 옮긴 자리가 저장·복원·계획 뒤에도 남는다.
     const movedRect = { x: 0.6, y: 0.2, w: 0.3, h: 0.5 };
-    const moved = { ...drawn.page.panels, summary: movedRect };
-    const saved = reportDocReducer(doc, { type: "panels", id: doc.pages[0].id, panels: moved, layout: drawn.page.layout });
-    assert.equal(saved.pages[0].layout, "map-key", "그려진 layout도 함께 저장");
-    const again = planReportDoc(restoreDoc(saved.pages[0]), views, tileContext)[0];
-    assert.deepEqual(again.page.panels.summary, movedRect,`${stored}: 옮긴 요약 자리는 저장·복원·계획 뒤에도 남는다`);
+    const cardDrag = afterDrag("summary", movedRect);
+    assert.deepEqual(cardDrag.plan.page.panels.summary, movedRect, `${stored}: 옮긴 요약 자리는 저장·복원·계획 뒤에도 남는다`);
+    assert.deepEqual(cardDrag.plan.style.panels?.summary, movedRect, "style에도 남는다");
+  }
+  // 저장 numbers-first가 지도 + 그래프(map-charts)로 판정돼도 옛 요약·출처 자리는 그리는 page·style에서 뺀다(②에서는 카드를 옮길 수 없다).
+  {
+    const doc = restoreDoc({ ...chartPage, layout: "numbers-first", panels: oldPanels });
+    assert.deepEqual(doc.pages[0].panels.summary, summaryRect, "저장 문서에는 요약 자리가 남는다");
+    const drawn = planReportDoc(doc, views, tileContext)[0];
+    assert.equal(drawn.page.layout, "map-charts");
+    assert.ok(!drawn.page.panels.summary && !drawn.page.panels.source, "map-charts로 판정돼도 그리는 page에는 옛 자리가 없다");
+    assert.deepEqual(drawn.style.panels, drawn.page.panels, "style도 같다");
+    const chartsKept = planReportDoc(restoreDoc({ ...chartPage, layout: "map-charts", panels: oldPanels }), views, tileContext)[0];
+    assert.equal(chartsKept.page.layout, "map-charts");
+    assert.ok(!chartsKept.page.panels.summary && !chartsKept.page.panels.source, "저장 map-charts가 그대로 map-charts로 그려져도 옛 자리는 뺀다");
   }
   // 뒷면 표(지도·그림 없음)는 numbers-first 그대로 그리며 자리도 건드리지 않는다.
   const backPage = pagesForTile(EMPTY_REPORT_DOC, "t-A01", views.get("t-A01"), { ...tileReportSettingsFromBoard(board, "t-A01"), face: "back" }, tileContext)[0];

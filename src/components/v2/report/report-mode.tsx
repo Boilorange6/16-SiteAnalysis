@@ -1323,7 +1323,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     const frameCell = targetCell ?? mapCell;
     const currentPanels = selectedPage.kind === "compare"
       ? targetCell === undefined ? selectedPage.panels : selectedPage.cells[targetCell]?.panels ?? {}
-      : selectedPage.panels;
+      : selectedSlide?.page?.panels ?? selectedPage.panels; // 그려진 자리(옛 요약·출처 자리를 뺀 것)를 읽는다. 저장 자리를 읽으면 다시 쓸 때 옛 자리가 새 문서 자리가 된다.
     const panelKey = target.kind === "panel" ? target.key : target.kind === "element" ? target.key : target.kind === "decoration" ? target.key : null;
     if (panelKey) {
       const panels = Object.fromEntries(Object.entries(currentPanels).filter(([key]) => key !== panelKey)) as PagePanels;
@@ -1340,7 +1340,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
       applyFrame(frameCell, { labelBoxes }, "지도 라벨을 자동 위치로 되돌렸습니다.");
       closeFontContext(true);
     }
-  }, [applyCellPanels, applyFrame, applyPanels, closeFontContext, fontContext?.target, mapCell, selectedPage]);
+  }, [applyCellPanels, applyFrame, applyPanels, closeFontContext, fontContext?.target, mapCell, selectedPage, selectedSlide]);
 
   const deleteContextElement = useCallback(() => {
     const target = fontContext?.target;
