@@ -137,7 +137,8 @@ function pageLayoutForSlide(slide: ReportSlide): ReportPage["layout"] {
         : false;
   // 그림 타일(바람장미·3D 매스)은 「숫자 먼저」 없이 「그림 + 숫자」(§9-8). 그 밖의 지도 없는 장(뒷면 표 등)은 숫자 먼저.
   if (!hasMap) return slide.kind === "tile" && (slide.rose || slide.mass) ? "map-key" : "numbers-first";
-  // 새로 만드는 쪽만: 이 쪽이 실제로 그리는 지도(slide.map — 레이어 고르기는 view에 이미 반영됨)에 그래프 자료가 있으면 「지도 + 그래프」.
+  // 새로 만드는 쪽만: 이 쪽이 실제로 그리는 보기의 지도에 그래프 자료가 있으면 「지도 + 그래프」. 센 지도는 `slideCharts`가 정한다
+  // (`slide.map`, 설명선 개요는 점 없는 바탕 지도라 `view.map`. 레이어 고르기는 view에 이미 반영됨).
   // 요약 칸이 없는 설명선 상세 장은 「지도 + 숫자」와 다르게 그려지지 않으므로 고르지 않는다.
   return slide.kind === "tile" && slideCharts(slide) ? "map-charts" : "map-key";
 }

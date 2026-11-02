@@ -145,13 +145,18 @@ function oneLine(text: string, pt: number, width: number): string {
  * `fitFooterText`의 `… 외 n건 · 출처 장 참조` 요약을 쓴다. 바탕지도를 그린 장만 credit이 붙는다(§3-3).
  * 어떤 글자 크기·판형에서도 글 전체가 `width` 안이고 `출처`로 시작한다. 모자라면 한계의 끝이 먼저, 그다음 출처 요약이 줄고 credit은 남는다.
  */
-export function footnoteText(slide: TileSlide, basemap: BasemapChoice | undefined, width: number): { text: string; pt: number } {
+export function footnoteText(slide: TileSlide, basemap: BasemapChoice | undefined, width: number, filterInFootnote = false): { text: string; pt: number } {
   const pt = fontSizeForStyle(slide.style, "source") * (7.5 / DEFAULT_REPORT_FONT_SIZES.source);
-  const bare = fitFooterText(slide.footer, false, 1e6, 9, []).text;
+  // 필터 줄은 출처가 아니다(Ruling 27): 계획이 footer 앞에 붙인 `적용 필터: … · `를 먼저 뗀다. 숫자 카드가 그려지면 카드에 필터 줄이 있으므로
+  // 각주에는 넣지 않고, 카드가 없는 쪽(`filterInFootnote`)만 한계 자리 맨 앞에 둔다(필터가 한계보다 먼저 자리를 잡는다).
+  const filterLine = slide.callout?.filterLine ?? null;
+  const filtered = !!filterLine && slide.footer.startsWith(`${filterLine} · `);
+  const footer = filtered ? slide.footer.slice(filterLine.length + 3) : slide.footer;
+  const bare = fitFooterText(footer, false, 1e6, 9, []).text;
   // 바탕지도를 실제로 그린 장만 credit이 붙는다: 지도 없는 장(그림)과 바탕을 끈 장(`frame.basemap: "none"` → white)에는 없다(§3-3·§6-2).
   const drawn = slide.map ? footerBasemaps(slide, basemap).filter((layer) => layer !== "white") : [];
-  const credit = drawn.length > 0 ? fitFooterText(slide.footer, true, 1e6, 9, drawn).text.slice(bare.length) : "";
-  const limit = slide.view.caveats[0] ?? slide.view.notes[0];
+  const credit = drawn.length > 0 ? fitFooterText(footer, true, 1e6, 9, drawn).text.slice(bare.length) : "";
+  const limit = [filtered && filterInFootnote ? filterLine : null, slide.view.caveats[0] ?? slide.view.notes[0]].filter(Boolean).join(" · ");
   const cleaned = bare.replace(/제공처 미기록 · /g, "");
   // 한계 폭을 50 % → 5 %로 줄여 가며 남은 폭에 출처(전체 또는 요약)가 들어가는 첫 조합을 쓴다.
   for (const share of limit ? [0.5, 0.4, 0.3, 0.2, 0.1, 0.05] : [0]) {
@@ -266,7 +271,7 @@ export function reportPageFrame(slide: TileSlide, charts: AnalysisCharts | null,
     legend, calloutLegend,
     calloutOverview: callout && callout.page === 0 ? { map: geometry.map, legend: calloutLegend ? geometry.legend : null, legendMaxW: calloutLegend?.maxW ?? 0 } : null,
     notes,
-    footer: footnoteText(slide, basemap, footerWidth),
+    footer: footnoteText(slide, basemap, footerWidth, !fit),
     charts: layout === "map-charts" ? charts : null,
     chart1: inner(geometry.column?.chart1), chart2: inner(geometry.column?.chart2),
     chartScale: summaryPt / DEFAULT_REPORT_FONT_SIZES.summary,

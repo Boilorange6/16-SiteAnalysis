@@ -619,21 +619,59 @@ for (const format of ["wide", "a3", "a4"]) {
     const inLegend = got.filter(([x, y]) => x >= legendBox.x * unit && x <= (legendBox.x + legendBox.w) * unit && y >= legendBox.y * unit && y <= (legendBox.y + legendBox.h) * unit);
     assert.equal(inLegend.length, 0, `${code}: 범례와 겹치는 점 ${inLegend.length}개`);
     assert.ok(got.every(([x]) => x <= W + 1e-6), `${code}: 점이 열(틀 밖)로 나가지 않는다`);
-    // 빈 개요(반경 안 단지·사업 0)의 판 글: SVG 재생이 PPT 글상자의 fit:"shrink"를 지켜 글이 판 밖으로 나가지 않는다.
-    {
+    // Ruling 27: 필터는 출처가 아니다. 필터 건 A05 개요(실제 계획 경로)의 각주에서 한계·credit이 사라지거나 `출처 적용 필터`로 시작하지 않는다.
+    if (code === "A05") {
       const { textIn } = await import("../../lib/v2/report/pptx-kit.ts");
+      const filterLine = overview.callout.filterLine;
+      assert.ok(filterLine && overview.footer.startsWith(`${filterLine} · `), "전제: 필터가 걸려 footer가 필터 줄로 시작한다");
+      const limit = overview.view.caveats[0] ?? overview.view.notes[0];
+      assert.ok(limit, "전제: 첫 한계가 있다");
+      const fits = (f) => textIn(f.footer.text, f.footer.pt) <= f.geometry.footer.w - 0.5 - f.geometry.pageNo.w - 0.2 + 1e-6;
+      const withCard = frameOf(overview);
+      assert.ok(withCard.fit?.filterText, "카드에 필터 줄이 있다");
+      assert.ok(withCard.footer.text.startsWith("출처 ") && !withCard.footer.text.startsWith("출처 적용 필터"), `각주가 출처로 시작: ${withCard.footer.text}`);
+      assert.ok(!withCard.footer.text.includes("적용 필터"), "카드가 있으면 각주에는 필터 줄이 없다");
+      assert.ok(withCard.footer.text.includes(limit.slice(0, 6)), `첫 한계 앞 글자가 있다: ${withCard.footer.text}`);
+      assert.ok(withCard.footer.text.includes("©"), "바탕지도 출처가 있다");
+      assert.ok(fits(withCard), "각주가 폭 안");
+      // 숫자 카드를 지운 같은 쪽: 필터는 각주 한계 자리 맨 앞, 출처로 시작
+      const gonePages = pages.map((p) => (p === overviewPage ? { ...p, deletedElementKeys: ["summary"] } : p));
+      const goneOverview = planReportDoc({ ...EMPTY_REPORT_DOC, pages: gonePages }, cViews, cCtx).find((s) => s.kind === "tile" && s.callout?.page === 0);
+      const goneFrame = frameOf(goneOverview);
+      assert.equal(goneFrame.fit, null, "전제: 카드가 없다");
+      assert.ok(goneFrame.footer.text.startsWith("출처 ") && !goneFrame.footer.text.startsWith("출처 적용 필터"), `카드 없는 쪽도 출처로 시작: ${goneFrame.footer.text}`);
+      assert.ok(goneFrame.footer.text.includes("적용 필터:"), `카드 없는 쪽 각주에 필터 줄: ${goneFrame.footer.text}`);
+      assert.ok(goneFrame.footer.text.indexOf("적용 필터:") < goneFrame.footer.text.indexOf(limit.slice(0, 6)) || !goneFrame.footer.text.includes(limit.slice(0, 6)), "필터가 한계보다 앞");
+      assert.ok(goneFrame.footer.text.includes("©") && fits(goneFrame), "credit이 있고 폭 안");
+    }
+    // 빈 개요(반경 안 단지·사업 0): 새 틀(overviewFrame)에서는 `기준 …` 줄 없이 한 줄 판(Ruling 26), 옛 경로(PPT)는 두 줄 판 그대로.
+    {
+      const { textIn, shrinkPt } = await import("../../lib/v2/report/pptx-kit.ts");
       const sourceLine = "청약홈 2026-10-01 · 청약홈 APT 분양정보 주택형별 API 2026-10-08 · 입주예정 2026-06-30";
       const empty = { ...overview, callout: { ...overview.callout, model: { ...overview.callout.model, complexes: [], sourceLine } } };
       const emptyFrame = frameOf(empty);
-      const emptyOps = [];
-      const recEmpty = { addShape: () => recEmpty, addText: (text, o) => { emptyOps.push({ text, o }); return recEmpty; } };
-      a05ReportModule.report.render({ slide: recEmpty, planned: empty, part: "overview", overviewFrame: emptyFrame.calloutOverview });
-      const note = emptyOps.find((op) => typeof op.text === "string" && op.text.startsWith("기준 "));
-      assert.ok(note && note.o.fit === "shrink", `${code}: 빈 개요 기준 글은 fit shrink`);
-      assert.ok(textIn(note.text, note.o.fontSize) > note.o.w, "전제: 기준 글이 한 줄 폭을 넘는다(헛돌지 않는다)");
-      const shown = /<text[^>]*font-size="([^"]+)"[^>]*><tspan[^>]*>(기준 [^<]*)<\/tspan>/.exec(render(empty));
-      assert.ok(shown, `${code}: 화면에 기준 글이 있다`);
-      assert.ok(textIn(shown[2], Number(shown[1]) * 72) <= note.o.w + 1e-6, `${code}: 기준 글 폭 ${textIn(shown[2], Number(shown[1]) * 72).toFixed(2)} in ≤ 판 안 글상자 ${note.o.w.toFixed(2)} in`);
+      const recordEmpty = (overviewFrame) => {
+        const shapes = [];
+        const texts = [];
+        const recEmpty = { addShape: (type, o) => { shapes.push({ type, o }); return recEmpty; }, addText: (text, o) => { texts.push({ text, o }); return recEmpty; } };
+        a05ReportModule.report.render({ slide: recEmpty, planned: empty, part: "overview", ...(overviewFrame ? { overviewFrame } : {}) });
+        return { shapes, texts };
+      };
+      const framed = recordEmpty(emptyFrame.calloutOverview);
+      assert.ok(!framed.texts.some((t) => typeof t.text === "string" && t.text.includes("기준 ")), `${code}: 새 틀의 빈 개요에는 기준 줄이 없다`);
+      const line = framed.texts.find((t) => typeof t.text === "string" && t.text.startsWith("반경 안 확인된"));
+      const plateShape = framed.shapes.find((s) => s.type === "roundRect");
+      assert.ok(line && plateShape, `${code}: 한 줄 글과 판`);
+      assert.ok(plateShape.o.h <= 0.9, `${code}: 판 높이 ${plateShape.o.h} in는 한 줄 크기`);
+      assert.ok(line.o.y >= plateShape.o.y && line.o.y + line.o.h <= plateShape.o.y + plateShape.o.h && line.o.x >= plateShape.o.x && line.o.x + line.o.w <= plateShape.o.x + plateShape.o.w, `${code}: 글이 판 안`);
+      assert.ok(textIn(line.text, line.o.fontSize) <= line.o.w, `${code}: 글 폭이 상자 안`);
+      assert.ok(!/기준 /.test(render(empty).replace(/<span class="slideFooterText"[^>]*>[^<]*<\/span>/, "")), `${code}: 화면 판에도 기준 줄이 없다`);
+      const old = recordEmpty(null);
+      const note = old.texts.find((t) => typeof t.text === "string" && t.text.startsWith("기준 "));
+      assert.ok(note && note.o.fit === "shrink", `${code}: 옛 경로에는 기준 줄(fit shrink)이 있다`);
+      assert.equal(old.shapes.find((s) => s.type === "roundRect").o.h, 1.2, "옛 경로 판은 두 줄 크기");
+      // 재생이 쓰는 shrinkPt는 다른 fit:"shrink" 글상자(통계 노트)를 위해 남는다
+      assert.ok(textIn(note.text, shrinkPt([note.text], note.o.fontSize, note.o.w * 1.5)) <= note.o.w * 1.5);
     }
     // 상세 장은 옛 경로 그대로
     const detail = slides.find((s) => s.callout.page > 0);

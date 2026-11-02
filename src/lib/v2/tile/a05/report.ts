@@ -126,13 +126,14 @@ function calloutOverview(s: Slide, p: PlannedSlide & { kind: "tile" }, overviewF
   cm.complexes.forEach((c) => numberDot(s, c, proj(c), dotRadius(c.households, hMax, INCH.rMin / 2, INCH.rMax / 2), labelsScale, false, cm.palette));
   if (cm.complexes.length === 0) {
     const w = 4.6;
-    const h = 1.2;
+    // 새 틀 개요는 `기준 …` 줄을 빼고 한 줄 크기 판만 둔다(같은 기준 정보가 각주와 출처 장에 있다). 옛 경로는 두 줄 판 그대로.
+    const h = overviewFrame ? 0.85 : 1.2;
     const r = overviewFrame
       ? { x: overviewFrame.map.w / 2 - w / 2, y: overviewFrame.map.h / 2 + 0.9, w, h }
       : { x: slideSiteX() * SLIDE.w - w / 2, y: SLIDE.h / 2 + 0.9, w, h };
     plate(s, r, 0.16);
     s.addText(`반경 안 확인된 ${cm.unit === "곳" ? "사업" : "단지"} 0`, { x: r.x + 0.3, y: r.y + 0.2, w: w - 0.6, h: 0.45, fontFace: FONT, fontSize: 20, bold: true, color: INK, margin: 0 });
-    s.addText(`기준 ${cm.sourceLine}`, { x: r.x + 0.3, y: r.y + 0.7, w: w - 0.6, h: 0.35, valign: "top", fontFace: FONT, fontSize: 10.5, color: MUTED, margin: 0, fit: "shrink" });
+    if (!overviewFrame) s.addText(`기준 ${cm.sourceLine}`, { x: r.x + 0.3, y: r.y + 0.7, w: w - 0.6, h: 0.35, valign: "top", fontFace: FONT, fontSize: 10.5, color: MUTED, margin: 0, fit: "shrink" });
     return;
   }
   if (overviewFrame) {
