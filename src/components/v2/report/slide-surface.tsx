@@ -25,10 +25,10 @@ import type { PlannedSlide } from "@/lib/v2/report/report-plan";
 import type { TileView } from "@/lib/v2/ui/tile-view";
 import { sheetCells, type SheetGrid } from "@/lib/v2/ui/sheet";
 import { labelBoxFramePatch, labelFramePatch, mapLabelSwitchState, reportPageMapSelectable, mixedValue, resetLabelBoxFramePatch, toggleLabelVisibility, toggleLegendFocus } from "@/lib/v2/ui/report-mode-logic";
-import { mapLayoutUnitForFrame, placeActionBar, type ActionBarPixelBox } from "@/lib/v2/report/report-geometry";
+import { placeActionBar, type ActionBarPixelBox } from "@/lib/v2/report/report-geometry";
 import { slideCharts } from "@/lib/v2/report/analysis-charts";
 import { FOOTER_BOX, TITLE_BOX, framePanelRule, reportMapAvoid, reportPageFrame, usesReportPageFrame, type LegendFit, type ReportPageFrame } from "@/lib/v2/report/report-page-frame";
-import type { ReportPageGeometry } from "@/lib/v2/ui/report-page-layout";
+import { frameChromeUnit, type ReportPageGeometry } from "@/lib/v2/ui/report-page-layout";
 import type { CalloutOverviewFrame } from "@/lib/v2/report/types";
 import { AnalysisColumn, NotesChip } from "./analysis-column";
 import { KeyFigureCard } from "./key-figure-card";
@@ -591,7 +591,7 @@ function MapLayer({ model, style, unit, basemap, panels, siteX, pinnedKeys, inte
   const layoutUnit = pageGeometry
     ? pageGeometry.unit * (unit / pageGeometry.scenePxPerInch)
     : panelBasis === "frame" && frame
-      ? mapLayoutUnitForFrame(height)
+      ? frameChromeUnit(frame.w, frame.h) * (unit / (960 / frame.w))
       : 1.5 * (unit / (960 / geometry.w));
   const showNorth = reportFrame?.decorations.north ?? false;
   // 조판 칸(frame 기준)은 호출자가 방위표 자리를 주지 않으므로 칸 지도가 그리는 기본 방위표 상자를 피한다(위치도·바탕 라벨).

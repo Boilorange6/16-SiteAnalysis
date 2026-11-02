@@ -343,8 +343,12 @@ const draw = (reportFrame) => {
   const cells = [0, 1, 2, 3].map((i) => ({ view: tile, face: "front", mapKey: `cell-${i}`, reportFrame: frameOn }));
   const page = { id: "p-i3", layout: "map-summary", panels: {}, textBoxes: [], notes: "", kind: "compare", grid: "2x2", sameExtent: false, cells: cells.map(() => ({ tileId: tile.tileId, settings: { face: "front", callout: "overview" }, frame: frameOn })) };
   const slide = { kind: "sheet", view: sheetView("sheet-i3", [tile], "2x2"), grid: "2x2", cells, no: 1, total: 1, footer: "출처 없음", key: "p-i3", style: {}, page };
-  const markup = renderToStaticMarkup(createElement(SlideSurface, { slide, basemap: "vector", mode: "view" }));
-  ReactModule.useState = realUseState;
+  // 표면 폭(px)을 바꿔 그린다(확대 배율 바꾸기). 위의 useState 바꿔치기는 그리는 동안만 켠다.
+  const renderAtWidth = (width) => {
+    ReactModule.useState = (init) => realUseState(init && typeof init === "object" && init.width === 0 && init.height === 0 ? { width, height: (width * 9) / 16 } : init);
+    try { return renderToStaticMarkup(createElement(SlideSurface, { slide, basemap: "vector", mode: "view" })); } finally { ReactModule.useState = realUseState; }
+  };
+  const markup = renderAtWidth(1280);
   const parts = markup.split(/(?=data-map-cell-index=")/).filter((part) => part.startsWith("data-map-cell-index="));
   assert.equal(parts.length, 4, "조판 칸 4개");
   const cross = (a, b) => a.x0 < b.x1 && a.x1 > b.x0 && a.y0 < b.y1 && a.y1 > b.y0;
@@ -364,6 +368,21 @@ const draw = (reportFrame) => {
     }
   }
   assert.ok(labelsSeen > 0, "칸 화면에 바탕 라벨이 그려진다(검증이 비어 있지 않다)");
+
+  // I4(O-2): 같은 칸의 방위표 지름(인치)은 화면 확대 배율과 상관없이 PPT와 같다 — 화면 u = frameChromeUnit(칸) × (unit / (960 / 칸 폭)).
+  {
+    const { frameChromeUnit } = await import("../../lib/v2/ui/report-page-layout.ts");
+    const { sheetCells } = await import("../../lib/v2/ui/sheet.ts");
+    const cell = sheetCells("2x2")[0];
+    const expected = (2 * NORTH_RADIUS * frameChromeUnit(cell.w, cell.h) * cell.w) / 960;
+    for (const width of [960, 1280, 1920]) {
+      const first = renderAtWidth(width).split(/(?=data-map-cell-index=")/).filter((part) => part.startsWith("data-map-cell-index="))[0];
+      const circle = [...first.matchAll(/<circle cx="([\d.]+)" cy="([\d.]+)" r="([\d.]+)" fill="#fff"/g)].map((m) => Number(m[3])).find((r) => r > 8);
+      assert.ok(circle, `폭 ${width}: 칸 방위표 원`);
+      const inches = (2 * circle) / (width / SLIDE.w);
+      near(inches, expected, `폭 ${width} px 화면 칸 방위표 지름(인치) = PPT 식`, 0.01);
+    }
+  }
 }
 
 // O-2: 조판 칸 PPT — 저장한 방위표 자리가 화면과 같은 칸 비율 자리에 오고, 기본 방위표 지름은 46 × frameChromeUnit(칸) × 칸 폭 / 960 인치다.
@@ -385,6 +404,33 @@ const draw = (reportFrame) => {
     near(saved.x + saved.w / 2 - cell.x, (panel.x + panel.w / 2) * cell.w, `${label} 저장 방위표 중심 x는 칸 비율 자리`, 0.01);
     near(saved.y + saved.h / 2 - cell.y, (panel.y + panel.h / 2) * cell.h, `${label} 저장 방위표 중심 y는 칸 비율 자리`, 0.01);
     assert.ok(saved.w <= Math.min(panel.w * cell.w, panel.h * cell.h) + 0.01, `${label} 저장 방위표 원은 저장 상자 안`);
+  }
+
+  // 조판 칸 범례 판 폭: 쪽 범례 폭(inch)을 칸 장면 비율로 줄이던 옛 값이다. 칸 장면 밀도(960/칸 폭)로 늘려 칸을 거의 다 덮으면 안 된다.
+  {
+    const { slideLegend } = await import("../../lib/v2/ui/overlay-layout.ts");
+    const { textIn } = await import("../../lib/v2/report/pptx-kit.ts");
+    let checked = 0;
+    for (const result of GODEOK_RESULTS) {
+      let tileView;
+      try { tileView = toTileView(result); } catch { continue; }
+      if (!tileView.map) continue;
+      const pageLegend = slideLegend(tileView.map, true, undefined, true, "wide");
+      if (!pageLegend.rect) continue;
+      for (const cell of [{ x: 0.5, y: 0.5, w: 5.33, h: 3 }, { x: 0.5, y: 0.5, w: 4.2, h: 3 }]) {
+        const { slide, calls } = stub();
+        addEditableMap(slide, null, { ...tileView.map, tileCode: tileView.code }, { mode: "cell", scope: "cell-0", frame: cell, style: {}, format: "wide", reportFrame: deco });
+        const panel = calls.map((c) => c.args[1]).find((a) => typeof a?.objectName === "string" && a.objectName.includes("legend-panel|범례|panel"));
+        assert.ok(panel, `${tileView.code} ${cell.w} in 칸 범례 판`);
+        const items = pageLegend.items.slice(0, 4);
+        const measured = Math.max(0, ...items.map((item) => textIn(item.label, 8) * (960 / cell.w)));
+        const expected = (Math.min(960 - 48, Math.max(220, pageLegend.rect.w * 72, measured + 64)) * cell.w) / 960;
+        near(panel.w, expected, `${tileView.code} ${cell.w} in 칸 범례 판 폭 = 쪽 범례 폭을 장면 비율(72 px/in)로 줄인 값`, 0.05);
+        if (pageLegend.rect.w > 3) assert.ok(panel.w <= cell.w * 0.6, `${tileView.code} ${cell.w} in 칸 범례 판 ${panel.w} in은 칸 폭의 60 % 이하`);
+        checked += 1;
+      }
+    }
+    assert.ok(checked >= 6, "범례가 있는 타일 여럿을 확인했다(검증이 비어 있지 않다)");
   }
 
   // 새 장 배치(pageGeometry): PPT 방위표·축척 상자가 기하의 사각형과 같다(화면 MapLayer와 같은 자리). 지도 틀 = frame이다.

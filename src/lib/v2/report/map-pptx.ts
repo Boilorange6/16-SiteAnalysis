@@ -59,6 +59,8 @@ export type NativeMapOptions = {
   underlay?: () => void;
   /** 새 장 배치(지도 + 숫자·지도 + 그래프)의 장 기하. 있으면 `frame`이 기하의 지도 틀이고 방위표·축척·피할 자리가 모두 이 기하에서 온다(화면 MapLayer와 같다). */
   pageGeometry?: ReportPageGeometry;
+  /** `pageGeometry`와 함께: 설명선 개요를 실제로 그리는 쪽인가(`frame.calloutOverview`, wide만). 범례 자리·지도 채움이 이 값을 따른다(화면과 같다). */
+  calloutOverview?: boolean;
 };
 
 export type NativeMapStatus = {
@@ -214,7 +216,8 @@ function cellLegendLayout(model: MapModel): { items: CellLegendItem[]; x: number
   const measuredLabelW = Math.max(...items.map((item) => textIn(item.label, 8) * activePxPerInch), 0);
   // 8pt 셀 라벨은 PPT의 fit="shrink"에 맡기면 긴 역명이 끝에서 잘린다.
   // 측정 폭을 먼저 확보해 셀 전체 범위 안에서 범례 판을 넓힌다.
-  const w = Math.min(activeSceneWidth - x * 2, Math.max(220, base.w * activePxPerInch, measuredLabelW + 46 + 18));
+  // 판 폭의 뼈대는 쪽 범례 폭(inch)을 쪽 장면 비율(PX_PER_INCH)로 줄인 값이다. 칸 장면 밀도(activePxPerInch)로 환산하면 칸을 거의 다 덮는다.
+  const w = Math.min(activeSceneWidth - x * 2, Math.max(220, base.w * PX_PER_INCH, measuredLabelW + 46 + 18));
   const h = CELL_LEGEND_PAD * 2 + items.length * CELL_LEGEND_ROW_H;
   const y = activeSceneHeight - 24 - h;
   return { items, x, y, w, h, box: { x0: x, y0: y, x1: x + w, y1: y + h } };
@@ -535,7 +538,7 @@ function locatorFor(model: MapModel, reportFrame: MapFrameState | undefined, sav
 
 type NativeScene = { scene: MapScene; locator: MapSceneBox | null; drawScale: boolean };
 
-function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "tile" }; mode?: NativeMapMode; style?: PageStyle; format?: SlideFormat; reportFrame?: MapFrameState; layout?: ReportLayout; basemap?: BasemapChoice; baseTheme?: BaseThemeRef; pageGeometry?: ReportPageGeometry }): NativeScene {
+function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "tile" }; mode?: NativeMapMode; style?: PageStyle; format?: SlideFormat; reportFrame?: MapFrameState; layout?: ReportLayout; basemap?: BasemapChoice; baseTheme?: BaseThemeRef; pageGeometry?: ReportPageGeometry; calloutOverview?: boolean }): NativeScene {
   const mode = options.mode ?? "tile";
   const format = options.format ?? activeFormat;
   const reportFrame = options.reportFrame;
@@ -629,12 +632,13 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
   const calloutEntries = calloutOverview ? calloutLegendEntries(plan.callout!.model, reportFrame?.legend) : [];
   const calloutAlignment = calloutDetail ? null : slideCalloutAvoidance(panels, calloutEntries, layout, format, fontSizeForStyle(style, "legend") / DEFAULT_REPORT_FONT_SIZES.legend);
   // 새 장 배치의 설명선 개요는 범례 자리가 기하의 legend다(화면 TileSurface의 resolvedCalloutLegend와 같다).
-  const calloutLegend = geo && calloutOverview ? geo.legend : calloutAlignment?.calloutLegend ?? null;
+  const overviewDrawn = geo ? !!options.calloutOverview : calloutOverview;
+  const calloutLegend = geo && overviewDrawn ? geo.legend : calloutAlignment?.calloutLegend ?? null;
   const geometry = slideGeometry(format);
   const summaryX = panels.summary?.x ?? geometry.w;
   const gap = geometry.edge * ppi * 0.5;
   const siteX = geo ? 0.5 : calloutDetail?.siteX ?? slideSiteX(style, hasSummary, format);
-  const fill = calloutDetail?.fill ?? terrainLayout?.mapFill ?? (calloutOverview ? SLIDE_OVERVIEW_FILL : undefined);
+  const fill = calloutDetail?.fill ?? terrainLayout?.mapFill ?? (overviewDrawn ? SLIDE_OVERVIEW_FILL : undefined);
   const rightInset = geo || calloutDetail ? 0 : hasSummary ? Math.max(0, VIEW_W - summaryX * activePxPerInch + gap) : geometry.edge * activePxPerInch;
   // 방위표는 지도 scene의 고정 y(22u)만 쓰면 크게 키운 제목 판과 겹친다.
   // 제목 판 아래에 방위표 반지름과 안전 간격을 확보한 중심을 전달한다.
@@ -1218,6 +1222,7 @@ export function addEditableMap(slide: Slide, plan: (PlannedSlide & { kind: "tile
       basemap: options.basemap,
       baseTheme: options.baseTheme,
       pageGeometry: options.pageGeometry,
+      calloutOverview: options.calloutOverview,
     });
     const baseCode = model.tileCode ?? "map";
     const code = options.scope ? `${options.scope}-${baseCode}` : baseCode;

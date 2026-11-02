@@ -154,6 +154,21 @@ for (const format of ["wide", "a3", "a4"]) {
   assert.equal(keyed.pages[0].layout, "map-key");
   assert.ok(keyed.pages[0].panels.summary && keyed.pages[0].panels.source, "map-key 문서의 요약·출처 자리는 그대로");
   assert.ok(!(keyed.pages[0].deletedElementKeys ?? []).includes("summary"), "map-key는 숫자 카드를 지우지 않는다");
+
+  // M3: 타일이 아닌 장(표지·출처·빈 장·조판)에 남은 옛 값도 복원 때 새 값(map-key) 하나로 바꾼다. 타입에는 옛 값이 없다.
+  const simple = (kind, layout, extra = {}) => ({ id: `s-${kind}-${layout}`, kind, layout, panels: {}, textBoxes: [], notes: "", ...extra });
+  const compareCell = { tileId: "t-A01", settings: { face: "front", callout: "overview" }, frame: defaultFrame() };
+  const others = restoreReportDoc({
+    v: 1,
+    format: "wide",
+    pages: [
+      simple("cover", "map-summary"), simple("sources", "map-summary"), simple("blank", "map-full"),
+      simple("compare", "side-by-side", { grid: "2x2", sameExtent: false, cells: [compareCell, compareCell] }),
+      simple("compare", "map-summary", { id: "s-compare-2", grid: "2x2", sameExtent: false, cells: [compareCell, compareCell] }),
+    ],
+  }, new Set(["t-A01"]));
+  assert.equal(others.pages.length, 5, "다섯 장 모두 복원된다(전제)");
+  assert.deepEqual(others.pages.map((page) => page.layout), ["map-key", "map-key", "map-key", "map-key", "map-key"], "타일이 아닌 장의 옛 값도 map-key로");
 }
 
 console.log("v2 report layout contract tests passed");

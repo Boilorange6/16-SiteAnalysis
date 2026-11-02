@@ -867,7 +867,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     const cells = compareSelected.map((tileId) => ({ tileId, settings: tileReportSettingsFromBoard(board, tileId), frame: defaultFrame() }));
     const page: ReportPage = {
       id: newPageId(history.present),
-      layout: "side-by-side",
+      layout: "map-key", // 조판 쪽 기본 layout은 report-doc-plan과 같은 값 하나(조판은 layout 선택이 없다)
       panels: {},
       textBoxes: [],
       notes: "",

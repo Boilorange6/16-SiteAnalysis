@@ -941,7 +941,8 @@ const isSheetGrid = (value: unknown): value is SheetGrid => value === "2x2" || v
 const isTileKind = (value: unknown): value is TileResult["tileType"] => value === "analysis" || value === "diagram" || value === "simulation" || value === "stack";
 
 const isReportFormat = (value: unknown): value is ReportDoc["format"] => value === "wide" || value === "a3" || value === "a4";
-const isReportLayout = (value: unknown): value is ReportPage["layout"] => value === "map-key" || value === "map-full" || value === "map-summary" || value === "map-charts" || value === "numbers-first" || value === "side-by-side";
+/** 저장 문서에 남은 레이아웃 글자(옛 값 `map-full`·`map-summary` 포함). 새 값으로 바꾸는 것은 `restoreReportPage`다. */
+const isStoredReportLayout = (value: unknown): value is string => value ==="map-key" || value === "map-full" || value === "map-summary" || value === "map-charts" || value === "numbers-first" || value === "side-by-side";
 const isFiniteNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 const reportTileIdPattern = /^(?:[A-Za-z0-9._]+-)+[A-Za-z0-9_]+$/;
 const reportPageIdPattern = /^\S+$/;
@@ -1081,17 +1082,19 @@ type RestoreReportDocOptions = {
 };
 
 function restoreReportPage(value: unknown, validTileIds: ReadonlySet<string>, options: RestoreReportDocOptions = {}): ReportPage | null {
-  if (!isRecord(value) || typeof value.id !== "string" || value.id.length === 0 || !reportPageIdPattern.test(value.id) || !isReportLayout(value.layout)) return null;
+  if (!isRecord(value) || typeof value.id !== "string" || value.id.length === 0 || !reportPageIdPattern.test(value.id) || !isStoredReportLayout(value.layout)) return null;
   const fontSizes = clampReportFontSizes(value.fontSizes);
   const pageMapColors = normalizeMapColors(value.mapColors);
   // 저장된 타일 장 이관(spec §5, 열 때 한 번): 결과 없이 정할 수 있는 것만 바꾼다. 지도·그림·그래프 유무가 필요한 numbers-first·map-charts는 그리는 단계의 resolveReportLayout이 정한다.
   // 그림 타일(바람장미·3D 매스)은 「숫자 먼저」가 없으므로 map-key로 바꾸고 「숫자 먼저」 기준으로 옮긴 패널 자리는 버린다.
   const isTile = value.kind === "tile";
   const figureNumbersFirst = isTile && value.layout === "numbers-first" && typeof value.tileId === "string" && isFigureTileId(value.tileId);
-  // 저장 문서에 남은 옛 값(타입에서는 뺐다)은 문자열로 비교해 읽는다.
+  // 저장 문서에 남은 옛 값(타입에서는 뺐다)은 문자열로 비교해 읽고, 장 종류와 상관없이 새 값 map-key로 바꾼다
+  // (표지·출처·빈 장·조판 장에 남은 `map-summary`·`side-by-side`도 같다. 이 값들은 그리는 쪽에서 읽히지 않는다).
   const storedLayout: string = value.layout;
   const mapFull = isTile && storedLayout === "map-full";
-  const layout = figureNumbersFirst || mapFull || (isTile && (storedLayout === "map-summary" || storedLayout === "side-by-side")) ? "map-key" : value.layout;
+  const legacyLayout = storedLayout === "map-full" || storedLayout === "map-summary" || storedLayout === "side-by-side";
+  const layout = (figureNumbersFirst || legacyLayout ? "map-key" : storedLayout) as ReportPage["layout"];
   // 옛 틀의 요약 판·출처 줄 자리는 이 함수가 layout을 map-key로 바꿀 때만 버린다(새 틀과 맞지 않음).
   // numbers-first·map-charts·이미 map-key인 문서는 그대로 둔다: 앞의 둘은 그리는 단계가 복사본에서만 판정하고, map-key의 자리는 사용자가 새로 옮긴 것이다.
   const migratedPanels = reportPanels(value.panels);

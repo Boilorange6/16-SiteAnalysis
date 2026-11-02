@@ -527,7 +527,7 @@ function tileFrame(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, frame: R
   if (!draw || draw.image === "full" || draw.image === "background") background(s, mapImage, undefined, format, imageRect);
   if (draw?.thematicShapes && p.map) {
     addEditableMap(s, p, p.map, {
-      style, format, frame: geo.map, pageGeometry: geo, reportFrame: frameOf(p), layout: frame.layout,
+      style, format, frame: geo.map, pageGeometry: geo, calloutOverview: !!frame.calloutOverview, reportFrame: frameOf(p), layout: frame.layout,
       basemap: mapLayer ?? undefined,
       baseTheme: look.baseTheme,
       underlay: draw.image === "transparent" && mapImage ? () => { s.addImage({ data: mapImage, x: geo.map.x, y: geo.map.y, w: geo.map.w, h: geo.map.h }); } : undefined,
@@ -543,7 +543,8 @@ function tileFrame(pptx: PptxGenJS, p: PlannedSlide & { kind: "tile" }, frame: R
   const cardTag = (part: string) => panelTag("summary", "핵심 숫자", part);
   if (geo.column) drawAnalysisColumn(s, { frame, view: v, page: size, cardTag });
   else if (geo.keyCard && frame.fit) drawKeyFigureCard(s, { view: v, fit: frame.fit, rect: geo.keyCard, tag: cardTag });
-  if (frame.legend && geo.legend && !p.callout) legendPlate(s, p, true, format, style, { fit: frame.legend, rect: geo.legend });
+  // 설명선 개요를 그리는 쪽(wide)은 설명선 범례, 그 밖(A3·A4 개요 포함)은 일반 지도 범례다: 화면과 같은 판정(`frame.calloutOverview`·`frame.legend`).
+  if (frame.legend && geo.legend) legendPlate(s, p, true, format, style, { fit: frame.legend, rect: geo.legend });
   footerBand(s, p, frame);
 
   pageTextBoxes(s, p, format);

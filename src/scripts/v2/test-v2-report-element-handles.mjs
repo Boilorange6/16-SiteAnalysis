@@ -38,7 +38,9 @@ assert.match(mapPptx, /const chrome = scene\.scaleChromeScale/, "PPT 축척 막�
 assert.match(mapPptx, /bar\.px/, "축척 막대 길이는 지도 축척 계산값을 그대로 쓴다");
 assert.match(surface, /panelBasis === "frame" && frame/, "조판 칸은 frame 기준의 지도 장식 단위를 쓴다");
 assert.match(mapPptx, /frameChromeUnit\(activeFrame\.w, activeFrame\.h\)/, "PPT 조판 칸은 칸 장면(폭 960 px)의 높이로 정한 부속 단위 frameChromeUnit을 쓴다(O-2)");
-assert.match(mapImage, /layoutUnit: mapLayoutUnitForFrame\(cellHeight\)/, "조판 칸 이미지도 같은 frame 높이 단위를 쓴다");
+assert.match(mapImage, /layoutUnit: cellUnit/, "조판 칸 이미지도 화면 칸과 같은 식의 부속 단위 cellUnit을 쓴다");
+assert.match(mapImage, /const cellUnit = frameChromeUnit\(rect\.w, rect\.h\)/, "cellUnit은 frameChromeUnit(칸) 기반이다");
+assert.match(readFileSync("src/components/v2/report/slide-surface.tsx", "utf8"), /frameChromeUnit\(frame\.w, frame\.h\) \* \(unit \/ \(960 \/ frame\.w\)\)/, "화면 조판 칸도 같은 식(확대 배율과 상관없이 칸 인치 크기가 같다)");
 
 const { buildMapScene, scaleChromeScaleForBox } = await import("../../lib/v2/ui/map-scene.ts");
 const { GODEOK_RESULTS } = await import("../../lib/v2/ui/fixtures/godeok.ts");

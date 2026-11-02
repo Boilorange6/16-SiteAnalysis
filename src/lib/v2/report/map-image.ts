@@ -31,7 +31,7 @@ import { mapFrameScaleOptions, scaleOptionsForFrame, zoomForScale, type ReportSc
 import { DEFAULT_REPORT_FONT_SIZES, frameSiteMarks, type MapFrameState } from "./report-doc";
 import { fontSizeForStyle } from "./pptx-kit";
 import { NORTH_INSET, NORTH_RADIUS, northArrowBox, scaleBarBox, scaleFontScaleForPt } from "../ui/map-scene";
-import { mapLayoutUnitForFrame } from "./report-geometry";
+import { frameChromeUnit } from "../ui/report-page-layout";
 import { pageFrameFor, reportMapAvoid, type ReportPageFrame } from "./report-page-frame";
 import type { Rect } from "../ui/overlay-layout";
 
@@ -299,11 +299,12 @@ function pageFrameExtra(p: PlannedSlide & { kind: "tile" }, model: MapModel, pag
   const box = (r: Rect) => ({ x0: r.x * ppi, y0: r.y * ppi, x1: (r.x + r.w) * ppi, y1: (r.y + r.h) * ppi });
   const frame = p.page?.kind === "tile" ? p.page.frame : undefined;
   const baseStyle = p.style ?? {};
-  const overview = p.callout?.page === 0;
-  const fill = overview ? SLIDE_OVERVIEW_FILL : 0.8;
-  const calloutEntries = overview ? calloutLegendEntries(p.callout!.model, frame?.legend) : [];
+  // 설명선 개요를 그리는 쪽(`pageFrame.calloutOverview`, wide만)의 범례 자리·채움이 화면과 같다. 그 밖(A3·A4 개요 포함)은 채움 0.8.
+  const overviewDrawn = !!pageFrame.calloutOverview;
+  const fill = overviewDrawn ? SLIDE_OVERVIEW_FILL : 0.8;
+  const calloutEntries = p.callout?.page === 0 ? calloutLegendEntries(p.callout.model, frame?.legend) : [];
   const calloutAlignment = slideCalloutAvoidance({ title: geo.title, summary: null, legend: geo.legend }, calloutEntries, slideLayout(format), format, fontSizeForStyle(baseStyle, "legend") / DEFAULT_REPORT_FONT_SIZES.legend);
-  const calloutLegend = overview ? geo.legend : null;
+  const calloutLegend = overviewDrawn ? geo.legend : calloutAlignment.calloutLegend;
   const dims = { width: VIEW_W, height, siteX: 0.5, siteY: 0.5, fill };
   const scaleOptions = frame ? mapFrameScaleOptions(format, pageFrame.layout, dims, { summaryDeleted: pageFrame.layout === "map-charts" && !geo.column }) : null;
   const style = frame && scaleOptions ? reportFrameStyle(frame, baseStyle, model, scaleOptions) : baseStyle;
@@ -427,6 +428,8 @@ export async function buildMapImages(plan: PlannedSlide[], layer?: BasemapChoice
             const frame = cell.reportFrame;
             const cellWidth = Math.max(1, Math.round(rect.w * PX_PER_INCH));
             const cellHeight = Math.max(1, Math.round(rect.h * PX_PER_INCH));
+            // 부속 단위는 화면 칸과 같은 식이다: frameChromeUnit(칸) × (px/in ÷ (960 / 칸 폭)). 이 그림은 1 in = 72 px다.
+            const cellUnit = frameChromeUnit(rect.w, rect.h) * (PX_PER_INCH / (VIEW_W / rect.w));
             const cellScaleOptions = frame ? scaleOptionsForFrame(rect.w * 25.4, { width: cellWidth, height: cellHeight, siteX: 0.5, fill: 0.8 }) : null;
             const cellStyle = frame && cellScaleOptions ? reportFrameStyle(frame, cell.style ?? p.style ?? {}, model, cellScaleOptions) : cell.style;
             const status = nativeMapStatus(model);
@@ -447,14 +450,14 @@ export async function buildMapImages(plan: PlannedSlide[], layer?: BasemapChoice
               deletedElementKeys: frame?.deletedElementKeys,
               labelBoxes: frame?.labelBoxes,
               showAutomaticLabels: frame?.labelRule !== "off",
-              north: frame ? (frame.decorations.north ? NORTH_INSET * mapLayoutUnitForFrame(cellHeight) : (false as const)) : undefined,
+              north: frame ? (frame.decorations.north ? NORTH_INSET * cellUnit : (false as const)) : undefined,
               scale: frame?.decorations.scaleBar,
               siteMarks: frameSiteMarks(frame),
               style: cellStyle,
               highlightLabel: legendLabelOf(model, cellStyle?.legendFocus),
               legendFocus: legendLabelOf(model, cellStyle?.legendFocus),
               size: { width: cellWidth, height: cellHeight },
-              layoutUnit: mapLayoutUnitForFrame(cellHeight),
+              layoutUnit: cellUnit,
               bottomInset: 0,
             }, rasterCache);
           }

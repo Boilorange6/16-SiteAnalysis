@@ -19,6 +19,7 @@ const { compositionShapes, distanceShapes } = await import("../../lib/v2/report/
 const { modelWithHiddenLayers } = await import("../../lib/v2/ui/map-layers.ts");
 const { addChartShapes } = await import("../../lib/v2/report/analysis-column-pptx.ts");
 const { pageFrameFor } = await import("../../lib/v2/report/report-page-frame.ts");
+const { CHIP } = await import("../../lib/v2/report/pptx-kit.ts");
 const { renderReportPptx } = await import("../../lib/v2/report/render-pptx.ts");
 const { SlideSurface } = await import("../../components/v2/report/slide-surface.tsx");
 
@@ -322,19 +323,131 @@ assert.ok(charts.blocks.some((b) => textsOf(b).includes("1~4층")) && charts.blo
       assert.ok(r.x >= map.x - 0.01 && r.y >= map.y - 0.01 && r.x + r.w <= map.x + map.w + 0.01 && r.y + r.h <= map.y + map.h + 0.01, `${code}: 번호 점은 지도 틀 안`);
     }
     // 카드·열은 새 배치, 옛 오른쪽 요약 판은 없다. 범례 판은 지도 틀 안.
+    const wideRing = deck.groups.find((g) => g.name === "반경");
+    near(wideRing.w, 0.72 * Math.min(map.w, map.h), 0.15, `${code}: wide 개요의 반경 원 지름 = 0.72 × 틀 짧은 변`);
     assert.ok(deck.groups.some((g) => g.name === "핵심 숫자"), `${code}: 핵심 숫자 카드`);
     assert.ok(!deck.groups.some((g) => g.name === "요약"), `${code}: 옛 요약 판이 없다`);
     const legend = deck.groups.find((g) => g.name === "범례");
     assert.ok(legend, `${code}: 설명선 범례`);
     assert.ok(legend.x >= map.x - 0.01 && legend.y + legend.h <= map.y + map.h + 0.01 && legend.x + legend.w <= map.x + map.w + 0.01, `${code}: 범례는 지도 틀 안`);
     if (code === "A05") assert.ok(deck.blocks.some((b) => textsOf(b).join("") === f.fit.filterLines.join("")), "A05 필터 줄이 카드 안에 있다");
+    // A3·A4: 화면은 설명선을 wide에서만 그리고 일반 지도 범례를 그린다. PPT도 같은 판정(frame.calloutOverview)으로 범례 그룹 1개·번호 점 0개.
+    if (code === "A05") {
+      for (const format of ["a3", "a4"]) {
+        const sized = planReportDoc({ ...EMPTY_REPORT_DOC, format, pages: pages.map((p) => ({ ...p })) }, cViews, cCtx).find((s) => s.kind === "tile" && s.callout?.page === 0);
+        assert.ok(sized, `${format}: 개요 슬라이드`);
+        const sf = pageFrameFor(sized);
+        assert.equal(sf.calloutOverview, null, `${format}: 설명선 개요 틀 없음(화면은 설명선을 wide에서만 그린다)`);
+        assert.ok(sf.legend, `${format}: 일반 지도 범례 판`);
+        const sd = await deckOf(sized);
+        assert.equal(sd.groups.filter((g) => g.name === "범례").length, 1, `${format}: 범례 그룹 1개`);
+        assert.equal(sd.blocks.filter((b) => isDot(nameOf(b))).length, 0, `${format}: 번호 점 없음`);
+        const lg = sd.groups.find((g) => g.name === "범례");
+        for (const k of ["x", "y", "w", "h"]) near(lg[k], sf.geometry.legend[k], 0.02, `${format}: 범례 판 ${k} = 기하 legend`);
+        // 지도 채움: 화면은 설명선을 그리는 장(wide)만 0.72, 그 밖은 0.8이다. 반경 원 지름 = 채움 × 틀 짧은 변.
+        const ring = sd.groups.find((g) => g.name === "반경");
+        near(ring.w, 0.8 * Math.min(sf.geometry.map.w, sf.geometry.map.h), 0.15, `${format}: 반경 원 지름 = 0.8 × 틀 짧은 변`);
+      }
+    }
     // 상세 장은 옛 경로 그대로(쪽 전체)
-    const detail = planReportDoc({ ...EMPTY_REPORT_DOC, pages }, cViews, cCtx).find((s) => s.kind === "tile" && s.callout && s.callout.page > 0);
+    const detail =planReportDoc({ ...EMPTY_REPORT_DOC, pages }, cViews, cCtx).find((s) => s.kind === "tile" && s.callout && s.callout.page > 0);
     if (detail) {
       assert.equal(pageFrameFor(detail), null, `${code}: 상세 장은 옛 경로`);
       assert.ok(!(await deckOf(detail)).groups.some((g) => g.name === "핵심 숫자"), `${code}: 상세 장에는 카드가 없다`);
     }
   }
+}
+
+// M1: 범례 판(legendFit 칸·글·pt) — 고덕 D04(2열, 항목 8개)와 긴 주석(2줄 접기)
+{
+  const { GODEOK_RESULTS } = await import("../../lib/v2/ui/fixtures/godeok.ts");
+  const result = GODEOK_RESULTS.find((r) => r.tileCode === "D04");
+  assert.ok(result, "D04 고덕 결과(전제)");
+  const raw = toTileView(result);
+  const longNote = "도로 중심선 · 실제 폭·공식 도로대장 아님 · © OpenStreetMap contributors · 이 문구는 두 줄을 넘도록 일부러 길게 적은 범례 주석입니다 · 전문은 title에 있다";
+  const lView = { ...raw, map: { ...raw.map, notes: ["짧은 주석", longNote] } };
+  const lViews = new Map([[result.tileId, lView]]);
+  const lCtx = { summary: toSummaryView(GODEOK_SUMMARY, [result]), analysisDate: "2026-10-27", views: lViews };
+  const pages = recommendedPages(EMPTY_REPORT_DOC, lViews, initBoard([result]), lCtx).filter((p) => p.kind === "tile");
+  const slide = planReportDoc({ ...EMPTY_REPORT_DOC, pages }, lViews, lCtx).find((s) => s.kind === "tile");
+  const f = pageFrameFor(slide);
+  const fit = f.legend;
+  assert.ok(fit && fit.cols === 2 && fit.items.length >= 6, "2열 범례(전제)");
+  assert.ok(fit.noteLines.some((lines) => lines.length === 2), "긴 주석은 2줄로 접힌다(전제)");
+  const deck = await deckOf(slide);
+  const panel = deck.groups.find((g) => g.name === "범례");
+  assert.ok(panel, "범례 그룹");
+  for (const k of ["x", "y", "w", "h"]) near(panel[k], f.geometry.legend[k], 0.02, `범례 판 ${k} = 기하 legend`);
+  const legendBlocks = deck.blocks.filter((b) => /panel-legend/.test(nameOf(b)));
+  fit.items.forEach((item, i) => {
+    const slot = fit.itemRects[i];
+    const expectedText = fit.labelLines[i];
+    const block = legendBlocks.find((b) => textsOf(b).join("\n") === expectedText.join("\n") && Math.abs(rectOf(b).y - (f.geometry.legend.y + slot.y)) < 0.02 && Math.abs(rectOf(b).x - (f.geometry.legend.x + slot.x + fit.iconW + fit.iconGap)) < 0.02);
+    assert.ok(block, `항목 ${i} 「${expectedText.join(" / ")}」 글상자가 legendFit 칸 자리에 있다`);
+    const r = rectOf(block);
+    near(r.w, slot.w - fit.iconW - fit.iconGap, 0.02, `항목 ${i} 글상자 폭`);
+    near(r.h, slot.h, 0.02, `항목 ${i} 글상자 높이 = 칸 높이`);
+    assert.equal(szOf(block), Math.round(fit.labelPt * 100), `항목 ${i} 글자 크기 = labelPt`);
+    assert.match(block, /<a:bodyPr[^>]*wrap="none"/, `항목 ${i} 줄바꿈 없음`);
+  });
+  fit.notes.forEach((_, i) => {
+    const slot = fit.noteRects[i];
+    const block = legendBlocks.find((b) => textsOf(b).join("\n") === fit.noteLines[i].join("\n") && Math.abs(rectOf(b).y - (f.geometry.legend.y + slot.y)) < 0.02);
+    assert.ok(block, `주석 ${i} 글상자(줄 = legendFit)`);
+    assert.equal(szOf(block), Math.round(fit.notePt * 100), `주석 ${i} 글자 크기 = notePt`);
+  });
+}
+
+// M1: A12식 카드(구성 막대 + 큰 % 두 줄 설명)와 배지 3개 이상의 `+n` 칩
+{
+  const parts = [
+    { label: "제3종일반주거지역", share: 50, color: "#f5c542", site: true },
+    { label: "제2종일반주거지역", share: 24.9, color: "#f5c542" },
+    { label: "제1종일반주거지역", share: 18.5, color: "#f5c542" },
+    { label: "일반상업지역", share: 5, color: "#e05a47" },
+    { label: "그 밖", share: 1.6, color: "#b9bdc6" },
+  ];
+  const zoneKey = { question: "대지 용도지역", answer: { value: "제3종일반주거지역", kind: "name" }, stats: [{ value: "50.0%", label: "반경 1km 중 같은 용도지역" }, { value: "95.0%", label: "반경 1km 중 주거지역" }], parts };
+  const badges = [{ text: "일부 자료만 집계", tone: "limit" }, { text: "미확인", tone: "status" }, { text: "추정", tone: "limit" }, { text: "표본 적음", tone: "limit" }];
+  const zView = { ...base.view, keyFigure: zoneKey, badges };
+  const zViews = new Map([[base.result.tileId, zView]]);
+  const zSlide = base.planOf({ ...base.tilePage, layout: "map-key" }, zViews);
+  const zf = pageFrameFor(zSlide);
+  const rows = zf.fit.rows;
+  assert.ok(rows.lead && rows.partsBar && rows.partsSegments.length === parts.length, "A12식 카드 맞춤(전제)");
+  const zDeck = await deckOf(zSlide, images);
+  const card = zDeck.groups.find((g) => g.name === "핵심 숫자");
+  assert.ok(card, "카드 그룹");
+  const lead = zDeck.blocks.find((b) => nameOf(b).endsWith("|lead"));
+  assert.ok(lead, "큰 % 글상자");
+  assert.deepEqual(textsOf(lead), ["50.0%"]);
+  assert.equal(szOf(lead), Math.round(zf.fit.leadPt * 100), "큰 % 글자 크기 = leadPt");
+  near(rectOf(lead).x, zf.geometry.keyCard.x + rows.lead.value.x, 0.01, "큰 % x");
+  near(rectOf(lead).y, zf.geometry.keyCard.y + rows.lead.value.y, 0.01, "큰 % y");
+  const desc = zDeck.blocks.find((b) => nameOf(b).endsWith("|lead-desc"));
+  assert.ok(desc && textsOf(desc).join("").includes("95.0%"), "두 줄 설명(주거지역 전체 95.0%)");
+  assert.ok(/<a:rPr[^>]*b="1"[^>]*>(?:(?!<\/a:r>)[\s\S])*<a:t>95\.0%<\/a:t>/.test(desc), "설명 둘째 줄 끝의 %는 굵게");
+  const named = (suffix) => zDeck.blocks.filter((b) => new RegExp(`\\|${suffix}-\\d+$`).test(nameOf(b)));
+  assert.equal(named("parts-segment").length, rows.partsSegments.length, "구성 막대 칸 수");
+  assert.equal(named("parts-site").length, 1, "대지 칸 테두리 1개");
+  assert.equal(named("parts-gap").length, rows.partsSegments.length - 1, "칸 사이 흰 구분선");
+  assert.equal(named("part-label").length, rows.parts.length, "항목 이름 수");
+  assert.deepEqual(named("part-label").map((b) => textsOf(b)[0]), rows.parts.map((row) => row.labelText), "항목 이름은 fit의 줄임 글");
+  assert.deepEqual(named("part-share").map((b) => textsOf(b)[0]), rows.parts.map((row) => row.shareText), "몫 글");
+  // 배지 4개: 보이는 배지 + `+n`, `+n`은 CHIP.limit 색
+  assert.ok(zf.fit.badgesMore > 0 && rows.badges.length >= 2, "배지 접기(전제)");
+  const badgeTexts = rows.badges.map((b) => b.text);
+  assert.equal(badgeTexts.at(-1), `+${zf.fit.badgesMore}`, "마지막 배지는 +n");
+  rows.badges.forEach((badge, i) => {
+    const label = zDeck.blocks.find((b) => nameOf(b).endsWith(`|badge-${i}`));
+    assert.deepEqual(textsOf(label), [badge.text], `배지 ${i} 글`);
+    near(rectOf(label).x, zf.geometry.keyCard.x + badge.rect.x, 0.01, `배지 ${i} x`);
+    assert.equal(szOf(label), Math.round(zf.fit.chipPt * 100), `배지 ${i} 글자 크기`);
+  });
+  const moreBg = zDeck.blocks.find((b) => nameOf(b).endsWith(`|badge-${rows.badges.length - 1}-bg`));
+  assert.match(moreBg, new RegExp(`<a:srgbClr val="${CHIP.limit.fill}"`), "+n 칩은 한계(limit) 색");
+  assert.ok(zf.notes.includes(zf.fit.badgesFolded[0]), "접힌 배지 글은 주석 목록에 합쳐진다");
+  assert.ok(zDeck.notes.includes(zf.fit.badgesFolded[0]), "접힌 배지 글은 발표자 노트에 있다");
 }
 
 // 해석 문장: 고친 요약이 있으면 그것
