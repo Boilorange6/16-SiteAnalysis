@@ -147,20 +147,26 @@ function oneLine(text: string, pt: number, width: number): string {
  */
 export function footnoteText(slide: TileSlide, basemap: BasemapChoice | undefined, width: number, filterInFootnote = false): { text: string; pt: number } {
   const pt = fontSizeForStyle(slide.style, "source") * (7.5 / DEFAULT_REPORT_FONT_SIZES.source);
-  // 필터 줄은 출처가 아니다(Ruling 27): 계획이 footer 앞에 붙인 `적용 필터: … · `를 먼저 뗀다. 숫자 카드가 그려지면 카드에 필터 줄이 있으므로
-  // 각주에는 넣지 않고, 카드가 없는 쪽(`filterInFootnote`)만 한계 자리 맨 앞에 둔다(필터가 한계보다 먼저 자리를 잡는다).
-  const filterLine = slide.callout?.filterLine ?? null;
+  // 필터 줄은 출처가 아니다(Ruling 27): 계획이 footer 앞에 붙인 `적용 필터: … · `를 먼저 뗀다. 숫자 카드에 전문이 들어가면 각주에는 넣지 않고,
+  // 카드가 없거나 카드 두 줄에서 잘린 쪽(`filterInFootnote`, Ruling 28)만 한계 자리 맨 앞에 둔다(필터가 한계보다 먼저 자리를 잡는다).
+  const filterLine = slide.callout?.filterLine ?? slide.view.filterLine ?? null;
   const filtered = !!filterLine && slide.footer.startsWith(`${filterLine} · `);
   const footer = filtered ? slide.footer.slice(filterLine.length + 3) : slide.footer;
   const bare = fitFooterText(footer, false, 1e6, 9, []).text;
   // 바탕지도를 실제로 그린 장만 credit이 붙는다: 지도 없는 장(그림)과 바탕을 끈 장(`frame.basemap: "none"` → white)에는 없다(§3-3·§6-2).
   const drawn = slide.map ? footerBasemaps(slide, basemap).filter((layer) => layer !== "white") : [];
   const credit = drawn.length > 0 ? fitFooterText(footer, true, 1e6, 9, drawn).text.slice(bare.length) : "";
-  const limit = [filtered && filterInFootnote ? filterLine : null, slide.view.caveats[0] ?? slide.view.notes[0]].filter(Boolean).join(" · ");
+  const filterText = filterInFootnote ? filterLine : null;
+  const caveat = slide.view.caveats[0] ?? slide.view.notes[0];
+  const limit = [filterText, caveat].filter(Boolean).join(" · ");
   const cleaned = bare.replace(/제공처 미기록 · /g, "");
+  const shares = [0.5, 0.4, 0.3, 0.2, 0.1, 0.05];
+  const cut = (text: string) => shares.map((share) => oneLine(text, pt, width * share));
   // 한계 폭을 50 % → 5 %로 줄여 가며 남은 폭에 출처(전체 또는 요약)가 들어가는 첫 조합을 쓴다.
-  for (const share of limit ? [0.5, 0.4, 0.3, 0.2, 0.1, 0.05] : [0]) {
-    const fixed = `${credit}${limit ? ` · ${oneLine(limit, pt, width * share)}` : ""}`;
+  // 각주의 필터는 쪽에 하나뿐인 전문이므로(Ruling 28) 한계만 줄이고, 그다음 한계를 빼고, 그래도 안 들어가는 판에서만 필터 끝을 자른다.
+  const limits = filterText ? [...(caveat ? cut(caveat).map((text) => `${filterText} · ${text}`) : []), filterText, ...cut(filterText)] : limit ? cut(limit) : [""];
+  for (const text of limits) {
+    const fixed = `${credit}${text ? ` · ${text}` : ""}`;
     const budget = width - textIn(fixed, pt);
     if (budget <= 0) continue;
     // textIn은 pt에 비례하므로 7 pt에서 폭 budget × 7 / pt에 맞는 요약은 pt에서 폭 budget에 맞는다.
@@ -271,7 +277,7 @@ export function reportPageFrame(slide: TileSlide, charts: AnalysisCharts | null,
     legend, calloutLegend,
     calloutOverview: callout && callout.page === 0 ? { map: geometry.map, legend: calloutLegend ? geometry.legend : null, legendMaxW: calloutLegend?.maxW ?? 0 } : null,
     notes,
-    footer: footnoteText(slide, basemap, footerWidth, !fit),
+    footer: footnoteText(slide, basemap, footerWidth, !fit || fit.filterClipped),
     charts: layout === "map-charts" ? charts : null,
     chart1: inner(geometry.column?.chart1), chart2: inner(geometry.column?.chart2),
     chartScale: summaryPt / DEFAULT_REPORT_FONT_SIZES.summary,

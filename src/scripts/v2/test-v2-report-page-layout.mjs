@@ -444,8 +444,10 @@ for (const format of ["wide", "a3", "a4"]) {
   // 질문(10자) + 배지 둘 + 「+1」은 ① 안쪽 폭 2.75 in를 넘으므로(Task 6 위험) 뒤에서부터 접는다.
   assert.deepEqual(f0.rows.badges.map((b) => b.text), ["추정", "+2"], "질문 줄과 함께 안쪽 폭에 들도록 배지를 접는다");
   assert.equal(f0.rows.grades.length, 2);
-  assert.match(f0.filterText, /…$/);
-  assert.ok(textIn(f0.filterText, f0.subPt) <= 3.125 - 0.375 + 1e-6, "필터 줄은 한 줄에 든다");
+  assert.equal(f0.filterLines.length, 2, "긴 필터는 두 줄까지");
+  assert.equal(f0.filterClipped, true);
+  assert.match(f0.filterLines[1], /…$/);
+  for (const l of f0.filterLines) assert.ok(textIn(l, f0.subPt) <= 3.125 - 0.375 + 1e-6, `필터 줄이 안쪽 폭에 든다: ${l}`);
   assert.ok(f0.rows.filter && f0.rows.divider && f0.rows.stats.length === 3 && f0.rows.sentence, "①은 필터·구분선·보조 숫자 3칸·해석 줄");
   near(f0.sentenceHeight, f0.sentenceLines.length * (f0.sentencePt / 72) * 1.25, "sentenceHeight");
   const f1 = keyFigureFit(cases[1]);
@@ -456,7 +458,44 @@ for (const format of ["wide", "a3", "a4"]) {
   assert.equal(pf.rows.partsSegments.length, 6);
   near(pf.rows.partsSegments.reduce((s, seg) => s + seg.rect.w, 0), pf.rows.partsBar.w, "막대 조각 폭 합 = 막대 폭");
   assert.equal(pf.rows.stats.length, 0);
-  assert.equal(keyFigureFit(cases[3]).filterText, null);
+  assert.deepEqual(keyFigureFit(cases[3]).filterLines, []);
+  assert.equal(keyFigureFit(cases[3]).filterClipped, false);
+}
+
+// ── Ruling 28: 필터 줄은 두 줄까지. 다 들어가면 잘리지 않고, 줄 수만큼 카드가 자라며, 다른 칸과 겹치지 않는다.
+{
+  const fig = { question: "반경 확인 세대", answer: { value: "21,549세대", kind: "number" }, sub: "세대 수를 알 수 없는 단지 3곳은 합계에서 제외", stats: [{ value: "1곳", label: "아파트 단지" }, { value: "2곳", label: "오피스텔" }] };
+  const mk = (filterLine, extra = {}) => keyFigureFit({ figure: fig, badges: [], grades: ["철도 좋음"], filterLine, sentence: "해석 한 줄", width: 3.806, columns: 3, summaryPt: 13, ...extra });
+  const none = mk(null);
+  const shortLine = "적용 필터: 거리 900m";
+  const twoLine = "적용 필터: 거리 900m 이하 · 정보 없음 포함 30건";
+  const year = "적용 필터: 준공연도 2000년 이상 · 정보 없음 포함 12건";
+  const long = "적용 필터: 준공연도 1990~2010년, 세대수 100~3000세대, 거리 1000m 이하, 층수 10~40층, 난방 지역난방 · 정보 없음 포함 12건";
+  const one = mk(shortLine);
+  const two = mk(twoLine);
+  assert.deepEqual(one.filterLines, [shortLine], "짧은 필터는 한 줄");
+  assert.equal(two.filterLines.length, 2, "거리 필터는 두 줄");
+  assert.equal(two.filterLines.join(" "), twoLine, "거리 필터 전문이 두 줄 안에 있다");
+  assert.equal(mk(year).filterLines.join(" "), year, "준공연도 필터 전문이 두 줄 안에 있다");
+  assert.equal(two.filterClipped, false);
+  near(two.rows.filter.h, 2 * (two.subPt / 72) * 1.25, "필터 칸 높이 = 두 줄");
+  near(two.height - one.height, one.rows.filter.h, "한 줄 늘면 카드도 그만큼 는다");
+  assert.ok(one.height > none.height, "필터 줄만큼 카드가 는다");
+  const clipped = mk(long);
+  assert.equal(clipped.filterClipped, true);
+  assert.equal(clipped.filterLines.length, 2);
+  assert.match(clipped.filterLines[1], /…$/);
+  const overlap = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+  for (const f of [one, two, clipped, mk(long, { summaryPt: 24 }), mk(long, { columns: 2, width: 3.125 })]) {
+    const r = f.rows;
+    const others = [r.question, r.answer, r.sub, r.divider, r.sentence, ...r.grades.map((g) => g.rect), ...r.stats.map((s) => s.cell)].filter(Boolean);
+    for (const o of others) assert.ok(!overlap(r.filter, o), `필터 칸이 다른 칸과 겹친다 ${JSON.stringify(o)}`);
+    assert.ok(r.filter.x >= 0 && r.filter.y >= 0 && r.filter.y + r.filter.h <= f.height, "필터 칸은 카드 안");
+  }
+  // 저장 카드(maxHeight): 두 줄이 된 만큼 글자를 줄여 상한 안에 맞춘다
+  const capped = mk(twoLine, { maxHeight: one.height });
+  assert.ok(capped.height <= one.height + 1e-9 && capped.subPt < two.subPt, `상한 안으로 줄인다 ${capped.height} ≤ ${one.height}`);
+  assert.equal(capped.filterLines.join(" "), twoLine, "줄인 뒤에도 전문");
 }
 
 // ── Task 6 위험: 질문 줄과 배지 폭. 긴 배지가 카드 밖으로 나가거나 질문 칸을 덮으면 뒤에서부터 `+n`으로 접는다.

@@ -73,8 +73,10 @@ export type KeyFigureFit = {
   sentenceHeight: number;
   /** 보조 줄(대상을 내렸으면 맨 앞에 붙는다, 최대 2줄) */
   subLines: string[];
-  /** 한 줄에 맞게 자른 적용 필터 글 */
-  filterText: string | null;
+  /** 적용 필터 글(최대 2줄, 넘치면 마지막 줄을 …로 닫는다) */
+  filterLines: string[];
+  /** 필터 글이 두 줄을 넘어 잘렸다: 전문은 각주 한계 자리와 카드 줄의 title에 있다 */
+  filterClipped: boolean;
   rows: KeyFigureRows;
 };
 
@@ -205,10 +207,11 @@ function fitAt({ figure, badges, grades, filterLine, sentence, width, columns, n
   }
 
   let filter: Rect | null = null;
-  const filterText = filterLine ? (wrapToLines(filterLine, subPt, inner, 1)[0] ?? null) : null;
-  if (filterText) {
+  const filterLines = filterLine ? wrapToLines(filterLine, subPt, inner, 2) : [];
+  const filterClipped = !!filterLine && wrapToLines(filterLine, subPt, inner, 3).length > 2;
+  if (filterLines.length > 0) {
     y += 0.03;
-    filter = { x: PAD_X, y, w: inner, h: pt(subPt) * LINE };
+    filter = { x: PAD_X, y, w: inner, h: filterLines.length * pt(subPt) * LINE };
     y += filter.h;
   }
 
@@ -300,7 +303,7 @@ function fitAt({ figure, badges, grades, filterLine, sentence, width, columns, n
 
   const height = y + PAD_BOTTOM;
   const rows: KeyFigureRows = { questionBar, question, badges: badgeRects, answer: answerRect, answerBaseline, sub, grades: gradeRects, filter, divider, stats: statCells, statSeparators, lead, partsBar, partsSegments, parts: partRows, sentenceBar, sentence: sentenceRect };
-  return { height, questionPt, prePt, valuePt, targetPt, postPt, subPt, statValuePt, statLabelPt, sentencePt, leadPt, chipPt: 8 * s, gradePt: subPt * (8.5 / 9.4), partPt: statLabelPt * (11.5 / 11), targetOnSub, badgesShown, badgesMore, badgesFolded, questionClipped, sentenceLines, sentenceHeight, subLines, filterText, rows };
+  return { height, questionPt, prePt, valuePt, targetPt, postPt, subPt, statValuePt, statLabelPt, sentencePt, leadPt, chipPt: 8 * s, gradePt: subPt * (8.5 / 9.4), partPt: statLabelPt * (11.5 / 11), targetOnSub, badgesShown, badgesMore, badgesFolded, questionClipped, sentenceLines, sentenceHeight, subLines, filterLines, filterClipped, rows };
 }
 
 /**

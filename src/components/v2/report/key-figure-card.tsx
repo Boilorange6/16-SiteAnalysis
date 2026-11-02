@@ -70,7 +70,7 @@ export function KeyFigureCard({ styles, view, fit, rect, unit, interaction }: { 
         const level = view.grades[i]?.level ?? "fair";
         return <span key={grade.text} className={styles.kfChip} data-part="key-grade" data-level={level} style={line(grade.rect, unit, fit.gradePt, { background: GRADE_CHIP[level].fill, color: GRADE_CHIP[level].color, fontWeight: 700, borderRadius: grade.rect.h * unit, textAlign: "center", textOverflow: "clip" })}>{grade.text}</span>;
       })}
-      {rows.filter && fit.filterText && <span className={styles.kfText} data-part="key-filter" style={line(rows.filter, unit, fit.subPt, { color: SUB, fontWeight: 500 })}>{fit.filterText}</span>}
+      {rows.filter && <span className={styles.kfText} data-part="key-filter" title={fit.filterClipped ? view.filterLine ?? undefined : undefined} style={{ ...at(rows.filter, unit), ...fontStyle(fit.subPt, unit), lineHeight: `${(rows.filter.h / fit.filterLines.length) * unit}px`, color: SUB, fontWeight: 500, whiteSpace: "pre-line", overflow: "hidden" }}>{fit.filterLines.join("\n")}</span>}
       {rows.divider && <span className={styles.kfRule} data-part="key-divider" style={at(rows.divider, unit)} />}
       {rows.stats.map((stat, i) => (
         <React.Fragment key={i}>
