@@ -24,6 +24,9 @@ export type Mass3dProps = {
   quality?: MassQuality;
   mode?: RenderMode;
   palette?: DiagramPaletteRef | null;
+  /** 보고서 장: 칩·N 표식 크기가 정해진 장면 폭(px)과, 매스 외곽이 가리지 않을 자리(그 장면 px). 둘 다 `mass-3d-runtime`의 같은 입력이다. */
+  chromeWidth?: number;
+  avoid?: ReadonlyArray<{ x0: number; y0: number; x1: number; y1: number }>;
 };
 
 function buildingAccessibilityLabel(building: Scene["buildings"][number]): string | null {
@@ -48,7 +51,7 @@ export function formatMass3dAccessibilityLabel({ scene, label }: Pick<Mass3dProp
 
 const loadRuntime = () => import("@/lib/v2/ui/mass-3d-runtime");
 
-function inputKey({ scene, camera, width, height, exploded, quality, label, mode, palette }: Mass3dProps): string {
+function inputKey({ scene, camera, width, height, exploded, quality, label, mode, palette, chromeWidth, avoid }: Mass3dProps): string {
   return [
     scene?.analysisId ?? "empty",
     scene?.manifestHash ?? "",
@@ -61,6 +64,8 @@ function inputKey({ scene, camera, width, height, exploded, quality, label, mode
     quality ?? "detail",
     label ?? "",
     mode ?? "image",
+    chromeWidth ?? 0,
+    (avoid ?? []).map((b) => [b.x0, b.y0, b.x1, b.y1].map(Math.round).join(",")).join(";"),
   ].join("|");
 }
 
@@ -187,7 +192,7 @@ function Mass3D({ mode = "image", ...props }: Mass3dProps) {
   const renderProps = mode === "image"
     ? { ...props, label: accessibilityLabel, width: imageSize.width, height: imageSize.height }
     : { ...props, label: accessibilityLabel };
-  const key = useMemo(() => inputKey({ ...renderProps, mode }), [renderProps.scene, renderProps.camera, renderProps.width, renderProps.height, renderProps.exploded, renderProps.quality, renderProps.label, renderProps.palette, mode]);
+  const key = useMemo(() => inputKey({ ...renderProps, mode }), [renderProps.scene, renderProps.camera, renderProps.width, renderProps.height, renderProps.exploded, renderProps.quality, renderProps.label, renderProps.palette, renderProps.chromeWidth, renderProps.avoid, mode]);
 
   useEffect(() => {
     if (mode !== "image" || !imageRef.current) return;

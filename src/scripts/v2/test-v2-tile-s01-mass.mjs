@@ -312,6 +312,40 @@ assert.ok(Object.keys(imageZip.files).some((name) => name.startsWith("ppt/media/
   const chipBottom = geo.map.y + (scene.h - MASS_CHROME.chipBottom + MASS_CHROME.chipH) * perPx;
   assert.ok(chipBottom <= geo.footer.y + 1e-6, `범례 칩 아래 ${chipBottom.toFixed(3)} in가 각주 띠 ${geo.footer.y} in 위`);
   assert.ok((scene.w - MASS_CHROME.northInset + MASS_CHROME.northR) * perPx <= geo.map.w, "N 표식은 틀 안");
+
+  // I-3: 매스 외곽(투영한 지형·건물 경계)이 숫자 카드·주석 칩·제목 칩에 가리지 않고 지도 틀 안이다(wide·a3·a4). 겹치면 같은 크기로 오른쪽으로 옮긴다.
+  const { mass3dOutline } = await import("../../lib/v2/ui/mass-3d-runtime.ts");
+  const { reportMapAvoid } = await import("../../lib/v2/report/report-page-frame.ts");
+  const hitsBox = (poly, box) => {
+    // 볼록 다각형 ∩ 상자: 변을 잘게 걸어 상자 안에 들어오는 점이 있거나, 상자 꼭짓점이 다각형 안인지 본다.
+    const inside = (p, q, r) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+    const within = (pt) => poly.every((p, i) => inside(p, poly[(i + 1) % poly.length], pt) * inside(poly[0], poly[1], poly[2]) >= -1e-6);
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i];
+      const b = poly[(i + 1) % poly.length];
+      for (let t = 0; t <= 1; t += 0.005) {
+        const x = a.x + (b.x - a.x) * t;
+        const y = a.y + (b.y - a.y) * t;
+        if (x > box.x0 + 0.01 && x < box.x1 - 0.01 && y > box.y0 + 0.01 && y < box.y1 - 0.01) return true;
+      }
+    }
+    return [[box.x0, box.y0], [box.x1, box.y0], [box.x1, box.y1], [box.x0, box.y1]].some(([x, y]) => within({ x, y }));
+  };
+  let baselineHits = 0;
+  for (const format of ["wide", "a3", "a4"]) {
+    const fgeo = pageFrameFor({ ...framed, format }).geometry;
+    const fscene = figureSceneSize(fgeo);
+    const avoid = reportMapAvoid(fgeo, fgeo.scenePxPerInch);
+    const input = { scene: framed.mass.scene, camera: framed.mass.camera, width: fscene.w, height: fscene.h, chromeWidth: fscene.w };
+    if (avoid.some((box) => hitsBox(mass3dOutline(input), box))) baselineHits += 1;
+    const outline = mass3dOutline({ ...input, avoid });
+    for (const box of avoid) assert.ok(!hitsBox(outline, box), `${format}: 매스 외곽이 카드·칩·제목 칩에 가리지 않는다`);
+    assert.ok(outline.every((p) => p.x >= -1e-6 && p.x <= fscene.w + 1e-6 && p.y >= -1e-6 && p.y <= fscene.h + 1e-6), `${format}: 매스 외곽은 지도 틀 안`);
+    // 같은 크기로 옮겼다면 폭이 그대로(줄이는 것은 오른쪽 가장자리 안에서 안 될 때만)
+    const widthOf = (poly) => Math.max(...poly.map((p) => p.x)) - Math.min(...poly.map((p) => p.x));
+    if (format === "wide") assert.ok(Math.abs(widthOf(outline) - widthOf(mass3dOutline(input))) < 1e-6, "wide: 축소 없이 옮기기만 한다");
+  }
+  assert.ok(baselineHits > 0, "전제: avoid 없이는 적어도 한 판형에서 카드에 가린다(그렇지 않으면 이 검사가 헐겁다)");
 }
 
 console.log("✓ v2 S01 mass projection, figure, and report integration");

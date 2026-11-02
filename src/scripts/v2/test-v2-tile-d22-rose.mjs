@@ -212,17 +212,32 @@ assert.match(slide, /정온/);
   }
 
   // 그림 장면은 지도 틀 모양이고, 그 안의 장미·방위 글자·눈금·범례는 숫자 카드(+주석 칩)·제목 칩과 겹치지 않으며 각주 띠 위에 있다.
-  const scene = figureSceneSize(geo);
-  const layout = windRoseLayout(scene.w, scene.h, "frame", 16.4);
-  const perPx = geo.map.w / scene.w;
-  const inch = (b) => ({ x: geo.map.x + b.x0 * perPx, y: geo.map.y + b.y0 * perPx, w: (b.x1 - b.x0) * perPx, h: (b.y1 - b.y0) * perPx });
+  // 판형(wide·a3·a4)마다 같은 검사: 카드는 inch 고정인데 장미는 틀 높이에 비례해 커서 a4에서 카드에 닿았다(I-1).
+  const { reportMapAvoid } = await import("../../lib/v2/report/report-page-frame.ts");
   const hit = (a, b) => a.x < b.x + b.w - 1e-6 && b.x < a.x + a.w - 1e-6 && a.y < b.y + b.h - 1e-6 && b.y < a.y + a.h - 1e-6;
-  const covers = [["제목 칩", geo.title], ["숫자 카드", geo.keyCard], ["주석 칩", geo.keyNotesChip]].filter(([, rect]) => rect);
-  const parts = [["장미", { x0: layout.cx - layout.rMax, y0: layout.cy - layout.rMax, x1: layout.cx + layout.rMax, y1: layout.cy + layout.rMax }], ["범례", layout.legend], ...layout.labels.map((b, i) => [`방위 ${i}`, b]), ...layout.tickBoxes.map((b, i) => [`눈금 ${i}`, b])];
-  for (const [partName, box] of parts) {
-    const rect = inch(box);
-    assert.ok(rect.y + rect.h <= geo.footer.y + 1e-6, `${partName}은 각주 띠 위`);
-    for (const [coverName, cover] of covers) assert.ok(!hit(rect, cover), `${partName}이 ${coverName}에 가리지 않는다`);
+  for (const format of ["wide", "a3", "a4"]) {
+    const formatFrame = pageFrameFor({ ...framed, format });
+    assert.ok(formatFrame, `${format}도 새 장 배치`);
+    const fgeo = formatFrame.geometry;
+    const scene = figureSceneSize(fgeo);
+    const layout = windRoseLayout(scene.w, scene.h, "frame", 16.4, 0, reportMapAvoid(fgeo, fgeo.scenePxPerInch));
+    const perPx = fgeo.map.w / scene.w;
+    const inch = (b) => ({ x: fgeo.map.x + b.x0 * perPx, y: fgeo.map.y + b.y0 * perPx, w: (b.x1 - b.x0) * perPx, h: (b.y1 - b.y0) * perPx });
+    const covers = [["제목 칩", fgeo.title], ["숫자 카드", fgeo.keyCard], ["주석 칩", fgeo.keyNotesChip]].filter(([, rect]) => rect);
+    // 장미 원은 원으로 잰다(바깥 상자는 모서리가 카드에 닿아 과하다)
+    const circle = { x: fgeo.map.x + layout.cx * perPx, y: fgeo.map.y + layout.cy * perPx, r: layout.rMax * perPx };
+    for (const [coverName, c] of covers) {
+      const nx = Math.max(c.x, Math.min(circle.x, c.x + c.w));
+      const ny = Math.max(c.y, Math.min(circle.y, c.y + c.h));
+      assert.ok(Math.hypot(circle.x - nx, circle.y - ny) >= circle.r - 1e-6, `${format}: 장미 원이 ${coverName}에 가리지 않는다`);
+    }
+    assert.ok(circle.x - circle.r >= fgeo.map.x - 1e-6 && circle.x + circle.r <= fgeo.map.x + fgeo.map.w + 1e-6 && circle.y - circle.r >= fgeo.map.y - 1e-6 && circle.y + circle.r <= fgeo.map.y + fgeo.map.h + 1e-6, `${format}: 장미 원은 지도 틀 안`);
+    const parts = [["범례", layout.legend], ...layout.labels.map((b, i) => [`방위 ${i}`, b]), ...layout.tickBoxes.map((b, i) => [`눈금 ${i}`, b])];
+    for (const [partName, box] of parts) {
+      const rect = inch(box);
+      assert.ok(rect.y + rect.h <= fgeo.footer.y + 1e-6, `${format}: ${partName}은 각주 띠 위`);
+      for (const [coverName, cover] of covers) assert.ok(!hit(rect, cover), `${format}: ${partName}이 ${coverName}에 가리지 않는다`);
+    }
   }
 
   // 카드는 계절 보기를 따른다(spec §4-2): 4계절 컷은 연간 카드를 싣지 않고, 연간 컷 장은 연간 카드를 그대로 쓴다.

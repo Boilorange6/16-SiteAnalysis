@@ -32,7 +32,7 @@ import { DEFAULT_REPORT_FONT_SIZES, frameSiteMarks, type MapFrameState } from ".
 import { fontSizeForStyle } from "./pptx-kit";
 import { NORTH_INSET, NORTH_RADIUS, northArrowBox, scaleBarBox, scaleFontScaleForPt } from "../ui/map-scene";
 import { frameChromeUnit } from "../ui/report-page-layout";
-import { figureSceneSize, pageFrameFor, reportMapAvoid, type ReportPageFrame } from "./report-page-frame";
+import { figureSceneSize, pageFrameFor, reportMapAvoid, type PixelBox, type ReportPageFrame } from "./report-page-frame";
 import type { Rect } from "../ui/overlay-layout";
 
 // 슬라이드 비율(16:9)로 그린다: 지도가 슬라이드 전체이고 오버레이는 pptx 도형이 얹는다
@@ -176,11 +176,11 @@ export function svgOfMass(mass: MassModel, width: number, height: number, explod
   }
 }
 
-export function svgOfRose(model: RoseModel, width: number, height: number, season: RoseSeason, chrome: "slide" | "frame" = "slide"): string {
+export function svgOfRose(model: RoseModel, width: number, height: number, season: RoseSeason, chrome: "slide" | "frame" = "slide", avoid?: readonly PixelBox[]): string {
   const host = document.createElement("div");
   const root = createRoot(host);
   try {
-    flushSync(() => root.render(createElement(WindRoseFigure, { model, width, height, fixed: true, season, chrome })));
+    flushSync(() => root.render(createElement(WindRoseFigure, { model, width, height, fixed: true, season, chrome, ...(avoid ? { avoid } : {}) })));
     return host.innerHTML;
   } finally {
     root.unmount();
@@ -263,6 +263,7 @@ export async function rasterizeMass(
   exploded: MassExplodedOptions | undefined = model.exploded,
   width = VIEW_W,
   height = VIEW_H,
+  avoid?: readonly PixelBox[],
 ): Promise<string> {
   const mass: MassModel = { ...model, exploded };
   try {
@@ -271,6 +272,8 @@ export async function rasterizeMass(
       camera: mass.camera,
       width,
       height,
+      chromeWidth: width,
+      ...(avoid ? { avoid } : {}),
       exploded: mass.exploded,
       palette: mass.palette,
       quality: "detail",
@@ -282,9 +285,9 @@ export async function rasterizeMass(
   }
 }
 
-export async function rasterizeRose(model: RoseModel, width = VIEW_W, height = VIEW_H, season: RoseSeason = "annual", chrome: "slide" | "frame" = "slide"): Promise<string> {
+export async function rasterizeRose(model: RoseModel, width = VIEW_W, height = VIEW_H, season: RoseSeason = "annual", chrome: "slide" | "frame" = "slide", avoid?: readonly PixelBox[]): Promise<string> {
   // 출력은 장면의 2배(기본 960×540 → 1920×1080). 새 장 배치의 틀 모양 장면도 같은 비율을 유지한다.
-  return toJpeg(svgOfRose(model, width, height, season, chrome), width * 2, height * 2);
+  return toJpeg(svgOfRose(model, width, height, season, chrome, avoid), width * 2, height * 2);
 }
 
 /**
@@ -472,9 +475,11 @@ export async function buildMapImages(plan: PlannedSlide[], layer?: BasemapChoice
     // 새 장 배치의 그림 장은 그림이 기하 map 틀을 채운다(틀 모양 장면). 옛 경로는 쪽 전체(960×540).
     const figureFrame = p.kind === "tile" && (p.mass || p.rose) ? pageFrameFor(p, layer) : null;
     const figureScene = figureFrame ? figureSceneSize(figureFrame.geometry) : { w: VIEW_W, h: VIEW_H };
+    // 카드·제목 칩 자리(장면 px): 화면 FigureLayer와 같은 값이라 그림이 같다.
+    const figureAvoid = figureFrame ? reportMapAvoid(figureFrame.geometry, figureFrame.geometry.scenePxPerInch) : undefined;
     if (p.kind === "tile" && p.mass) {
       try {
-        out[key] = await rasterizeMass(p.mass, p.mass.exploded, figureScene.w, figureScene.h);
+        out[key] = await rasterizeMass(p.mass, p.mass.exploded, figureScene.w, figureScene.h, figureAvoid);
       } catch (e) {
         console.warn(`매스 이미지 생성 실패 (${key})`, e);
       }
@@ -482,7 +487,7 @@ export async function buildMapImages(plan: PlannedSlide[], layer?: BasemapChoice
     }
     if (p.kind === "tile" && p.rose) {
       try {
-        out[key] = await rasterizeRose(p.rose, figureScene.w, figureScene.h, p.roseSeason ?? "annual", figureFrame ? "frame" : "slide");
+        out[key] = await rasterizeRose(p.rose, figureScene.w, figureScene.h, p.roseSeason ?? "annual", figureFrame ? "frame" : "slide", figureAvoid);
       } catch (e) {
         console.warn(`바람장미 이미지 생성 실패 (${key})`, e);
       }

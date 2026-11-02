@@ -14,6 +14,8 @@ export type WindRoseFigureProps = {
   chrome?: WindRoseChrome;
   /** 펼침 창 오른쪽 정보 판이 덮는 폭. 장미·범례는 그 왼쪽에만 놓는다(배경은 전체 폭). 함수는 실측 폭을 받는다. */
   rightInset?: number | ((width: number) => number);
+  /** `frame` chrome: 장미·방위 글자가 가리지 않을 자리(카드·제목 칩, 장면 px). 보고서 기하 `reportMapAvoid`다. */
+  avoid?: readonly WindRoseBox[];
 };
 
 /** `slide`: 오른쪽에 정보 판이 있는 옛 쪽 전체 그림. `frame`: 새 장 배치의 지도 틀을 채우는 그림(카드는 왼쪽에 떠 있으므로 장미를 틀 가운데에 둔다). */
@@ -73,6 +75,11 @@ const directionLabels = (cx: number, cy: number, rMax: number, frame: boolean): 
 };
 
 const overlaps = (a: WindRoseBox, b: WindRoseBox): boolean => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+
+const circleHitsBox = (cx: number, cy: number, r: number, b: WindRoseBox): boolean => Math.hypot(cx - Math.max(b.x0, Math.min(cx, b.x1)), cy - Math.max(b.y0, Math.min(cy, b.y1))) < r;
+
+/** 피할 자리와 이 간격(px)은 두고 놓는다. 방위 글자 실제 폭이 어림(`directionLabels`)보다 조금 넓다. */
+const AVOID_GAP = 8;
 
 const niceStep = (maxPct: number, targetCount: number): number => {
   const raw = maxPct / Math.max(1, targetCount);
@@ -150,7 +157,7 @@ function fitLegend(height: number, chrome: WindRoseChrome, y0: number) {
 }
 
 /** WindRoseFigure의 실제 장식 위치와 외부 오버레이 예약 자리를 함께 계산한다. */
-export function windRoseLayout(fullWidth: number, height: number, chrome: WindRoseChrome = "tile", maxDirectionPct = 0, rightInset = 0): WindRoseLayout {
+export function windRoseLayout(fullWidth: number, height: number, chrome: WindRoseChrome = "tile", maxDirectionPct = 0, rightInset = 0, avoid: readonly WindRoseBox[] = []): WindRoseLayout {
   // 펼침 창은 오른쪽 정보 판이 덮는 폭(rightInset)을 빼고 그 왼쪽 빈 영역 안에서 배치한다.
   const width = Math.max(1, fullWidth - Math.max(0, rightInset));
   const frame = chrome !== "standalone";
@@ -197,6 +204,18 @@ export function windRoseLayout(fullWidth: number, height: number, chrome: WindRo
     }
   }
 
+  // 새 장 배치: 카드·제목 칩(`avoid`, 장면 px)에 장미 원과 방위 글자가 가리지 않게 같은 크기로 오른쪽으로 옮기고, 오른쪽 가장자리 안에서 안 될 때만 줄인다.
+  if (chrome === "frame" && avoid.length > 0) {
+    const padded = avoid.map((a) => box(a.x0 - AVOID_GAP, a.y0 - AVOID_GAP, a.x1 + AVOID_GAP, a.y1 + AVOID_GAP));
+    const clear = (x: number, r: number) => padded.every((a) => !circleHitsBox(x, cy, r, a)) && directionLabels(x, cy, r, frame).every((label) => padded.every((a) => !overlaps(label, a)));
+    const reach = (r: number) => r + LABEL_RADIUS_OFFSET + 30;
+    search: for (let r = rMax; r >= rMax * 0.5; r *= 0.97) {
+      for (let x = cx; x + reach(r) <= width - LEGEND_EDGE_GAP; x += 2) {
+        if (clear(x, r)) { cx = x; rMax = r; labels = directionLabels(cx, cy, rMax, frame); break search; }
+      }
+    }
+  }
+
   const titleReserved = frame ? box(0, 0, Math.min(width * 0.375, 360), Math.min(height * 0.133, 72)) : null;
   const footerReserved = frame ? box(0, Math.max(0, height - 24), width, height) : null;
   const axis = tickPlan(maxDirectionPct, compactTile);
@@ -224,11 +243,11 @@ export function windRoseLayout(fullWidth: number, height: number, chrome: WindRo
   };
 }
 
-function WindRoseSvg({ model, width, height, fixed = false, label = "D22 바람장미", season = "annual", chrome = "tile", rightInset }: WindRoseFigureProps) {
+function WindRoseSvg({ model, width, height, fixed = false, label = "D22 바람장미", season = "annual", chrome = "tile", rightInset, avoid }: WindRoseFigureProps) {
   const observedHours = hoursOf(model);
   const directionPcts = model.dirs.map((bins) => (bins.reduce((sum, value) => sum + (Number.isFinite(value) && value > 0 ? value : 0), 0) / Math.max(1, observedHours)) * 100);
   const maxDirectionPct = Math.max(0, ...directionPcts);
-  const layout = windRoseLayout(width, height, chrome, maxDirectionPct, typeof rightInset === "function" ? rightInset(width) : rightInset);
+  const layout = windRoseLayout(width, height, chrome, maxDirectionPct, typeof rightInset === "function" ? rightInset(width) : rightInset, avoid);
   const { cx, cy, rMax, labelRadius, legendX, legendY, legendScale, legendWidth } = layout;
   const frame = chrome !== "standalone";
   const wedges = roseWedges(model, cx, cy, rMax, layout.scaleMaxPct);

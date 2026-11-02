@@ -32,6 +32,10 @@ export type Mass3dRenderInput = {
   quality?: "card" | "detail";
   label?: string;
   palette?: DiagramPaletteRef | null;
+  /** 그림 안 범례 칩·N 표식 크기가 정해진 장면 폭(px). 실제 폭이 다르면 같은 비율로 키운다(화면과 PPT 그림이 같게 보인다). 없으면 실제 폭 = 1배. */
+  chromeWidth?: number;
+  /** 매스 외곽이 가리지 않을 자리(카드·제목 칩 등, `chromeWidth` 장면 px). 겹치면 같은 크기로 옮기고 안 될 때만 줄인다. */
+  avoid?: ReadonlyArray<{ x0: number; y0: number; x1: number; y1: number }>;
 };
 
 export type Mass3dMount = {
@@ -78,7 +82,7 @@ export function mass3dCameraResetPreset(camera: MassCamera | null | undefined): 
   };
 }
 
-export function mass3dCacheKey(input: Pick<Mass3dRenderInput, "scene" | "camera" | "width" | "height" | "exploded" | "quality" | "palette">): string {
+export function mass3dCacheKey(input: Pick<Mass3dRenderInput, "scene" | "camera" | "width" | "height" | "exploded" | "quality" | "palette" | "chromeWidth" | "avoid">): string {
   const sceneKey = input.scene ? `${input.scene.analysisId}:${input.scene.manifestHash}` : "empty";
   const camera = input.camera ?? DEFAULT_CAMERA;
   const exploded = input.exploded ? `${input.exploded.spreadPct}:${input.exploded.scheme ?? "use"}:${Object.values(massUseColors(input.palette)).join("")}` : "basic";
@@ -91,6 +95,8 @@ export function mass3dCacheKey(input: Pick<Mass3dRenderInput, "scene" | "camera"
     input.quality ?? "detail",
     Math.round(input.width),
     Math.round(input.height),
+    input.chromeWidth ?? 0,
+    (input.avoid ?? []).map((b) => [b.x0, b.y0, b.x1, b.y1].map(Math.round).join(",")).join(";"),
   ].join("|");
 }
 
@@ -502,7 +508,7 @@ function heightBounds(scene: Scene | null, input: Mass3dRenderInput): { min: num
   return { min, max };
 }
 
-function boundsForCamera(scene: Scene | null, input: Mass3dRenderInput): { targetZ: number; viewWidth: number; viewHeight: number; distance: number } {
+function boundsForCamera(scene: Scene | null, input: Mass3dRenderInput): { targetZ: number; viewWidth: number; viewHeight: number; centerX: number; distance: number; outline: Point2[] } {
   const radius = sceneRadius(scene, input.camera);
   const bounds = heightBounds(scene, input);
   const elevationDeg = input.exploded ? 15 : Math.max(-89, Math.min(89, finiteOr(input.camera.elevationDeg, DEFAULT_CAMERA.elevationDeg)));
@@ -530,15 +536,85 @@ function boundsForCamera(scene: Scene | null, input: Mass3dRenderInput): { targe
   const projectedWidth = Math.max(1, Math.max(...projected.map((point) => point.x)) - Math.min(...projected.map((point) => point.x)));
   const projectedHeight = Math.max(1, Math.max(...projected.map((point) => point.y)) - Math.min(...projected.map((point) => point.y)));
   const aspect = cleanCanvasSize(input.width, 960) / cleanCanvasSize(input.height, 540);
-  const viewHeight = Math.max(projectedHeight, projectedWidth / Math.max(0.1, aspect)) * 1.16;
-  const viewWidth = viewHeight * Math.max(0.1, aspect);
+  const baseViewHeight = Math.max(projectedHeight, projectedWidth / Math.max(0.1, aspect)) * 1.16;
+  const baseViewWidth = baseViewHeight * Math.max(0.1, aspect);
   const distance = Math.max(radius * 4, (bounds.max - bounds.min + radius) * 6, 200);
-  return { targetZ, viewWidth, viewHeight, distance };
+  const canvasW = cleanCanvasSize(input.width, 960);
+  const canvasH = cleanCanvasSize(input.height, 540);
+  const placed = avoidFit(convexHull(projected), baseViewWidth, baseViewHeight, canvasW, canvasH, input);
+  const viewWidth = baseViewWidth * placed.zoom;
+  const viewHeight = baseViewHeight * placed.zoom;
+  const outline = convexHull(projected).map((p) => ({ x: canvasW / 2 + ((p.x - placed.centerX) / viewWidth) * canvasW, y: canvasH / 2 + (p.y / viewHeight) * canvasH }));
+  return { targetZ, viewWidth, viewHeight, centerX: placed.centerX, distance, outline };
+}
+
+type Point2 = { x: number; y: number };
+
+/** 볼록 껍질(단조 사슬). 매스 외곽(투영한 지형·건물 경계점)을 다각형으로 만든다. */
+function convexHull(points: Point2[]): Point2[] {
+  const sorted = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
+  const cross = (o: Point2, a: Point2, b: Point2) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const build = (list: Point2[]) => {
+    const hull: Point2[] = [];
+    for (const p of list) {
+      while (hull.length >= 2 && cross(hull[hull.length - 2]!, hull[hull.length - 1]!, p) <= 0) hull.pop();
+      hull.push(p);
+    }
+    hull.pop();
+    return hull;
+  };
+  return [...build(sorted), ...build([...sorted].reverse())];
+}
+
+/** 볼록 다각형이 상자와 겹치는가(분리축 검사: 상자의 두 축 + 다각형 변의 법선). */
+function polygonHitsBox(poly: Point2[], box: { x0: number; y0: number; x1: number; y1: number }): boolean {
+  const separated = (axis: Point2) => {
+    const dots = poly.map((p) => p.x * axis.x + p.y * axis.y);
+    const corners = [[box.x0, box.y0], [box.x1, box.y0], [box.x1, box.y1], [box.x0, box.y1]].map(([x, y]) => x! * axis.x + y! * axis.y);
+    return Math.max(...dots) <= Math.min(...corners) || Math.max(...corners) <= Math.min(...dots);
+  };
+  if (separated({ x: 1, y: 0 }) || separated({ x: 0, y: 1 })) return false;
+  return !poly.some((p, i) => {
+    const q = poly[(i + 1) % poly.length]!;
+    return separated({ x: q.y - p.y, y: p.x - q.x });
+  });
+}
+
+/**
+ * 투영한 매스 외곽이 피할 자리(`avoid`, `chromeWidth` 장면 px)와 겹치면 먼저 같은 크기로 오른쪽으로 옮기고,
+ * 오른쪽 가장자리 안에서 안 될 때만 조금씩 줄인다. 화면과 PPT 그림이 같은 입력으로 같은 값을 얻는다.
+ */
+function avoidFit(hull: Point2[], viewWidth: number, viewHeight: number, width: number, height: number, input: Pick<Mass3dRenderInput, "avoid" | "chromeWidth">): { zoom: number; centerX: number } {
+  const stay = { zoom: 1, centerX: 0 };
+  if (!input.avoid?.length || hull.length < 3) return stay;
+  const k = width / Math.max(1, input.chromeWidth ?? width);
+  const boxes = input.avoid.map((b) => ({ x0: b.x0 * k, y0: b.y0 * k, x1: b.x1 * k, y1: b.y1 * k }));
+  const edge = 18 * k; // 오른쪽 가장자리 여유(장면 18 px = 0.25 in)
+  for (let zoom = 1; zoom <= 1.6; zoom += 0.04) {
+    const vw = viewWidth * zoom;
+    const vh = viewHeight * zoom;
+    const px = hull.map((p) => ({ x: width / 2 + (p.x / vw) * width, y: height / 2 + (p.y / vh) * height }));
+    const maxX = Math.max(...px.map((p) => p.x));
+    for (let dx = 0; maxX + dx <= width - edge; dx += 2) {
+      const moved = px.map((p) => ({ x: p.x + dx, y: p.y }));
+      if (boxes.every((box) => !polygonHitsBox(moved, box))) return { zoom, centerX: 0 - (dx / width) * vw };
+    }
+  }
+  return stay;
+}
+
+/** 매스 외곽(투영한 지형·건물 경계 볼록 껍질)을 그림 px로 돌려준다. 보고서 장이 카드를 피했는지 검사하는 데 쓴다. */
+export function mass3dOutline(input: Mass3dRenderInput): Point2[] {
+  return boundsForCamera(input.scene, input).outline;
+}
+
+function frustumOf(fit: { viewWidth: number; viewHeight: number; centerX: number }): [number, number, number, number] {
+  return [fit.centerX - fit.viewWidth / 2, fit.centerX + fit.viewWidth / 2, fit.viewHeight / 2, -fit.viewHeight / 2];
 }
 
 function makeCamera(THREE: ThreeModule, scene: Scene | null, input: Mass3dRenderInput, width: number, height: number): { camera: any; target: any } {
   const fit = boundsForCamera(scene, { ...input, width, height });
-  const camera = new THREE.OrthographicCamera(-fit.viewWidth / 2, fit.viewWidth / 2, fit.viewHeight / 2, -fit.viewHeight / 2, 0.1, fit.distance * 20 + 1000);
+  const camera = new THREE.OrthographicCamera(...frustumOf(fit), 0.1, fit.distance * 20 + 1000);
   const preset = mass3dCameraResetPreset(input.camera);
   const elevation = radians(input.exploded ? EXPLODED_PRESENTATION_ELEVATION_DEG : preset.elevationDeg);
   const azimuth = radians(preset.azimuthDeg);
@@ -807,7 +883,11 @@ function drawMassChrome(canvas: HTMLCanvasElement, input: Mass3dRenderInput): vo
   if (!ctx) return;
   ctx.save();
   ctx.scale(sx, sy);
-  drawNorth(ctx, width, height, input.camera);
+  // N 표식·범례 칩은 `chromeWidth` 장면의 px로 정해진 크기다. 실제 그림이 그보다 넓으면 같은 비율로 키워 화면과 PPT가 같게 보인다.
+  const chrome = input.chromeWidth ? width / input.chromeWidth : 1;
+  ctx.save();
+  ctx.scale(chrome, chrome);
+  drawNorth(ctx, width / chrome, height / chrome, input.camera);
   const isDem = input.scene?.ground.kind === "dem";
   if (!input.exploded) {
     const items: Array<readonly [string, string, boolean]> = [
@@ -818,10 +898,12 @@ function drawMassChrome(canvas: HTMLCanvasElement, input: Mass3dRenderInput): vo
     ] as const;
     let x = 16;
     for (const [label, color, hatch] of items) {
-      drawChip(ctx, x, height - MASS_CHROME.chipBottom, label, color, hatch);
+      drawChip(ctx, x, height / chrome - MASS_CHROME.chipBottom, label, color, hatch);
       x += ctx.measureText(label).width + 42;
     }
-  } else {
+  }
+  ctx.restore();
+  if (input.exploded) {
     for (const label of mass3dExplodedLabels(input, width, height)) {
       ctx.font = "700 11px 'Noto Sans KR', 'Malgun Gothic', sans-serif";
       const labelWidth = Math.max(EXPLODED_LABEL_CHIP_WIDTH, ctx.measureText(label.text).width + 14, label.note ? ctx.measureText(label.note).width + 14 : 0);
@@ -1091,10 +1173,7 @@ export async function mountMass3d(container: HTMLElement, input: Mass3dRenderInp
     currentHeight = height;
     if (cameraAtPreset) {
       const fit = boundsForCamera(currentInput.scene, { ...currentInput, width, height });
-      currentState.camera.left = -fit.viewWidth / 2;
-      currentState.camera.right = fit.viewWidth / 2;
-      currentState.camera.top = fit.viewHeight / 2;
-      currentState.camera.bottom = -fit.viewHeight / 2;
+      [currentState.camera.left, currentState.camera.right, currentState.camera.top, currentState.camera.bottom] = frustumOf(fit);
       currentState.camera.updateProjectionMatrix();
     } else {
       resizeOrthographicCamera(currentState.camera, width, height);
