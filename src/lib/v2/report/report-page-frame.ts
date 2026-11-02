@@ -298,8 +298,10 @@ export function reportPageFrame(slide: TileSlide, charts: AnalysisCharts | null,
   const panels = slide.style.panels as PagePanels | undefined;
   const figure = view.keyFigure;
   // 핵심 숫자가 없는 ①은 카드를 두지 않는다(D01·결과 없음). ②는 카드 없이도 그래프 열은 남는다.
-  const summaryDeleted = slide.style.summary === false || (!figure && layout === "map-key");
-  const baseNotes = summaryDeleted ? [] : sameNotes(slide);
+  const cardDeleted = slide.style.summary === false || (!figure && layout === "map-key");
+  // 열 전체를 지웠는가: D17 단면 장은 「열 지움」이 숫자 카드만 지우고 열과 단면 카드는 남긴다(Ruling 38).
+  const summaryDeleted = cardDeleted && !(layout === "map-charts" && terrain);
+  const baseNotes = cardDeleted ? [] : sameNotes(slide);
   const summaryPt = fontSizeForStyle(slide.style, "summary");
   const titlePt = fontSizeForStyle(slide.style, "title") * (15.75 / DEFAULT_REPORT_FONT_SIZES.title);
   const callout = slide.callout && format === "wide" ? slide.callout : null;
@@ -323,7 +325,7 @@ export function reportPageFrame(slide: TileSlide, charts: AnalysisCharts | null,
 
   const run = (hasNotes: boolean) => {
     const box = keyCardBox({ layout, format, panels, summaryDeleted, titleSize, legendSize, notes: hasNotes });
-    const fit = figure && !summaryDeleted
+    const fit = figure && !cardDeleted
       ? keyFigureFit({ // 카드 안 글은 그 쪽이 그리는 보기의 핵심 숫자·배지·등급·필터·해석이다
           figure,
           badges: view.badges.map((badge) => badge.text),
@@ -340,7 +342,7 @@ export function reportPageFrame(slide: TileSlide, charts: AnalysisCharts | null,
     // 카드가 없는 ②도 해석 한 줄(사용자가 고친 요약 등)은 열 맨 아래에 그린다.
     const sentenceInfo = fit
       ? { lines: fit.sentenceLines, pt: fit.sentencePt, height: fit.sentenceHeight }
-      : layout === "map-charts" && !summaryDeleted
+      : layout === "map-charts" && !cardDeleted
         ? sentenceFit({ sentence, width: box.w, columns: 3, summaryPt, notes: hasNotes })
         : null;
     return { fit, sentenceInfo };
@@ -363,7 +365,7 @@ export function reportPageFrame(slide: TileSlide, charts: AnalysisCharts | null,
   const inner = (rect: Rect | null | undefined): ChartBox | null => rect ? { x: rect.x + CHART_PAD.x, y: rect.y + CHART_PAD.top, w: Math.max(0.1, rect.w - CHART_PAD.x * 2), h: Math.max(0.1, rect.h - CHART_PAD.top - CHART_PAD.bottom) } : null;
   const footerWidth = geometry.footer.w - 2 * FOOTER_BOX.padX - geometry.pageNo.w - FOOTER_BOX.gap;
   return {
-    layout, geometry, fit, figure: summaryDeleted ? null : figure, summaryPt, sentence: sentenceInfo,
+    layout, geometry, fit, figure: cardDeleted ? null : figure, summaryPt, sentence: sentenceInfo,
     title: { text: titleText, kind: titleKind, pt: titlePt, kindPt: titleKindPt(titlePt) },
     legend, calloutLegend,
     calloutOverview: callout && callout.page === 0 ? { map: geometry.map, legend: calloutLegend ? geometry.legend : null, legendMaxW: calloutLegend?.maxW ?? 0 } : null,

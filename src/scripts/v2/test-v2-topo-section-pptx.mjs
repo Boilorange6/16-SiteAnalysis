@@ -399,6 +399,26 @@ assert.match(xml, /prstDash val="dash"/);
   }
   for (let i = 0; i < names.length; i += 1) for (let j = i + 1; j < names.length; j += 1) assert.equal(intersects(stacked[names[i]], stacked[names[j]]), false, `${names[i]}↔${names[j]} 겹침`);
   assert.ok(stacked.plot.h >= 1.2 && stacked.plot.w > stacked.plot.h * 0.8, "그래프가 세로로 늘어나지 않는다");
+
+  // I-1(Ruling 38): 숫자 카드를 지워도 열과 단면 카드는 남는다(옛 map-full 저장 장 이관 포함). 화면·PPT 모두 단면이 있다.
+  const { restoreReportDoc } = await import("../../lib/v2/ui/board-state.ts");
+  const restored = restoreReportDoc({ ...EMPTY_REPORT_DOC, pages: [{ ...page, layout: "map-full", deletedElementKeys: [] }] }, new Set([d17.tileId]));
+  for (const [label, candidate] of [["숫자 카드 지움", { ...page, deletedElementKeys: ["summary"] }], ["옛 map-full 이관", restored.pages[0]]]) {
+    assert.ok(candidate.deletedElementKeys?.includes("summary"), `${label}: 숫자 카드는 지운 요소`);
+    const deletedSlide = planReportDoc({ ...EMPTY_REPORT_DOC, pages: [candidate] }, views, ctx).find((item) => item.kind === "tile");
+    const deletedFrame = pageFrameFor(deletedSlide);
+    assert.equal(deletedSlide.page.layout, "map-charts", `${label}: 지도 + 그래프`);
+    assert.ok(deletedFrame.geometry.column?.chart1, `${label}: 열과 단면 카드가 남는다`);
+    assert.equal(deletedFrame.fit, null, `${label}: 숫자 카드는 없다`);
+    assert.deepEqual(deletedFrame.terrain, deletedFrame.geometry.column.chart1, `${label}: 단면 자리`);
+    near(deletedFrame.geometry.column.chart1.y, deletedFrame.geometry.column.rect.y, `${label}: 카드가 없으면 단면이 열 맨 위에서 시작`);
+    assert.ok(deletedFrame.geometry.column.chart1.h > column.chart1.h, `${label}: 숫자 카드 몫만큼 단면 카드가 커진다`);
+    const deletedMarkup = renderToStaticMarkup(createElement(SlideSurface, { slide: deletedSlide, basemap: "none", mode: "edit" }));
+    assert.ok(/<section[^>]*aria-label="[^"]*보고서 미리보기"/.test(deletedMarkup), `${label}: 화면에 단면`);
+    assert.equal(/data-part="key-figure"/.test(deletedMarkup), false, `${label}: 화면에 숫자 카드 없음`);
+    const deletedXml = await (await JSZip.loadAsync(await renderReportPptx([deletedSlide]))).file("ppt/slides/slide1.xml").async("string");
+    assert.ok(deletedXml.includes('name="GRP|terrain-section|A|plate"'), `${label}: PPT에 단면`);
+  }
 }
 
 console.log(`✓ v2 topo section PPT XML (${outputPath})`);

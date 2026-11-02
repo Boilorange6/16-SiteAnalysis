@@ -1600,7 +1600,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
           const tile = selectedSlide?.kind === "tile" ? selectedSlide : null;
           // 새 장 배치(지도 + 숫자·지도 + 그래프)는 장 기하의 지도 틀이 기준이고 대지는 틀 가운데다. ②에서 숫자 카드를 지우면 지도가 전체 폭이다.
           if (tile && usesReportPageFrame(tile)) {
-            return mapFrameScaleOptions(format, tile.page?.layout ?? selectedPage.layout, { siteX: 0.5, siteY: 0.5, fill: tile.callout ? SLIDE_OVERVIEW_FILL : 0.8 }, { summaryDeleted: tile.style.summary === false });
+            return mapFrameScaleOptions(format, tile.page?.layout ?? selectedPage.layout, { siteX: 0.5, siteY: 0.5, fill: tile.callout ? SLIDE_OVERVIEW_FILL : 0.8 }, { summaryDeleted: tile.style.summary === false && !(tile.page?.layout === "map-charts" && slideTerrainSection(tile)) });
           }
           const hasSummary = !!tile && tile.style.summary !== false && !(tile.callout && tile.callout.page > 0);
           const baseLegend = tile?.map ? slideLegend(tile.map, !tile.muted, undefined, hasSummary, format).rect : null;

@@ -119,20 +119,22 @@ function place(input: GeometryInput): { geometry: ReportPageGeometry; cardMoved:
   if (withColumn) {
     const rect: Rect = { x: map.w + COLUMN_GAP, y: EDGE, w: g.w - EDGE - (map.w + COLUMN_GAP), h: footer.y - COLUMN_GAP - EDGE };
     const key: Rect = { x: rect.x, y: rect.y, w: rect.w, h: keyCardHeight };
+    // 숫자 카드가 없으면(D17 단면 장에서 카드만 지운 경우, Ruling 38) 첫 그래프 카드가 열 맨 위에서 시작한다.
+    const top = keyCardHeight > 0 ? bottom(key) + CARD_GAP : rect.y;
     // 해석 줄은 열 맨 아래. 주석 칩은 그 오른쪽 끝(열 맨 아래 오른쪽)이고 해석 줄은 칩 자리를 비킨다. 그래프 카드는 둘 중 높은 쪽 위에서 끝난다.
     const notesChip: Rect = { x: right(rect) - chip.w, y: bottom(rect) - chip.h, ...chip };
     const sentence: Rect = { x: rect.x, y: bottom(rect) - sentenceHeight, w: rect.w - (notes ? chip.w + NOTES_CHIP_GAP : 0), h: sentenceHeight };
     const chartsBottom = bottom(rect) - Math.max(sentenceHeight, notes ? chip.h : 0);
     // key | chart1 | chart2 | 아래 줄 사이 간격을 뺀 남은 높이로 그래프 카드를 채운다. 모자라면 chart2 → chart1 순으로 뺀다.
-    const room = (cards: number) => chartsBottom - bottom(key) - CARD_GAP * (cards + 1);
+    const room = (cards: number) => chartsBottom - top - CARD_GAP * cards;
     let slots = chartSlots;
     while (slots > 0 && room(slots) < CHART_MIN * slots) slots--;
     let chart1: Rect | null = null;
     let chart2: Rect | null = null;
-    if (slots === 1) chart1 = { x: rect.x, y: bottom(key) + CARD_GAP, w: rect.w, h: room(1) };
+    if (slots === 1) chart1 = { x: rect.x, y: top, w: rect.w, h: room(1) };
     if (slots === 2) {
       const h1 = room(2) * CHART1_SHARE;
-      chart1 = { x: rect.x, y: bottom(key) + CARD_GAP, w: rect.w, h: h1 };
+      chart1 = { x: rect.x, y: top, w: rect.w, h: h1 };
       chart2 = { x: rect.x, y: bottom(chart1) + CARD_GAP, w: rect.w, h: room(2) - h1 };
     }
     column = { rect, key, chart1, chart2, sentence, notesChip };
