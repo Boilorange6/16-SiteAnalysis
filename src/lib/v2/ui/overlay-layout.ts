@@ -5,7 +5,7 @@
  *  왼쪽 위 = 제목 칩 · 오른쪽 위 = 보고서 칩/북쪽 · 왼쪽 아래 = 핵심 값 카드(+범례)
  *  오른쪽 아래 = 축척 · 맨 아래 = 출처 띠
  */
-import { isBuildingLayer, legendItemsForModel, rasterLegendItems, type MapLegendLayerItem, type MapModel } from "./map-layers";
+import { isBuildingLayer, legendItemsForModel, normalizeLegendStripLabels, rasterLegendItems, type MapLegendLayerItem, type MapModel } from "./map-layers";
 import type { PagePanelKey, PageStyle } from "./board-state";
 import { VECTOR_ATTRIBUTION, type BasemapChoice } from "./map-projection";
 import type { CalloutModel } from "./tile-view";
@@ -439,7 +439,8 @@ export function slideLegend(
   let items: SlideLegendItem[] = [
     ...legendItemsForModel(model).filter((item) => item.layer !== "parcel_site" && item.layer !== "pnu"),
     // 값 래스터(D10 수관·D29 SVF·S02~S04)는 보드 범례와 같은 항목을 보고서 범례에도 싣는다(정본 §6, §1 화면 = 보고서).
-    ...rasterLegendItems(model),
+    // 단계 항목의 반복되는 접두(`동지 일조시간(시간) · 3시간`)는 보드 범례 띠처럼 값만 남긴다(맥락은 지도 글에 있다). 판이 좁아져 지도를 덜 가린다.
+    ...normalizeLegendStripLabels(rasterLegendItems(model)).items,
     ...(includeSite ? [{ layer: "__site_marker", label: "대지", color: "#111", site: true as const }] : []),
   ];
   if (options.hidden?.length) items = items.filter((item) => item.site || !options.hidden!.some((hidden) => legendMatches(item, hidden)));

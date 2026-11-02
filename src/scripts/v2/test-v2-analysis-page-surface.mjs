@@ -797,6 +797,8 @@ for (const format of ["wide", "a3", "a4"]) {
     assert.ok(svf[0].colors.length > 1, "연속 띠 견본은 여러 색");
     const steps = rasterLegendItems({ ...withRaster.map, rasters: [{ ...ref, name: "sun_hours_winter", palette: "sun_hours" }], legend: Array.from({ length: 4 }, (_, i) => ({ label: `동지 일조시간(시간) · ${i}시간`, min: i, max: i + 1 })) });
     assert.ok(steps.length >= 2 && steps.every((item) => item.swatch === "raster"), "단계 래스터는 단계마다 한 칸");
+    const stepModel = { ...withRaster.map, rasters: [{ ...ref, name: "sun_hours_winter", palette: "sun_hours" }], legend: Array.from({ length: 4 }, (_, i) => ({ label: `동지 일조시간(시간) · ${i}시간`, min: i, max: i + 1 })) };
+    assert.deepEqual(slideLegend(stepModel).items.filter((item) => item.swatch === "raster").map((item) => item.label), ["0시간", "1시간", "2시간", "3시간"], "보고서 범례는 단계 라벨의 반복 접두를 뺀다(보드 범례 띠와 같다)");
     // 범례 칸 계산(판 크기)에 들어간다
     const slideWith = { ...withRaster };
     assert.ok(legendFit(slideWith).items.some((item) => item.label === "수관"), "legendFit 항목에 수관");
