@@ -4,6 +4,7 @@ import type { MapBase } from "./basemap";
 import { paletteLayerStyle, type DiagramPaletteRef } from "./map-palette";
 import type { BasemapChoice } from "./map-projection";
 import type { BaseThemeRef, BaseToggleLayer } from "./map-theme";
+import { rasterLegendColor, rasterLegendEntries, rasterLegendTitle, resolveRasterStyle } from "./raster-image";
 import type { SiteOutline } from "./site-outline";
 
 /** MapFigure가 그리는 입력. 카드·상세·PPT가 같은 것을 쓴다. */
@@ -636,6 +637,47 @@ function reorderMappedLegendGroups(items: PresentedLegendLayerItem[]): Presented
     });
   }
   return reordered;
+}
+
+/** 래스터 범례 항목: 보드 범례 띠(`map-box`)와 보고서 범례(`slideLegend`)가 같은 목록·같은 견본(`swatch: "raster"`)을 쓴다(정본 §6). */
+export type RasterLegendItem = Omit<MapLegendLayerItem, "highlight"> & { id: string; swatch: "raster"; static: true };
+
+function rasterBoundary(value: number, palette: string): string {
+  if (palette === "svf") return `${Math.round(value * 100)}%`;
+  return Number.isInteger(value) ? String(value) : String(Math.round(value * 100) / 100);
+}
+
+/** MapFigure와 같은 선택 래스터(`model.rasters[0]`)의 범례: 마스크 한 칸, 연속 띠 한 칸(+최소~최대 글자), 단계는 칸마다. */
+export function rasterLegendItems(model: Pick<MapModel, "rasters" | "legend">): RasterLegendItem[] {
+  const raster = model.rasters?.[0];
+  const baseStyle = raster ? RASTER_STYLES[raster.palette] : undefined;
+  if (!raster || !baseStyle) return [];
+  const style = resolveRasterStyle(raster, baseStyle);
+  const title = rasterLegendTitle(raster, style);
+  if (style.mode === "continuous") {
+    const range = style.min !== undefined && style.max !== undefined
+      ? ` · ${rasterBoundary(style.min, raster.palette)}~${rasterBoundary(style.max, raster.palette)}`
+      : "";
+    return [{ layer: `raster:${raster.name}`, id: `raster:${raster.name}:continuous`, label: `${title}${range}`, color: style.colors[0] ?? "#43566B", colors: [...style.colors], swatch: "raster", static: true }];
+  }
+  if (style.mode === "mask") {
+    return [{ layer: `raster:${raster.name}`, id: `raster:${raster.name}:mask`, label: title, color: style.colors[0] ?? "#43566B", swatch: "raster", static: true }];
+  }
+  return rasterLegendEntries(raster, style, model.legend ?? []).map((entry, index) => ({
+    layer: `raster:${raster.name}`,
+    id: `raster:${raster.name}:step-${index}`,
+    label: entry.label,
+    color: rasterLegendColor(raster, style, entry) ?? style.colors[index] ?? "#43566B",
+    swatch: "raster" as const,
+    static: true as const,
+  }));
+}
+
+/** 래스터 견본의 CSS 배경: 연속 띠는 같은 폭의 색 칸(보드 `LegendSwatch`와 같다), 그 밖은 단색. */
+export function rasterSwatchBackground(item: Pick<RasterLegendItem, "color" | "colors">): string {
+  const colors = item.colors?.filter((color) => /^#[0-9A-Fa-f]{6}$/.test(color)) ?? [];
+  if (colors.length < 2) return item.color;
+  return `linear-gradient(90deg, ${colors.flatMap((color, index) => [`${color} ${(index * 100) / colors.length}%`, `${color} ${((index + 1) * 100) / colors.length}%`]).join(", ")})`;
 }
 
 export function legendItemsForModel(model: MapModel, limit = Number.POSITIVE_INFINITY): MapLegendLayerItem[] {

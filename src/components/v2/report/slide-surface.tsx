@@ -12,7 +12,7 @@ import { SLIDE_LEGEND, calloutLegendEntries, layoutRects, slideCalloutAvoidance,
 import { coverLayout, fitBlock, fitFooterText, fontSizeForStyle, footerBasemaps, footerCredit, shrinkPt, sourceLayout, titlePlateRect, type Slide } from "@/lib/v2/report/pptx-kit";
 import { SLIDE_OVERVIEW_FILL, calloutHoverText, calloutKeyFromTag, calloutKeyTag, calloutPageTitleTail, slideCalloutFrame } from "@/lib/v2/ui/callout-layout";
 import { a05ReportModule } from "@/lib/v2/tile/a05/report";
-import { layerStyle, legendItemsOf, legendLabelOf, modelWithHiddenLayers, type MapModel } from "@/lib/v2/ui/map-layers";
+import { layerStyle, legendItemsOf, legendLabelOf, modelWithHiddenLayers, rasterSwatchBackground, type MapModel } from "@/lib/v2/ui/map-layers";
 import { rasterKey } from "@/lib/v2/ui/raster-image";
 import type { RasterRef } from "@/lib/v2/tile-result";
 import { reportSummaryNotes, terrainCrossingLayer, terrainElevationLabel, terrainSectionAxisStops, terrainSectionBands, terrainSectionElevationAt, terrainSectionMarkerGeometry, terrainSectionPosition, terrainSectionTotal, sortTerrainCrossings, TERRAIN_CROSSING_LABELS, TERRAIN_SECTION_LABELS, TERRAIN_SECTION_TABLE_MAX_ROWS } from "@/lib/v2/ui/terrain-section";
@@ -1412,10 +1412,13 @@ export function LegendPanel({ slide, rect, unit, format = (slide.format ?? "wide
           </div>
         );
         // 썸네일(버튼 안)처럼 조작할 수 없는 범례는 button을 중첩하지 않는다.
-        const swatch = item.lineSwatch || item.legendSwatch
-          ? <LegendSwatch item={item} />
-          : <span className={styles.legendSwatch} style={{ background: item.color }} aria-hidden="true" />;
-        if (!onLegendPin) return (
+        const swatch = item.swatch === "raster"
+          ? <span className={styles.legendSwatchRaster} data-swatch="raster" style={{ background: rasterSwatchBackground(item) }} aria-hidden="true" />
+          : item.lineSwatch || item.legendSwatch
+            ? <LegendSwatch item={item} />
+            : <span className={styles.legendSwatch} style={{ background: item.color }} aria-hidden="true" />;
+        // 값 래스터 항목(`static`)은 지도 요소가 아니라 누를 것이 없다(장식뿐인 버튼을 만들지 않는다).
+        if (!onLegendPin || item.static) return (
           <div className={styles.legendRow} key={key + "-" + index} {...place}>
             {swatch}
             <span className={styles.legendText} title={fullTitle} style={textStyle}>{text}</span>

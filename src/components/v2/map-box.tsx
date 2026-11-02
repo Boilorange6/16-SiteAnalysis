@@ -1,12 +1,12 @@
 "use client";
 
 import { createContext, memo, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { buildingStyleForRaster, legendItemsForModel, normalizeLegendStripLabels, RASTER_STYLES, type MapModel } from "@/lib/v2/ui/map-layers";
+import { buildingStyleForRaster, legendItemsForModel, normalizeLegendStripLabels, rasterLegendItems, RASTER_STYLES, type MapModel } from "@/lib/v2/ui/map-layers";
 import { catalogEntry } from "@/lib/v2/ui/tile-catalog";
 import { activeLegendLabel, appendUniqueLegendItems, mapLegendStripVisible, toggleLegendPin } from "@/lib/v2/ui/map-legend";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
 import { applyView, framedViewport, maxZoomFor, metersPerPixel, scaleBar, tileUrl, tilesFor } from "@/lib/v2/ui/map-projection";
-import { inflateRaster, paintRaster, rasterLegendColor, rasterLegendEntries, rasterLegendTitle, resolveRasterStyle } from "@/lib/v2/ui/raster-image";
+import { inflateRaster, paintRaster } from "@/lib/v2/ui/raster-image";
 import MapFigure, { type MapFigureElementPick, type MapFigureProps } from "./map-figure";
 import { MapLegendStrip, type LegendSwatchKind, type MapLegendItem } from "./map-legend-strip";
 import { MapControls } from "./map-controls";
@@ -75,53 +75,6 @@ export function useMeasured() {
     };
   }, []);
   return { ref, size, near };
-}
-
-function rasterBoundary(value: number, palette: string): string {
-  if (palette === "svf") return `${Math.round(value * 100)}%`;
-  return Number.isInteger(value) ? String(value) : String(Math.round(value * 100) / 100);
-}
-
-/** MapFigure와 같은 선택 래스터를 지도 아래 범례 띠로 옮긴다. */
-function rasterLegendItemsForModel(model: MapModel): MapLegendItem[] {
-  const raster = model.rasters?.[0];
-  const baseStyle = raster ? RASTER_STYLES[raster.palette] : undefined;
-  if (!raster || !baseStyle) return [];
-  const style = resolveRasterStyle(raster, baseStyle);
-  const title = rasterLegendTitle(raster, style);
-  if (style.mode === "continuous") {
-    const range = style.min !== undefined && style.max !== undefined
-      ? ` · ${rasterBoundary(style.min, raster.palette)}~${rasterBoundary(style.max, raster.palette)}`
-      : "";
-    return [{
-      layer: `raster:${raster.name}`,
-      id: `raster:${raster.name}:continuous`,
-      label: `${title}${range}`,
-      color: style.colors[0] ?? "#43566B",
-      colors: style.colors,
-      swatch: "raster",
-      static: true,
-    }];
-  }
-  if (style.mode === "mask") {
-    return [{
-      layer: `raster:${raster.name}`,
-      id: `raster:${raster.name}:mask`,
-      label: title,
-      color: style.colors[0] ?? "#43566B",
-      swatch: "raster",
-      static: true,
-    }];
-  }
-  const entries = rasterLegendEntries(raster, style, model.legend ?? []);
-  return entries.map((entry, index) => ({
-    layer: `raster:${raster.name}`,
-    id: `raster:${raster.name}:step-${index}`,
-    label: entry.label,
-    color: rasterLegendColor(raster, style, entry) ?? style.colors[index] ?? "#43566B",
-    swatch: "raster" as const,
-    static: true,
-  }));
 }
 
 function MapBox({ model, bare, label, avoid, siteX, rightInset, pad, mapInteractive = true, mapWheel = "plain", mapTouchPan = "one", ...optsIn }: { model: MapModel; bare?: boolean; label?: string } & Opts2) {
@@ -232,7 +185,7 @@ function MapBox({ model, bare, label, avoid, siteX, rightInset, pad, mapInteract
               };
             }),
         ],
-        rasterLegendItemsForModel(model),
+        rasterLegendItems(model),
       )
     : [];
   const legendPresentation = normalizeLegendStripLabels(rawLegendItems);

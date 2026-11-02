@@ -1145,6 +1145,15 @@
   border-radius: 50%;
 }
 
+/* 값 래스터 견본(보드 범례 띠와 같은 모양): 아이콘 칸 폭의 납작한 막대. 연속 래스터는 색 칸으로 나뉜다. */
+.legendSwatchRaster {
+  width: calc(var(--slide-unit) * var(--legend-icon-column));
+  height: calc(var(--slide-unit) * var(--legend-icon-column) * 0.4);
+  border: 1px solid rgba(17, 17, 17, 0.35);
+  border-radius: calc(var(--slide-unit) * 0.02);
+  box-sizing: border-box;
+}
+
 .legendSwatchSite {
   width: calc(var(--slide-unit) * 0.15);
   height: calc(var(--slide-unit) * 0.15);

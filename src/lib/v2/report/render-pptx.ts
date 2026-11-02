@@ -419,6 +419,17 @@ function legendPlate(s: Slide, p: PlannedSlide & { kind: "tile" }, hasSummary = 
       const badgeX = iconXFor(0.19 * iconScale);
       target.addShape("ellipse", { x: badgeX, y: y + iconDy + 0.03 * iconScale, w: 0.19 * iconScale, h: 0.19 * iconScale, fill: { color: hex(it.color), transparency: fade }, line: { color: "FFFFFF", width: 0.75, transparency: fade } });
       target.addText(it.badge, { x: badgeX, y: y + iconDy + 0.03 * iconScale, w: 0.19 * iconScale, h: 0.19 * iconScale, align: "center", valign: "middle", fontFace: FONT, fontSize: Math.max(7, 7 * (legendPt / 10)), bold: true, color: dimmed ? "8C919B" : hex(badgeTextColor(it.color)), margin: 0 });
+    } else if (it.swatch === "raster") {
+      // 값 래스터 견본(보드 범례와 같은 모양): 아이콘 칸 폭의 납작한 막대. 연속 띠는 같은 폭의 색 칸 n개다.
+      const barW = fit ? fit.iconW : legendGeometry.iconColumn;
+      const barH = barW * 0.4;
+      const colors = it.colors && it.colors.length > 1 ? it.colors : [it.color];
+      const x = iconXFor(barW);
+      const barY = y + iconDy + (0.26 * iconScale - barH) / 2;
+      colors.forEach((color, ci) => {
+        target.addShape("rect", { x: x + (barW * ci) / colors.length, y: barY, w: barW / colors.length, h: barH, fill: { color: hex(color), transparency: fade }, line: { color: INK, width: 0, transparency: 100 }, objectName: `${group}|item-${i}|raster${colors.length > 1 ? `-${ci}` : ""}` });
+      });
+      target.addShape("rect", { x, y: barY, w: barW, h: barH, fill: { color: "FFFFFF", transparency: 100 }, line: { color: INK, width: 0.5, transparency: 65 + fade / 3 }, objectName: `${group}|item-${i}|raster-frame` });
     } else if (it.lineSwatch) {
       const lineW = 0.22 * iconScale;
       const x = iconXFor(lineW);

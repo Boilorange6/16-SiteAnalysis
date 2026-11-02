@@ -779,6 +779,36 @@ for (const format of ["wide", "a3", "a4"]) {
   // 썸네일(`mode: "thumb"`)은 IntersectionObserver가 있어야 같은 SlidePreview를 마운트하므로 SSR로는 못 본다. 같은 MapLayer 경로라 화면 캡처로 확인한다.
   for (const mode of ["edit", "export"]) assert.match(render(withRaster, mode), /<image[^>]*data-raster="canopy"[^>]*href="data:image\/png;base64,UkFTVEVS"/, `${mode}: 보고서 화면이 래스터를 그린다(편집·내보내기 캡처)`);
 
+  // I-2: 보고서 범례에도 보드와 같은 값 래스터 항목(정본 §6)이 있다 — 화면 견본·PPT 견본·범례 칸 계산이 한 목록을 쓴다.
+  {
+    const { slideLegend } = await import("../../lib/v2/ui/overlay-layout.ts");
+    const { rasterLegendItems } = await import("../../lib/v2/ui/map-layers.ts");
+    const { legendFit } = await import("../../lib/v2/report/report-page-frame.ts");
+    const { renderReportPptx } = await import("../../lib/v2/report/render-pptx.ts");
+    const JSZip = (await import("jszip")).default;
+    // 마스크(D10 수관): 한 칸, 라벨 `수관`
+    const mask = rasterLegendItems(withRaster.map);
+    assert.deepEqual(mask.map((item) => [item.label, item.swatch, item.static]), [["수관", "raster", true]]);
+    assert.ok(slideLegend(withRaster.map).items.some((item) => item.swatch === "raster" && item.label === "수관"), "slideLegend가 래스터 항목을 싣는다");
+    // 연속(D29 SVF): 띠 한 칸 + 최소·최대 글자, 단계(S02): 엔진 범례 단계마다 한 칸
+    const svf = rasterLegendItems({ ...withRaster.map, rasters: [{ ...ref, name: "svf", palette: "svf" }] });
+    assert.equal(svf.length, 1);
+    assert.match(svf[0].label, /하늘열림.*0%~100%/);
+    assert.ok(svf[0].colors.length > 1, "연속 띠 견본은 여러 색");
+    const steps = rasterLegendItems({ ...withRaster.map, rasters: [{ ...ref, name: "sun_hours_winter", palette: "sun_hours" }], legend: Array.from({ length: 4 }, (_, i) => ({ label: `동지 일조시간(시간) · ${i}시간`, min: i, max: i + 1 })) });
+    assert.ok(steps.length >= 2 && steps.every((item) => item.swatch === "raster"), "단계 래스터는 단계마다 한 칸");
+    // 범례 칸 계산(판 크기)에 들어간다
+    const slideWith = { ...withRaster };
+    assert.ok(legendFit(slideWith).items.some((item) => item.label === "수관"), "legendFit 항목에 수관");
+    // 화면: 견본은 raster이고 눌러서 강조하는 버튼이 아니다(지도 요소가 아니다)
+    const screen = render(withRaster);
+    assert.match(screen, /data-swatch="raster"/, "화면 범례에 래스터 견본");
+    assert.doesNotMatch(screen, /aria-label="수관 범례 강조"/, "래스터 항목은 강조 버튼이 아니다");
+    // PPT: 견본 도형
+    const xml = await (await JSZip.loadAsync(await renderReportPptx([withRaster]))).file("ppt/slides/slide1.xml").async("string");
+    assert.match(xml, /item-\d+\|raster/, "PPT 범례에 래스터 견본 도형");
+  }
+
   // 같은 래스터의 받기는 하나만 나가고(진행 중 공유), 실패해도 다시 요청하지 않는다
   {
     const { loadSurfaceRasters, surfaceRasterSettled } = await import("../../components/v2/report/slide-surface.tsx");
