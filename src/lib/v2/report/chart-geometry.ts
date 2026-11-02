@@ -137,10 +137,13 @@ function scatterShapes(d: Scatter, radiusM: number, box: ChartBox, scale: number
   const lead = d.qualifier ? `${d.qualifier} ` : "";
   const medText = `${lead}중앙값 ${formatStat(d.median, unit)}${unit}`;
   const meanText = `${lead}평균 ${formatStat(d.mean, unit)}${unit}`;
-  // 위에 중앙값·평균 글자 자리. 두 선이 글자 높이보다 가까우면 글자가 위·아래로 엇갈리고 아래 자리가 없을 때를 대비해 두 줄 자리를 둔다.
+  // 위에 중앙값·평균 글자 자리. 두 선이 글자 높이보다 가깝고 아래쪽 선 글자가 놓일 아래 자리도 없으면(축 맨 아래 가까이) 위쪽에 두 줄 자리를 둔다.
   const single = th + 0.03 * scale;
-  const closeLines = (Math.abs(d.median - d.mean) / (axis.end - axis.start)) * (box.h - single - b) < th;
-  const t = closeLines ? 2 * th + 0.07 * scale : single;
+  const phSingle = box.h - single - b;
+  const yAtSingle = (v: number) => single + phSingle * (1 - (v - axis.start) / (axis.end - axis.start));
+  const closeLines = Math.abs(yAtSingle(d.median) - yAtSingle(d.mean)) < th;
+  const belowRoom = yAtSingle(Math.min(d.median, d.mean)) + 0.03 * scale + th <= yAtSingle(axis.start) + 1e-9;
+  const t = closeLines && !belowRoom ? 2 * th + 0.07 * scale : single;
   const ph = box.h - t - b;
   const X = (m: number) => px + (pw * Math.min(m, radiusM)) / radiusM;
   const Y = (v: number) => box.y + t + ph * (1 - (v - axis.start) / (axis.end - axis.start));
@@ -180,8 +183,16 @@ function scatterShapes(d: Scatter, radiusM: number, box: ChartBox, scale: number
     if (yMed <= yMean) yMeanLabel = room ? yMean + gap : first - th - gap;
     else yMedLabel = room ? yMed + gap : first - th - gap;
   }
-  out.push(text("median-label", medText, pt, C.strong, "right", right, yMedLabel, true));
-  out.push(text("mean-label", meanText, pt, C.label, "right", right, yMeanLabel));
+  // 글자는 점이 덜 깔린 쪽(오른쪽 끝 또는 왼쪽 끝)에 둔다. 같으면 오른쪽(기본). 대지 점·글자가 왼쪽 끝에 있으면 오른쪽만 쓴다.
+  const sides = (d.site === null ? ["right", "left"] as const : ["right"] as const).map((align) => {
+    const ax = align === "right" ? right : px + 0.04 * scale;
+    const labels = [text("median-label", medText, pt, C.strong, align, ax, yMedLabel, true), text("mean-label", meanText, pt, C.label, align, ax, yMeanLabel)];
+    const r = (dense ? 0.018 : 0.03) * scale;
+    const covered = d.points.filter((p) => labels.some((l) => X(p.d) > l.x - r && X(p.d) < l.x + l.w + r && Y(p.v) > l.y - r && Y(p.v) < l.y + l.h + r)).length;
+    return { labels, covered };
+  });
+  const chosen = sides.reduce((best, side) => (side.covered < best.covered ? side : best));
+  out.push(...chosen.labels);
 
   if (d.site !== null) {
     // 테두리 있는 점 하나(분홍 속·진한 테두리 1.5 px). 반지름은 테두리 가운데선까지.
