@@ -182,7 +182,7 @@ const districtMissingPolygon = (label: string, legendGroup: string, legendOrder:
 
 export const LAYER_STYLES: Record<string, LayerStyle> = {
   bus_stop: S("버스정류장", "#6A50D3"),
-  bus_nearest: S("최근접 정류장", "#6A50D3"),
+  bus_nearest: S("최근접 버스정류장", "#6A50D3"),
   "store:grocery": S("식료품", "#3F9E6B"),
   "store:clinic": S("의원", "#D6478A"),
   "store:pharmacy": S("약국", "#2F6FDB"),

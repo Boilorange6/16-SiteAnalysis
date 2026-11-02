@@ -431,6 +431,7 @@ export function a01(ctx: EngineContext): TileResult {
       highlight: h === near,
       sublabel: h === near ? distanceSublabel(h.distanceM) : null,
       labelPriority: h === near ? 2 : 0,
+      counted: true, // 반경 안 정류장 — 그래프 개수가 반경 판정 대신 따른다
     }),
   );
   const layers = ["bus_stop", "bus_nearest"];
@@ -470,6 +471,7 @@ export function a01(ctx: EngineContext): TileResult {
         highlight: isNearest,
         sublabel: isNearest ? distanceSublabel(railM) : null,
         labelPriority: isNearest ? 2 : 0,
+        counted: true, // 반경 안 출입구
         ...(color ? { color } : {}),
       }));
     }

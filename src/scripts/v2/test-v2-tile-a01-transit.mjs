@@ -234,4 +234,30 @@ function addDirectionDuplicateSubwayLines(dataDir) {
   ctx.close();
 }
 
+// counted: 그래프 개수 = 반경 안 정류장·출입구. 반경 1000 m: 정류장 3(b3는 밖), 출입구 2(가온1·2는 밖).
+{
+  const { viewWithLayer } = await import("../../lib/v2/ui/tile-view.ts");
+  const { analysisCharts } = await import("../../lib/v2/report/analysis-charts.ts");
+  const dir = mkdtempSync(join(tmpdir(), "v2-eng-a01-counted-"));
+  await buildEngineFixture(dir, "v1", { rail: true, extraBus: true });
+  {
+    const db = new Database(join(dir, "versions", "v1", "reference.sqlite"));
+    const releaseId = db.prepare("SELECT release_id FROM source_release WHERE source_id = 'osm_subway'").pluck().get();
+    insertFeature(db, { stableId: "rail_entrance:나래1", kind: "rail_entrance", sourceKey: "나래1", releaseId, geometry: { type: "Point", coordinates: at(-600, 100) }, name: "나래1", properties: { stationName: "나래역", entranceRef: "나래1" } });
+    db.close();
+  }
+  const ctx = new EngineContext(dir, M.readManifest(dir), "an-1", { address: "경기도 남양주시 다산동 100", center: CENTER, radiusM: 1000, analysisDate: "2026-09-30" });
+  const tile = a01(ctx);
+  const counted = tile.presentation.features.filter((f) => f.counted === true);
+  assert.equal(counted.length, 5, "반경 안 정류장 3 + 출입구 2만 counted");
+  assert.deepEqual(counted.map((f) => f.layer).sort(), ["bus_nearest", "bus_stop", "bus_stop", "rail_entrance", "rail_entrance"]);
+  const view = toTileView(tile);
+  const chart = analysisCharts(viewWithLayer(view, view.defaultLayer).map);
+  assert.ok(chart, "A01은 정류장·출입구를 밝혀 그래프가 나온다");
+  assert.equal(chart.total, 5);
+  assert.deepEqual(chart.composition.map((c) => c.label).sort(), ["버스정류장", "역 출입구"]);
+  assert.equal(chart.subject + chart.countUnit, "정류장·출입구곳");
+  ctx.close();
+}
+
 console.log("✓ v2 A01/D14 transit tile");

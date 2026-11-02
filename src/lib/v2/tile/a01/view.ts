@@ -64,6 +64,7 @@ export const a01ClientModule = {
   code: "A01",
   headline: { ids: ["nearest_rail_m", "nearest_bus_m"] },
   keyFigureFor: a01KeyFigure,
+  chart: { subject: "정류장·출입구", countUnit: "곳" },
   board: {
     // 철도역·노선·출구 라벨이 한 칸에서 서로 겹치므로 기본 보드만 2칸으로 연다.
     // restore가 저장된 sizes를 우선하므로 기존 사용자 배치는 덮어쓰지 않는다.
