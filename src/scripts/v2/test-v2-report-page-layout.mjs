@@ -1,7 +1,7 @@
 /** 보고서 장 기하(reportPageGeometry)와 핵심 숫자 카드 맞춤(keyFigureFit): 화면·PPT·그림·축척이 같은 값을 읽는 순수 함수. */
 import assert from "node:assert/strict";
 
-const { reportPageGeometry, frameChromeUnit, keyCardWidth } = await import("../../lib/v2/ui/report-page-layout.ts");
+const { reportPageGeometry, frameChromeUnit, keyCardBox } = await import("../../lib/v2/ui/report-page-layout.ts");
 const { keyFigureFit } = await import("../../lib/v2/report/key-figure-fit.ts");
 const { textIn } = await import("../../lib/v2/report/pptx-kit.ts");
 
@@ -14,6 +14,65 @@ const area = (r) => r.w * r.h;
 
 const base = { format: "wide", summaryDeleted: false, titleSize: { w: 4.2, h: 0.5 }, keyCardHeight: 2.4, legendSize: { w: 2.2, h: 1.4 }, chartSlots: 2, sentenceHeight: 0.5 };
 const geo = (extra) => reportPageGeometry({ ...base, ...extra });
+
+// ── 불변식(Ruling 17): 저장 자리를 어떻게 줘도 모든 쌍 겹침 0, 모든 부속·카드·칩이 지도 틀 안
+const invariants = (g, layout, tag, notes = true) => {
+  const items = { title: g.title, legend: g.legend, north: g.north, scaleBar: g.scaleBar, keyNotesChip: g.keyNotesChip };
+  if (layout === "map-key") items.keyCard = g.keyCard;
+  const names = Object.keys(items).filter((n) => items[n]);
+  for (const n of names) assert.ok(inside(items[n], g.map), `${tag} ${n} 지도 틀 안 ${JSON.stringify(items[n])}`);
+  for (let i = 0; i < names.length; i++) for (let j = i + 1; j < names.length; j++) assert.ok(!hit(items[names[i]], items[names[j]]), `${tag} ${names[i]}·${names[j]} 겹침 ${JSON.stringify(items[names[i]])} ${JSON.stringify(items[names[j]])}`);
+  if (g.column) {
+    const c = g.column;
+    for (const n of ["key", "chart1", "chart2", "sentence", "notesChip"]) if (c[n]) assert.ok(inside(c[n], c.rect), `${tag} column.${n} 열 안`);
+    if (notes) for (const n of ["key", "chart1", "chart2", "sentence"]) if (c[n] && c[n].h > 0) assert.ok(!hit(c.notesChip, c[n]), `${tag} 열 칩·${n} 겹침`);
+  }
+};
+{
+  const W = 13.333;
+  const H = 7.5;
+  const pr = (x, y, w, h) => ({ x: x / W, y: y / H, w: w / W, h: h / H });
+  let seed = 20261102;
+  const rnd = () => { seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const pick = (list) => list[Math.floor(rnd() * list.length)];
+  // 재현값 표(라운드 1·2 지적)
+  const dKey = reportPageGeometry({ ...base, layout: "map-key" });
+  const table = [
+    ["north(1,6)", { north: pr(1, 6, 0.9, 0.9) }],
+    ["scale(.5,6.3)", { scaleBar: pr(0.5, 6.3, 1.8, 0.4) }],
+    ["A legend(10.27,5.47)", { legend: pr(10.27, 5.47, 2.2, 1.4) }],
+    ["A legend(10.77,0.14)", { legend: pr(10.77, 0.14, 2.2, 1.4) }],
+    ["C card(5,4.9,3.4×2.3)", { summary: pr(5, 4.9, 3.4, 2.3) }],
+    ["C card above scale", { summary: pr(dKey.scaleBar.x, dKey.scaleBar.y - 2.05, dKey.scaleBar.w, 2) }],
+    ["D title(0.5,6.5)", { title: pr(0.5, 6.5, 4.2, 0.5) }],
+    ["D title(0.3,3.295)", { title: pr(0.3, 3.295, 4.2, 0.5) }],
+  ];
+  for (const format of ["wide", "a3", "a4"]) for (const layout of ["map-key", "map-charts"]) for (const [name, panels] of table) {
+    for (const notes of [true, false]) invariants(reportPageGeometry({ ...base, format, layout, panels, notes }), layout, `${format} ${layout} ${name}`, notes);
+  }
+  // 시드 고정 난수: 카드·제목·범례·방위표·축척을 틀 안팎 임의 위치에(기본 자리 근처 포함)
+  for (const format of ["wide", "a3", "a4"]) for (const layout of ["map-key", "map-charts"]) for (const notes of [true, false]) {
+    const d0 = reportPageGeometry({ ...base, format, layout, notes });
+    const size = { w: d0.footer.w, h: d0.footer.y + d0.footer.h };
+    const anchors = [d0.title, d0.keyCard, d0.keyNotesChip, d0.legend, d0.north, d0.scaleBar].filter(Boolean);
+    const place = (w, h) => {
+      let x;
+      let y;
+      if (rnd() < 0.5) { x = rnd() * size.w * 1.1 - 0.1 * size.w; y = rnd() * size.h * 1.1 - 0.1 * size.h; } else { const a = pick(anchors); x = a.x + (rnd() - 0.5) * 0.8; y = a.y + (rnd() - 0.5) * 0.8; }
+      return { x: Math.max(0, x) / size.w, y: Math.max(0, y) / size.h, w: w / size.w, h: h / size.h };
+    };
+    for (let i = 0; i < 400; i++) {
+      const panels = {};
+      if (rnd() < 0.7) panels.summary = place(2 + rnd() * 2.5, 1 + rnd() * 3);
+      if (rnd() < 0.7) panels.title = place(1, 1);
+      if (rnd() < 0.7) panels.legend = place(1, 1);
+      if (rnd() < 0.7) panels.north = place(1, 1);
+      if (rnd() < 0.7) panels.scaleBar = place(1, 1);
+      const g = reportPageGeometry({ ...base, format, layout, notes, panels, keyCardHeight: pick([1.2, 2.4, 3.4]), legendSize: pick([null, { w: 1.4, h: 0.9 }, { w: 2.2, h: 1.4 }]), sentenceHeight: pick([0, 0.17, 0.5]), chartSlots: pick([0, 1, 2]) });
+      invariants(g, layout, `${format} ${layout} notes=${notes} #${i} ${JSON.stringify(panels)}`, notes);
+    }
+  }
+}
 
 // ── wide map-key
 {
@@ -277,6 +336,10 @@ for (const format of ["wide", "a3", "a4"]) {
   near(bottom(c.notesChip), bottom(c.rect), "칩 아래 끝");
   assert.ok(!hit(c.notesChip, c.sentence), "해석 줄이 칩과 겹치지 않는다");
   near(c.sentence.w, c.rect.w - 0.8 - 0.1, "해석 줄 폭에서 칩 자리를 뺀다");
+  for (const chartSlots of [2, 1]) {
+    const nc = geo({ layout: "map-charts", sentenceHeight: 0, chartSlots }).column;
+    assert.ok(nc.chart1 && !hit(nc.notesChip, nc.chart1) && (!nc.chart2 || !hit(nc.notesChip, nc.chart2)), `해석이 없어도 칩이 그래프 카드와 겹치지 않는다 (slots ${chartSlots})`);
+  }
   for (const n of ["key", "chart1", "chart2"]) assert.ok(!hit(c.notesChip, c[n]), `칩이 ${n}와 겹치지 않는다`);
   near(geo({ layout: "map-charts", notes: false }).column.sentence.w, c.rect.w, "주석이 없으면 해석 줄은 열 폭 전체");
   assert.equal(geo({ layout: "map-charts" }).keyNotesChip, null, "② 숫자 카드 아래 칩은 없다");
@@ -292,12 +355,25 @@ for (const format of ["wide", "a3", "a4"]) {
   assert.ok(!hit(edge.legend, edge.keyNotesChip));
   // 카드 폭을 먼저 얻는다
   const t4 = { w: 4.2, h: 0.5 };
-  assert.equal(keyCardWidth("map-key", "wide", undefined, t4), 3.125);
-  near(keyCardWidth("map-charts", "wide", undefined, t4), geo({ layout: "map-charts" }).column.key.w, "② 폭 = 열 폭");
-  near(keyCardWidth("map-charts", "a4", undefined, t4), geo({ layout: "map-charts", format: "a4" }).column.key.w, "a4 ② 폭");
-  near(keyCardWidth("map-key", "wide", { summary: p(5, 1.5, 3.4, 2.2) }, t4), 3.4, "저장 카드 폭을 따른다");
-  assert.equal(keyCardWidth("map-key", "wide", { summary: p(0.3, 0.3, 3.4, 2.2) }, t4), 3.125, "겹치면 기본 폭");
-  assert.equal(keyCardWidth("map-charts", "wide", { summary: p(5, 1.5, 3.4, 2.2) }, t4), keyCardWidth("map-charts", "wide", undefined, t4), "② 저장 summary 무시");
+  const box = (layout, format, panels, extra = {}) => keyCardBox({ layout, format, panels, summaryDeleted: false, titleSize: t4, legendSize: { w: 2.2, h: 1.4 }, ...extra });
+  assert.deepEqual(box("map-key", "wide"), { w: 3.125, h: null });
+  near(box("map-charts", "wide").w, geo({ layout: "map-charts" }).column.key.w, "② 폭 = 열 폭");
+  near(box("map-charts", "a4").w, geo({ layout: "map-charts", format: "a4" }).column.key.w, "a4 ② 폭");
+  assert.equal(box("map-charts", "wide").h, null);
+  const ok = box("map-key", "wide", { summary: p(5, 1.5, 3.4, 2.2) });
+  near(ok.w, 3.4, "저장 카드 폭을 따른다");
+  near(ok.h, 2.2, "저장 카드 높이(maxHeight로 넘길 값)");
+  assert.deepEqual(box("map-key", "wide", { summary: p(0.3, 0.3, 3.4, 2.2) }), { w: 3.125, h: null }, "겹치면 기본 폭·높이 없음");
+  assert.deepEqual(box("map-key", "wide", { summary: p(5, 4.9, 3.4, 2.3) }), { w: 3.125, h: null }, "칩이 틀 밖으로 나가면 기각");
+  assert.deepEqual(box("map-charts", "wide", { summary: p(5, 1.5, 3.4, 2.2) }), box("map-charts", "wide"), "② 저장 summary 무시");
+  // 채택 판정은 reportPageGeometry와 같다
+  for (const panels of [{ summary: p(5, 1.5, 3.4, 2.2) }, { summary: p(0.3, 0.3, 3.4, 2.2) }, { summary: p(5, 1.5, 3.4, 2.2), title: p(6, 2, 4.2, 0.5) }, { summary: p(9, 0.05, 3.4, 2.2) }]) {
+    const b = box("map-key", "wide", panels);
+    const gk = geo({ layout: "map-key", panels }).keyCard;
+    near(gk.w, b.w, "카드 폭 일치");
+    if (b.h !== null) near(gk.h, b.h, "저장 높이 일치");
+    else assert.equal(gk.h, base.keyCardHeight, "기각이면 기본 높이");
+  }
 }
 
 // ── 수정 1 라운드: 큰 답 (post·이름 답·여유 0), maxHeight, rows

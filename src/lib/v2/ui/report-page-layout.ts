@@ -2,7 +2,11 @@
  * 보고서 장 기하(inch). 화면 SlideSurface·PPT·그림 내보내기·축척이 모두 이 함수만 읽는다(spec 2026-10-30 §3·§7·§8).
  * 가장자리·간격·카드 폭은 판형과 관계없는 절대 inch다(글자 pt가 판형과 관계없는 절대 값이라서). 판형에 따라 달라지는 것은
  * 장 크기와 ② 지도 틀 폭(`SLIDE.infoRatio`), 지도 부속 단위 u(틀 모양)뿐이다.
- * 호출 순서: `keyCardWidth` → `keyFigureFit`(카드 폭·maxHeight) → `reportPageGeometry`.
+ * 호출 순서: `keyCardBox` → `keyFigureFit`(카드 폭·maxHeight) → `reportPageGeometry`.
+ *
+ * 배치 규칙은 하나다(Ruling 17): ① 모든 요소를 기본 자리에 놓는다. ② 저장 자리를 카드(①, 주석 칩 포함) → 제목 → 범례 → 방위표 → 축척
+ * 순서로 하나씩 시험한다. ③ 저장 자리는 지도 틀 안이고, 그 시점에 놓인 다른 모든 요소(주석 칩 포함)와 겹치지 않을 때만 받는다.
+ * 아니면 그 요소는 기본 자리에 남는다. 이러면 어느 단계에서든 겹침이 없다.
  */
 import { NOTES_CHIP_GAP, NOTES_CHIP_SIZE, normalizePagePanels, type PagePanelRect, type PagePanels } from "../report/report-geometry";
 import { slideGeometry, type Rect, type SlideFormat } from "./overlay-layout";
@@ -22,6 +26,15 @@ export type ReportPageGeometry = {
   unit: number;
   /** 960 / map.w */
   scenePxPerInch: number;
+};
+
+type GeometryInput = {
+  layout: PageLayoutKind; format: SlideFormat; panels?: PagePanels;
+  summaryDeleted: boolean; titleSize: { w: number; h: number };
+  keyCardHeight: number; legendSize: { w: number; h: number } | null;
+  chartSlots: 0 | 1 | 2; sentenceHeight: number;
+  /** `주석 N` 칩이 있는가(기본 true). 있으면 칩 자리를 두고 해석 줄 폭에서 뺀다. */
+  notes?: boolean;
 };
 
 /** 가장자리 24 px */
@@ -55,72 +68,63 @@ const right = (r: Rect) => r.x + r.w;
 const bottom = (r: Rect) => r.y + r.h;
 const hit = (a: Rect, b: Rect) => a.x < right(b) - 1e-6 && b.x < right(a) - 1e-6 && a.y < bottom(b) - 1e-6 && b.y < bottom(a) - 1e-6;
 const within = (r: Rect, frame: Rect) => r.x >= frame.x - 1e-6 && r.y >= frame.y - 1e-6 && right(r) <= right(frame) + 1e-6 && bottom(r) <= bottom(frame) + 1e-6;
+const union = (a: Rect, b: Rect | null): Rect => {
+  if (!b) return a;
+  const x = Math.min(a.x, b.x);
+  const y = Math.min(a.y, b.y);
+  return { x, y, w: Math.max(right(a), right(b)) - x, h: Math.max(bottom(a), bottom(b)) - y };
+};
 
-/** 카드 크기와 상관없는 바탕 기하: 장 크기, 지도 틀, 기본·저장 제목, 기본 방위표·축척, ① 저장 카드 자리. */
-function baseFrame(layout: PageLayoutKind, format: SlideFormat, panels: PagePanels | undefined, summaryDeleted: boolean, titleSize: { w: number; h: number }) {
+function place(input: GeometryInput): { geometry: ReportPageGeometry; cardMoved: Rect | null } {
+  const { layout, format, summaryDeleted, titleSize, keyCardHeight, legendSize, chartSlots, sentenceHeight, notes = true } = input;
   const g = slideGeometry(format);
-  const stored = normalizePagePanels(panels) ?? {};
+  const stored = normalizePagePanels(input.panels) ?? {};
   const toRect = (p: PagePanelRect): Rect => ({ x: p.x * g.w, y: p.y * g.h, w: p.w * g.w, h: p.h * g.h });
+  const chip = NOTES_CHIP_SIZE;
+
   const footer: Rect = { x: 0, y: g.h - FOOTER_H, w: g.w, h: FOOTER_H };
+  const pageNo: Rect = { x: g.w - EDGE - PAGE_NO_W, y: footer.y, w: PAGE_NO_W, h: FOOTER_H };
   const withColumn = layout === "map-charts" && !summaryDeleted;
   const map: Rect = { x: 0, y: 0, w: withColumn ? g.w * (1 - g.infoRatio) : g.w, h: footer.y };
-  const titleAuto: Rect = { x: EDGE, y: EDGE, w: titleSize.w, h: titleSize.h };
-
   const unit = frameChromeUnit(map.w, map.h);
   const k = map.w / SCENE_W; // 장면 px → inch
   const edgePx = NORTH_INSET - NORTH_RADIUS; // 방위표가 틀 모서리에서 떨어진 거리(7 px)
+
+  // ── 1. 기본 자리
+  const titleAuto: Rect = { x: EDGE, y: EDGE, w: titleSize.w, h: titleSize.h };
   const northSize = { w: 2 * NORTH_RADIUS * unit * k, h: 2 * NORTH_RADIUS * unit * k };
   const northAuto: Rect = { ...northSize, x: map.w - edgePx * unit * k - northSize.w, y: edgePx * unit * k };
   const scaleSize = { w: (SCALE_MAX_PX + 2 * SCALE_PANEL_SIDE) * unit * k, h: (SCALE_PANEL_ABOVE + SCALE_PANEL_BELOW) * unit * k };
   const scaleAuto: Rect = { ...scaleSize, x: map.w - edgePx * unit * k - scaleSize.w, y: map.h - 12 * unit * k - scaleSize.h };
-
-  // 저장 자리: 틀 안이고 이미 놓인 요소와 겹치지 않을 때만 쓴다. 크기는 저장값이 아니라 기하가 정한다.
-  const placed = (panel: PagePanelRect | undefined, size: { w: number; h: number }, avoid: readonly (Rect | null)[]): Rect | null => {
+  const chipBelow = (card: Rect): Rect | null => (notes ? { x: right(card) - chip.w, y: bottom(card) + KEY_CHIP_GAP, ...chip } : null);
+  // 범례 기본 자리(왼쪽 아래). 카드(+칩)가 커서 세로로 겹치면 카드 오른쪽으로 민다(카드는 줄이지 않는다).
+  const legendAt = (block: Rect | null, card: Rect | null): Rect | null => {
+    if (!legendSize) return null;
+    const auto: Rect = { x: EDGE, y: map.h - EDGE - legendSize.h, ...legendSize };
+    return block && card && hit(auto, block) ? { ...auto, x: Math.min(right(card) + CARD_GAP, Math.max(EDGE, map.w - EDGE - legendSize.w)) } : auto;
+  };
+  // 저장 자리는 틀 안이고 이미 놓인 요소와 겹치지 않을 때만 받는다. 크기는 저장값이 아니라 기하가 정한다.
+  const placed = (panel: PagePanelRect | undefined, size: { w: number; h: number }, others: readonly (Rect | null)[]): Rect | null => {
     if (!panel) return null;
     const at = toRect(panel);
     const rect: Rect = { x: at.x, y: at.y, ...size };
-    return within(rect, map) && avoid.every((r) => !r || !hit(rect, r)) ? rect : null;
+    return within(rect, map) && others.every((r) => !r || !hit(rect, r)) ? rect : null;
   };
-
-  const titleSaved = placed(stored.title, titleSize, [northAuto, scaleAuto]);
-  // ①: 저장 카드 자리는 틀 안이고 제목·방위표·축척과 겹치지 않을 때만 쓴다(옮기고 크기도 바꿀 수 있다, §7). ②는 무시.
-  const movedCard = !withColumn && !summaryDeleted && stored.summary ? toRect(stored.summary) : null;
-  const cardMoved = movedCard && within(movedCard, map) && [titleSaved ?? titleAuto, northAuto, scaleAuto].every((r) => !hit(movedCard, r)) ? movedCard : null;
-  return { g, stored, footer, withColumn, map, titleAuto, titleSaved, unit, k, northSize, northAuto, scaleSize, scaleAuto, placed, cardMoved };
-}
-
-/** ① 카드 폭(저장 카드 자리가 쓸 수 있으면 그 폭) 또는 ② 열 폭. 카드 맞춤(`keyFigureFit`)을 기하보다 먼저 부르기 위한 입구다. */
-export function keyCardWidth(layout: PageLayoutKind, format: SlideFormat, panels?: PagePanels, titleSize: { w: number; h: number } = { w: 4.6, h: 0.5 }): number {
-  const b = baseFrame(layout, format, panels, false, titleSize);
-  if (b.withColumn) return b.g.w - EDGE - (b.map.w + COLUMN_GAP);
-  return b.cardMoved?.w ?? CARD_W;
-}
-
-export function reportPageGeometry(input: {
-  layout: PageLayoutKind; format: SlideFormat; panels?: PagePanels;
-  summaryDeleted: boolean; titleSize: { w: number; h: number };
-  keyCardHeight: number; legendSize: { w: number; h: number } | null;
-  chartSlots: 0 | 1 | 2; sentenceHeight: number;
-  /** `주석 N` 칩이 있는가(기본 true). 있으면 칩 자리를 두고 해석 줄 폭에서 뺀다. */
-  notes?: boolean;
-}): ReportPageGeometry {
-  const { layout, format, summaryDeleted, titleSize, keyCardHeight, legendSize, chartSlots, sentenceHeight, notes = true } = input;
-  const { g, stored, footer, withColumn, map, titleAuto, titleSaved, unit, northSize, northAuto, scaleSize, scaleAuto, placed, cardMoved } = baseFrame(layout, format, input.panels, summaryDeleted, titleSize);
-  const pageNo: Rect = { x: g.w - EDGE - PAGE_NO_W, y: footer.y, w: PAGE_NO_W, h: FOOTER_H };
-  const chip = NOTES_CHIP_SIZE;
 
   let keyCard: Rect | null = null;
   let keyNotesChip: Rect | null = null;
+  let cardMoved: Rect | null = null;
   let column: ReportPageGeometry["column"] = null;
 
   if (withColumn) {
     const rect: Rect = { x: map.w + COLUMN_GAP, y: EDGE, w: g.w - EDGE - (map.w + COLUMN_GAP), h: footer.y - COLUMN_GAP - EDGE };
     const key: Rect = { x: rect.x, y: rect.y, w: rect.w, h: keyCardHeight };
-    // 해석 줄은 열 맨 아래. 주석 칩은 그 오른쪽 끝(열 맨 아래 오른쪽)이고 해석 줄은 칩 자리를 비킨다.
+    // 해석 줄은 열 맨 아래. 주석 칩은 그 오른쪽 끝(열 맨 아래 오른쪽)이고 해석 줄은 칩 자리를 비킨다. 그래프 카드는 둘 중 높은 쪽 위에서 끝난다.
     const notesChip: Rect = { x: right(rect) - chip.w, y: bottom(rect) - chip.h, ...chip };
     const sentence: Rect = { x: rect.x, y: bottom(rect) - sentenceHeight, w: rect.w - (notes ? chip.w + NOTES_CHIP_GAP : 0), h: sentenceHeight };
-    // key | chart1 | chart2 | sentence 사이 간격을 뺀 남은 높이로 그래프 카드를 채운다. 모자라면 chart2 → chart1 순으로 뺀다.
-    const room = (cards: number) => sentence.y - bottom(key) - CARD_GAP * (cards + 1);
+    const chartsBottom = bottom(rect) - Math.max(sentenceHeight, notes ? chip.h : 0);
+    // key | chart1 | chart2 | 아래 줄 사이 간격을 뺀 남은 높이로 그래프 카드를 채운다. 모자라면 chart2 → chart1 순으로 뺀다.
+    const room = (cards: number) => chartsBottom - bottom(key) - CARD_GAP * (cards + 1);
     let slots = chartSlots;
     while (slots > 0 && room(slots) < CHART_MIN * slots) slots--;
     let chart1: Rect | null = null;
@@ -135,27 +139,44 @@ export function reportPageGeometry(input: {
     keyCard = key;
   } else if (!summaryDeleted) {
     // ① 기본 카드 y는 기본 제목 자리 기준으로 고정한다(제목 칩을 옮겨도 카드는 따라가지 않는다).
-    keyCard = cardMoved ?? { x: EDGE, y: bottom(titleAuto) + TITLE_GAP, w: CARD_W, h: keyCardHeight };
-    if (notes) keyNotesChip = { x: right(keyCard) - chip.w, y: bottom(keyCard) + KEY_CHIP_GAP, ...chip };
-  }
-  const cardBlock: Rect | null = keyCard && { ...keyCard, h: (keyNotesChip ? bottom(keyNotesChip) : bottom(keyCard)) - keyCard.y };
-
-  // 제목: 저장 자리가 카드와 겹치지 않으면 쓴다(기본 자리는 기본 카드와 겹치지 않는다).
-  const title = titleSaved && !(keyCard && hit(titleSaved, keyCard)) ? titleSaved : titleAuto;
-
-  // 범례 후보: 저장 자리 또는 기본 자리(왼쪽 아래). 카드(+칩)가 커서 세로로 겹치면 카드 오른쪽으로 민다(카드는 줄이지 않는다).
-  let legendCandidate: Rect | null = null;
-  if (legendSize) {
-    legendCandidate = placed(stored.legend, legendSize, [title, cardBlock]);
-    if (!legendCandidate) {
-      legendCandidate = { x: EDGE, y: map.h - EDGE - legendSize.h, ...legendSize };
-      if (keyCard && cardBlock && hit(legendCandidate, cardBlock)) legendCandidate = { ...legendCandidate, x: Math.min(right(keyCard) + CARD_GAP, Math.max(EDGE, map.w - EDGE - legendSize.w)) };
+    keyCard = { x: EDGE, y: bottom(titleAuto) + TITLE_GAP, w: CARD_W, h: keyCardHeight };
+    // ① 저장 카드(옮기고 크기도 바꿀 수 있다, §7): 카드 + 칩 묶음이 틀 안이고, 제목·방위표·축척과 겹치지 않으며,
+    // 그 카드가 밀어낼 범례도 틀 안에서 그것들과 겹치지 않을 때만 받는다. ②는 무시.
+    if (stored.summary) {
+      const cand = toRect(stored.summary);
+      const block = union(cand, chipBelow(cand));
+      const pushed = legendAt(block, cand);
+      const others = [titleAuto, northAuto, scaleAuto];
+      if (within(block, map) && others.every((r) => !hit(block, r)) && (!pushed || (within(pushed, map) && !hit(pushed, block) && others.every((r) => !hit(pushed, r))))) {
+        cardMoved = cand;
+        keyCard = cand;
+      }
     }
+    keyNotesChip = chipBelow(keyCard);
   }
+  const block: Rect | null = !withColumn && keyCard ? union(keyCard, keyNotesChip) : null;
 
-  // 옮겨 둔 방위표·축척은 제목·카드·칩·범례(저장 또는 기본 자리)와 겹치면 기본 자리로 돌아간다.
-  const north = placed(stored.north, northSize, [title, cardBlock, scaleAuto, legendCandidate]) ?? northAuto;
-  const scaleBar = placed(stored.scaleBar, scaleSize, [title, cardBlock, north, legendCandidate]) ?? scaleAuto;
+  // ── 2~3. 저장 자리를 카드 → 제목 → 범례 → 방위표 → 축척 순으로 시험한다(카드는 위에서 처리했다).
+  let legend = legendAt(block, keyCard);
+  const title = placed(stored.title, titleSize, [block, legend, northAuto, scaleAuto]) ?? titleAuto;
+  if (legendSize) legend = placed(stored.legend, legendSize, [title, block, northAuto, scaleAuto]) ?? legend;
+  const north = placed(stored.north, northSize, [title, block, legend, scaleAuto]) ?? northAuto;
+  const scaleBar = placed(stored.scaleBar, scaleSize, [title, block, legend, north]) ?? scaleAuto;
 
-  return { map, footer, pageNo, title, keyCard, column, keyNotesChip, legend: legendCandidate, north, scaleBar, unit, scenePxPerInch: SCENE_W / map.w };
+  return { geometry: { map, footer, pageNo, title, keyCard, column, keyNotesChip, legend, north, scaleBar, unit, scenePxPerInch: SCENE_W / map.w }, cardMoved };
+}
+
+/**
+ * 카드 맞춤(`keyFigureFit`)을 기하보다 먼저 부르기 위한 입구. ② 열 폭, ① 기본 폭 또는 저장 카드를 쓸 수 있을 때 그 폭이다.
+ * 저장 카드를 `reportPageGeometry`와 같은 판정으로 받으면 `h`가 저장 높이(`keyFigureFit`의 `maxHeight`로 넘길 값), 아니면 null이다.
+ * 같은 `panels`·`titleSize`·`legendSize`·`notes`를 `reportPageGeometry`에도 넘겨야 판정이 같다.
+ */
+export function keyCardBox(input: { layout: PageLayoutKind; format: SlideFormat; panels?: PagePanels; summaryDeleted: boolean; titleSize: { w: number; h: number }; legendSize: { w: number; h: number } | null; notes?: boolean }): { w: number; h: number | null } {
+  const { geometry, cardMoved } = place({ ...input, keyCardHeight: 0, chartSlots: 0, sentenceHeight: 0 });
+  if (geometry.column) return { w: geometry.column.key.w, h: null };
+  return cardMoved ? { w: cardMoved.w, h: cardMoved.h } : { w: CARD_W, h: null };
+}
+
+export function reportPageGeometry(input: GeometryInput): ReportPageGeometry {
+  return place(input).geometry;
 }

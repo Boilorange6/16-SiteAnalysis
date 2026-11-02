@@ -1,6 +1,6 @@
 /**
  * 핵심 숫자 카드의 글자 맞춤·높이·카드 안 칸(spec 2026-10-30 §4-1·§7). 화면 카드와 PPT 카드가 같은 pt·줄·사각형을 쓰도록 한 곳에서 계산하는 순수 함수다.
- * 글자 폭 어림은 pptx-kit의 textIn(한글 1 em·그 밖 0.56 em)이다. 큰 답은 여유 없이 안쪽 폭에 맞추고, 어림 오차는 카드 오른쪽 안쪽 여백이 받는다.
+ * 글자 폭 어림은 pptx-kit의 textIn(한글 1 em·그 밖 0.56 em)이다. 큰 답은 여유 없이 안쪽 폭에 맞추고(어림 오차는 카드 오른쪽 안쪽 여백이 받는다), 보조 숫자 칸은 10 % 여유를 둔다.
  * 시안 pt(summaryPt 13일 때)는 질문 9.4 · 앞말 18 · 숫자 43.5 · 이름 답 23 · 대상·뒷말 21 · 보조 줄 9.4 · 보조 숫자 15 / 8.25 · 해석 9.75이고, summaryPt / 13 배로 같이 커진다.
  * `width`는 카드 바깥 폭이다. columns 2는 ①(해석 한 줄이 카드 맨 아래), 3은 ②(해석은 열 맨 아래 카드 밖)이다.
  * `rows`의 사각형은 모두 카드 왼쪽 위를 (0, 0)으로 한 inch다. 화면과 PPT는 이 사각형에 그리기만 한다.
@@ -137,7 +137,6 @@ function fitAt({ figure, badges, grades, filterLine, sentence, width, columns, n
   const badgesMore = badges.length - badgesShown.length;
 
   const subRowH = Math.max(pt(subPt) * LINE, 0.19 * s);
-  const chipH = pt(8 * s) * LINE + 0.06;
   const chipW = (text: string) => textIn(text, 8 * s) + 0.2;
 
   // ── 위에서 아래로 쌓는다
@@ -204,7 +203,7 @@ function fitAt({ figure, badges, grades, filterLine, sentence, width, columns, n
   const cellFullW = (inner - (columns - 1) * 0.02) / columns;
   const textW = cellFullW - 0.12;
   let statValuePt = 15 * s;
-  while (statValuePt > 9 * s && stats.some((stat) => textIn(stat.value, statValuePt) > textW)) statValuePt -= 0.5;
+  while (statValuePt > 9 * s && stats.some((stat) => textIn(stat.value, statValuePt) * 1.1 > textW)) statValuePt -= 0.5;
   const labelLines = stats.reduce((max, stat) => Math.max(max, Math.min(2, linesOf(stat.label, statLabelPt, textW))), 1);
   const valueH = pt(statValuePt) * 1.2;
   const cellH = valueH + labelLines * pt(statLabelPt) * LINE + 0.04;
