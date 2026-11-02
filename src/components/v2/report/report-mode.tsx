@@ -96,7 +96,7 @@ export type ReportModeProps = {
 function simplePage(doc: ReportDoc, kind: "cover" | "sources" | "blank"): ReportPage {
   return {
     id: newPageId(doc),
-    layout: "map-summary",
+    layout: "map-key",
     panels: {},
     textBoxes: [],
     notes: "",

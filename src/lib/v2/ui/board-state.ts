@@ -1088,8 +1088,10 @@ function restoreReportPage(value: unknown, validTileIds: ReadonlySet<string>, op
   // 그림 타일(바람장미·3D 매스)은 「숫자 먼저」가 없으므로 map-key로 바꾸고 「숫자 먼저」 기준으로 옮긴 패널 자리는 버린다.
   const isTile = value.kind === "tile";
   const figureNumbersFirst = isTile && value.layout === "numbers-first" && typeof value.tileId === "string" && isFigureTileId(value.tileId);
-  const mapFull = isTile && value.layout === "map-full";
-  const layout = figureNumbersFirst || mapFull || (isTile && (value.layout === "map-summary" || value.layout === "side-by-side")) ? "map-key" : value.layout;
+  // 저장 문서에 남은 옛 값(타입에서는 뺐다)은 문자열로 비교해 읽는다.
+  const storedLayout: string = value.layout;
+  const mapFull = isTile && storedLayout === "map-full";
+  const layout = figureNumbersFirst || mapFull || (isTile && (storedLayout === "map-summary" || storedLayout === "side-by-side")) ? "map-key" : value.layout;
   // 옛 틀의 요약 판·출처 줄 자리는 이 함수가 layout을 map-key로 바꿀 때만 버린다(새 틀과 맞지 않음).
   // numbers-first·map-charts·이미 map-key인 문서는 그대로 둔다: 앞의 둘은 그리는 단계가 복사본에서만 판정하고, map-key의 자리는 사용자가 새로 옮긴 것이다.
   const migratedPanels = reportPanels(value.panels);

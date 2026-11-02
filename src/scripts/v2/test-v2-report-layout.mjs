@@ -69,7 +69,7 @@ assert.equal(restoreReportDoc({ v: 1, format: "wide", pages: [restorePage("map-c
 assert.equal(restoreReportDoc({ v: 1, format: "wide", pages: [restorePage("map-weird")] }, new Set(["t-A01"])).pages.length, 0, "모르는 레이아웃 값은 버린다");
 
 const { chartsColumnLayout, slidePanelRects, layoutRects } = await import("../../lib/v2/ui/overlay-layout.ts");
-assert.deepEqual(layoutRects("map-charts", "wide"), layoutRects("map-summary", "wide"), "map-charts는 map-summary와 같은 사각형");
+assert.deepEqual(layoutRects("map-charts", "wide"), layoutRects("map-key", "wide"), "map-charts는 map-key와 같은 사각형");
 for (const format of ["wide", "a3", "a4"]) {
   const summary = slidePanelRects({}, true, undefined, format).summary;
   for (const scale of [1, 1.85]) {

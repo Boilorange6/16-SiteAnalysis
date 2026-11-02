@@ -288,6 +288,55 @@ assert.ok(charts.blocks.some((b) => textsOf(b).includes("1~4층")) && charts.blo
   }
 }
 
+// A05·A06 설명선 개요: 화면과 같은 틀 투영(overviewFrame)으로 그린다 — 번호 점은 지도 틀 안 같은 자리, 카드·열은 새 배치(옛 요약 판 없음)
+{
+  const { GODEOK_RESULTS } = await import("../../lib/v2/ui/fixtures/godeok.ts");
+  const { a05ReportModule } = await import("../../lib/v2/tile/a05/report.ts");
+  const isDot = (name) => /callout-key:[^|]*\|[^|]*\|dot$/.test(name ?? "");
+  for (const code of ["A05", "A06"]) {
+    const result = GODEOK_RESULTS.find((r) => r.tileCode === code);
+    if (!result) continue;
+    const raw = toTileView(result, null, null, code === "A05" ? { distance: { max: 900 } } : null);
+    assert.ok(raw.callout, `${code}: 설명선 모델(전제)`);
+    const cView = { ...raw, keyFigure: raw.keyFigure ?? { question: "반경 확인", answer: { value: "21,549세대", kind: "number" }, stats: [{ value: "35개", label: "단지" }] }, backdrop: raw.backdrop ?? raw.map };
+    const cViews = new Map([[result.tileId, cView]]);
+    const cCtx = { summary: toSummaryView(GODEOK_SUMMARY, [result]), analysisDate: "2026-10-27", views: cViews };
+    const pages = recommendedPages(EMPTY_REPORT_DOC, cViews, initBoard([result]), cCtx).filter((p) => p.kind === "tile");
+    const overview = planReportDoc({ ...EMPTY_REPORT_DOC, pages }, cViews, cCtx).find((s) => s.kind === "tile" && s.callout?.page === 0);
+    assert.ok(overview, `${code}: 개요 슬라이드`);
+    const f = pageFrameFor(overview);
+    assert.ok(f && f.calloutOverview, `${code}: 새 배치 개요 틀`);
+    const deck = await deckOf(overview);
+    // 번호 점 = 화면이 같은 모듈로 같은 틀에 그리는 점(기록한 그리기 호출과 같은 자리·크기)
+    const ops = [];
+    const recorder = { addShape: (type, o) => { ops.push({ type, o }); return recorder; }, addText: () => recorder };
+    a05ReportModule.report.render({ slide: recorder, planned: overview, part: "overview", overviewFrame: f.calloutOverview });
+    const key = (r) => `${r.x.toFixed(3)},${r.y.toFixed(3)},${r.w.toFixed(3)}`;
+    const screenDots = ops.filter((op) => isDot(op.o.objectName)).map((op) => key(op.o)).sort();
+    const pptDots = deck.blocks.filter((b) => isDot(nameOf(b))).map((b) => key(rectOf(b))).sort();
+    assert.ok(screenDots.length > 0, `${code}: 번호 점이 있다(전제)`);
+    assert.deepEqual(pptDots, screenDots, `${code}: PPT 번호 점 = 화면 번호 점(같은 틀 투영)`);
+    const map = f.geometry.map;
+    for (const b of deck.blocks.filter((x) => isDot(nameOf(x)))) {
+      const r = rectOf(b);
+      assert.ok(r.x >= map.x - 0.01 && r.y >= map.y - 0.01 && r.x + r.w <= map.x + map.w + 0.01 && r.y + r.h <= map.y + map.h + 0.01, `${code}: 번호 점은 지도 틀 안`);
+    }
+    // 카드·열은 새 배치, 옛 오른쪽 요약 판은 없다. 범례 판은 지도 틀 안.
+    assert.ok(deck.groups.some((g) => g.name === "핵심 숫자"), `${code}: 핵심 숫자 카드`);
+    assert.ok(!deck.groups.some((g) => g.name === "요약"), `${code}: 옛 요약 판이 없다`);
+    const legend = deck.groups.find((g) => g.name === "범례");
+    assert.ok(legend, `${code}: 설명선 범례`);
+    assert.ok(legend.x >= map.x - 0.01 && legend.y + legend.h <= map.y + map.h + 0.01 && legend.x + legend.w <= map.x + map.w + 0.01, `${code}: 범례는 지도 틀 안`);
+    if (code === "A05") assert.ok(deck.blocks.some((b) => textsOf(b).join("") === f.fit.filterLines.join("")), "A05 필터 줄이 카드 안에 있다");
+    // 상세 장은 옛 경로 그대로(쪽 전체)
+    const detail = planReportDoc({ ...EMPTY_REPORT_DOC, pages }, cViews, cCtx).find((s) => s.kind === "tile" && s.callout && s.callout.page > 0);
+    if (detail) {
+      assert.equal(pageFrameFor(detail), null, `${code}: 상세 장은 옛 경로`);
+      assert.ok(!(await deckOf(detail)).groups.some((g) => g.name === "핵심 숫자"), `${code}: 상세 장에는 카드가 없다`);
+    }
+  }
+}
+
 // 해석 문장: 고친 요약이 있으면 그것
 {
   // 해석 줄은 폭에 맞게 줄이 나뉘므로 공백을 뺀 글로 비교한다.

@@ -1990,7 +1990,7 @@ function SheetCellEditSurface({ slide, cellIndex, unit, basemap, selection, mapA
 function SheetSurface({ slide, unit, basemap, thumbnail = false, editable = false, selection, mapActive = false, cellEditing, recentCell, onCellActivate, onCellEdit, onCellFit, onCellDelete, onCellDone, onCellNavigate, onSelect, onFrame, onCellPanels, onMapMoveActive, onMapElementDelete, onMapLabelHide, onDecorationDelete, fontHighlight, onFontContextMenu }: { slide: Extract<PlannedSlide, { kind: "sheet" }>; unit: number; basemap: BasemapChoice; thumbnail?: boolean; editable?: boolean; selection?: SurfaceSelection; mapActive?: boolean; cellEditing?: number | null; recentCell?: number | null; onCellActivate?: (index: number) => void; onCellEdit?: (index: number) => void; onCellFit?: (index: number) => void; onCellDelete?: (index: number) => void; onCellDone?: () => void; onCellNavigate?: (direction: -1 | 1) => void; onSelect?: (selection: SurfaceSelection) => void; onFrame?: (cell: number | undefined, patch: Partial<MapFrameState>) => void; onCellPanels?: (cell: number, panels: PagePanels) => void; onMapMoveActive?: (active: boolean) => void; onMapElementDelete?: (key: string) => void; onMapLabelHide?: (key: string) => void; onDecorationDelete?: (key: SurfaceDecorationKey, cell?: number) => void; fontHighlight?: FontTargetKey | null; onFontContextMenu?: SurfaceContextMenuHandler }) {
   if (cellEditing !== undefined && cellEditing !== null) return <SheetCellEditSurface slide={slide} cellIndex={cellEditing} unit={unit} basemap={basemap} selection={selection} mapActive={mapActive} onSelect={onSelect} onFrame={onFrame} onCellPanels={onCellPanels} onMapMoveActive={onMapMoveActive} onMapElementDelete={onMapElementDelete} onMapLabelHide={onMapLabelHide} onDecorationDelete={onDecorationDelete} onDone={onCellDone} onNavigate={onCellNavigate} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} />;
   const format = (slide.format ?? "wide") as SlideFormat;
-  const layoutName = slide.page?.layout ?? "map-summary";
+  const layoutName = slide.page?.layout ?? "map-key";
   const styles = useSurfaceStyles();
   const cellRects = sheetCells(slide.grid as SheetGrid);
   const geometry = slideGeometry(format);
@@ -2402,7 +2402,7 @@ function TileSurface({ slide, frame: pageFrame = null, unit, basemap, panels, in
   // 새 장 배치의 대지는 지도 틀의 가운데다(지도 틀이 이미 카드·열을 뺀 영역).
   const mapSiteX = frameMap ? 0.5 : calloutDetailFrame?.siteX ?? slideSiteX(slide.style, panels.summary !== null, format);
   const scaleOptions = reportFrame && model
-    ? mapFrameScaleOptions(format, frameMap ? pageFrame!.layout : layoutName ?? "map-summary", { width, height, siteX: mapSiteX, siteY: mapSiteY, fill: mapFill }, frameMap ? { summaryDeleted: pageFrame!.layout === "map-charts" && !geo!.column } : undefined)
+    ? mapFrameScaleOptions(format, frameMap ? pageFrame!.layout : layoutName ?? "map-key", { width, height, siteX: mapSiteX, siteY: mapSiteY, fill: mapFill }, frameMap ? { summaryDeleted: pageFrame!.layout === "map-charts" && !geo!.column } : undefined)
     : null;
   const mapStyle: PageStyle = reportFrame && model ? {
     ...slide.style,
@@ -2559,7 +2559,7 @@ function SlidePreview({ slide, basemap, editable, format: requestedFormat, mapAc
         })()
       : slideCalloutAvoidance({ ...legacyPanels, legend: null }, calloutLegendEntriesForSlide, slideLayout(format), format, calloutLegendScale).calloutLegend
     : null;
-  const layoutName = displaySlide.page?.layout ?? "map-summary";
+  const layoutName = displaySlide.page?.layout ?? "map-key";
   const customLayout = layoutName === "numbers-first" || layoutName === "side-by-side";
   const size = slideSize(format);
   const layout = customLayout ? layoutRects(layoutName, format) : null;

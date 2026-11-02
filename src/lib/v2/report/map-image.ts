@@ -373,7 +373,7 @@ function extraFor(p: PlannedSlide, model: MapModel, pageFrame?: ReportPageFrame 
   const siteX = calloutDetail?.siteX ?? slideSiteX(baseStyle, hasSummary);
   const fill = calloutDetail?.fill ?? terrainLayout?.mapFill ?? (calloutOverview ? SLIDE_OVERVIEW_FILL : 0.8);
   const siteY = terrainLayout?.mapSiteY ?? 0.5;
-  const scaleOptions = frame ? mapFrameScaleOptions(p.format ?? "wide", p.page?.layout ?? "map-summary", { width: VIEW_W, height: VIEW_H, siteX, siteY, fill }) : null;
+  const scaleOptions = frame ? mapFrameScaleOptions(p.format ?? "wide", p.page?.layout ?? "map-key", { width: VIEW_W, height: VIEW_H, siteX, siteY, fill }) : null;
   const style = frame && scaleOptions ? reportFrameStyle(frame, baseStyle, model, scaleOptions) : baseStyle;
   const frameOptions = frame ? { hiddenKeys: [...new Set([...(style.hiddenKeys ?? []), ...frame.hiddenLabelKeys])], deletedElementKeys: frame.deletedElementKeys, labelBoxes: frame.labelBoxes, showAutomaticLabels: frame.labelRule !== "off", north: frame.decorations.north ? NORTH_INSET * Math.min(1.5, Math.max(1, VIEW_H / 360)) : (false as const), scale: frame.decorations.scaleBar, siteMarks: frameSiteMarks(frame) } : {};
   const highlightLabel = legendLabelOf(model, style.legendFocus);

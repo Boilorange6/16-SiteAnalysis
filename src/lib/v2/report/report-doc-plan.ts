@@ -245,7 +245,7 @@ function comparePageFromSheetSlide(
 ): Extract<ReportPage, { kind: "compare" }> {
   return {
     id,
-    layout: "map-summary",
+    layout: "map-key",
     panels: {},
     textBoxes: [],
     notes: "",
@@ -266,7 +266,7 @@ function comparePageFromSheetSlide(
 }
 
 function newSimplePage(doc: ReportDoc, kind: "cover" | "sources"): ReportPage {
-  return { id: newPageId(doc), layout: "map-summary", panels: {}, textBoxes: [], notes: "", deletedElementKeys: [], kind };
+  return { id: newPageId(doc), layout: "map-key", panels: {}, textBoxes: [], notes: "", deletedElementKeys: [], kind };
 }
 
 function isTileResultView(view: TileView): boolean {
@@ -352,7 +352,7 @@ function comparePageFromLegacy(id: string, extra: BoardState["report"]["extra"][
   if (!extra.sheet) return null;
   return {
     id,
-    layout: "map-summary",
+    layout: "map-key",
     panels: {},
     textBoxes: [],
     notes: "",
@@ -399,7 +399,7 @@ export function importLegacyReport(
     const id = used.has(slide.key) ? newPageId({ ...doc, pages: [...doc.pages, ...pages] }) : slide.key;
     used.add(id);
     if (slide.kind === "cover" || slide.kind === "sources") {
-      pages.push({ id, layout: "map-summary", panels: {}, textBoxes: [], notes: "", kind: slide.kind });
+      pages.push({ id, layout: "map-key", panels: {}, textBoxes: [], notes: "", kind: slide.kind });
       continue;
     }
     const view = slide.view;

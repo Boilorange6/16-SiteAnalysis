@@ -136,7 +136,7 @@ const sheetParent = sheetView("t-SHEET", sheetSourceViews, "2x2");
 const sheetPages = pagesForTile(EMPTY_REPORT_DOC, sheetParent.tileId, sheetParent, tileReportSettingsFromBoard(board, sheetSourceViews[0].tileId), { ...tileContext, settingsFor: (id) => tileReportSettingsFromBoard(board, id) });
 assert.equal(sheetPages.length, 1, "SHEET는 한 페이지로 변환");
 assert.equal(sheetPages[0]?.kind, "compare", "SHEET는 compare 문서 페이지로 저장");
-assert.equal(sheetPages[0]?.layout, "map-summary", "compare는 사용자 레이아웃 선택 없이 공통 형식을 쓴다");
+assert.equal(sheetPages[0]?.layout, "map-key","compare는 사용자 레이아웃 선택 없이 공통 형식을 쓴다");
 assert.equal(sheetPages[0]?.sameExtent, false, "새 compare는 sameExtent 기본 false");
 assert.equal(sheetPages[0]?.cells.length, 4, "SHEET의 격자 빈 칸 위치를 보존");
 assert.equal(sheetPages[0]?.cells[2], null, "SHEET의 빈 칸은 null로 남긴다");
