@@ -7,6 +7,7 @@ import TileDialog from "@/components/v2/tile-dialog";
 import Presentation from "@/components/v2/presentation";
 import ReportMode from "@/components/v2/report/report-mode";
 import { useTileDrag } from "@/components/v2/use-tile-drag";
+import { useSourceMeta } from "@/components/v2/use-source-meta";
 import { BASEMAPS, BasemapContext, SetBasemapContext } from "@/components/v2/map-box";
 import { BaseThemeContext } from "@/components/v2/base-theme-context";
 import { resolveMapColors, withMapColors } from "@/lib/v2/ui/map-colors";
@@ -760,7 +761,8 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
     return shownBaseHide ? { ...base, map: withMapColors(base.map, { hide: shownBaseHide }) ?? null } : base;
   }, [siteSummary, results, scene, shownBaseHide]);
   const analysisDate = results[0]?.conditions.analysisDate ?? "기준일 미확인";
-  const reportPlanContext = useMemo(() => ({ summary, analysisDate, views, results: reportResults, scene, analysisSiteParcel, resultFor: reportResultFor }), [analysisDate, analysisSiteParcel, reportResultFor, reportResults, scene, summary, views]);
+  const sourceMeta = useSourceMeta(views);
+  const reportPlanContext = useMemo(() => ({ summary, analysisDate, views, results: reportResults, scene, analysisSiteParcel, resultFor: reportResultFor, sourceMeta }), [analysisDate, analysisSiteParcel, reportResultFor, reportResults, scene, sourceMeta, summary, views]);
   const reportDocPageCount = useMemo(() => printedPageCount(board.reportDoc, views, reportPlanContext), [board.reportDoc, reportPlanContext, views]);
   const total = board.order.length;
   const notProvidedIds = shown.filter((id) => views.get(id)?.status === "not_provided");
@@ -1278,7 +1280,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
           </>}
         </header>
 
-        {boardMode === "report" && <ReportMode board={board} dispatch={dispatch} views={views} summary={summary} analysisDate={analysisDate} basemap={basemap} dirty={boardDirty} demo={demo} busy={actionBusy} onPresentation={openReportPresentation} results={reportResults} scene={scene} analysisSiteParcel={analysisSiteParcel} resultFor={reportResultFor} />}
+        {boardMode === "report" && <ReportMode board={board} dispatch={dispatch} views={views} summary={summary} analysisDate={analysisDate} basemap={basemap} dirty={boardDirty} demo={demo} busy={actionBusy} onPresentation={openReportPresentation} results={reportResults} scene={scene} analysisSiteParcel={analysisSiteParcel} resultFor={reportResultFor} sourceMeta={sourceMeta} />}
 
         {boardMode === "tile" && <>
         {!demo && <AnalysisProgress jobs={jobs} onCancel={onCancel} canceling={canceling} />}

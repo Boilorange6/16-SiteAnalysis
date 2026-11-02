@@ -1,10 +1,11 @@
 /** 보고서 문서 → 기존 슬라이드 계획 어댑터 계약. */
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 const { GODEOK_RESULTS, GODEOK_SUMMARY } = await import("../../lib/v2/ui/fixtures/godeok.ts");
 const { initBoard, restoreReportDoc } = await import("../../lib/v2/ui/board-state.ts");
 const { toSummaryView, toTileView } = await import("../../lib/v2/ui/tile-view.ts");
-const { buildReportPlan, REPORT_SOURCE_ROWS_PER_SLIDE, tileReportSettingsFromBoard, tileSlides } = await import("../../lib/v2/report/report-plan.ts");
+const { buildReportPlan, REPORT_SOURCE_ROWS_PER_SLIDE, sourcePageCountForViews, sourceRowCountForViews, tileReportSettingsFromBoard, tileSlides } = await import("../../lib/v2/report/report-plan.ts");
 const { EMPTY_REPORT_DOC, defaultFrame, historyApply, historyUndo, mergeReportFontSizes, reportDocReducer } = await import("../../lib/v2/report/report-doc.ts");
 const { calloutPageFor, importLegacyReport, pagesForTile, planReportDoc, printedPageCount, recommendedPages } = await import("../../lib/v2/report/report-doc-plan.ts");
 const { pageStripItems, pageStripLabel } = await import("../../lib/v2/report/report-page-strip.ts");
@@ -327,5 +328,43 @@ assert.equal(missingPlan.length, missingPages.length, "결과가 없어도 페�
 assert.ok(missingPlan.every((slide) => slide.kind === "tile" && slide.missing === true), "없는 결과는 missing 슬라이드");
 assert.ok(missingPlan.every((slide) => slide.kind === "tile" && slide.view.title === "지형·등고선"), "missing 제목은 타일 카탈로그 이름");
 assert.ok(missingPlan.every((slide) => slide.kind === "tile" && slide.body.kind === "state" && slide.body.message.includes("결과 없음")), "missing 자리표시 문구");
+
+// 출처 메타 연결(2026-11-03 회귀 수정): 매니페스트 메타를 넘기면 출처 장 행에 제공처·이용조건·링크가 들어가고,
+// 장수 추정(sourceRowCountForViews)도 같은 메타를 쓴다. 메타가 없으면(요청 실패) 정의 표로 내려간다.
+{
+  const refFor = (sourceId) => ({ sourceId, releaseId: `${sourceId}-r1`, sourceAsOf: "2026-01-01" });
+  const metaRow = (sourceId, provider, sourceUrl, licenseCode) => [`${sourceId}:${sourceId}-r1`, { sourceId, releaseId: `${sourceId}-r1`, provider, sourceUrl, licenseCode }];
+  // 같은 자료명(국토교통부 VWorld 용도지구·구역)을 쓰는 두 원천이 제공처만 다르면 메타가 있을 때만 두 행이 된다.
+  const sourceMeta = new Map([
+    metaRow("district_area", "국토교통부", "https://example.test/area", "UNRESTRICTED"),
+    metaRow("district_greenbelt", "서울특별시", "https://example.test/green", "UNRESTRICTED"),
+  ]);
+  const one = new Map([["t-A01", { ...views.get("t-A01"), sourceRefs: [refFor("district_area"), refFor("district_greenbelt")] }]]);
+  const oneContext = { ...context, views: one };
+  const doc = { v: 1, format: "wide", pages: recommendedPages(EMPTY_REPORT_DOC, one, board, oneContext) };
+  const plannedWith = (ctx) => planReportDoc(doc, one, ctx);
+  const sourceRowsOf = (plan) => plan.filter((slide) => slide.kind === "sources").flatMap((slide) => slide.rows);
+
+  const bare = plannedWith(oneContext);
+  assert.equal(sourceRowsOf(bare).length, 1, "메타 없음: 이름·기준일이 같아 한 행");
+  assert.ok(sourceRowsOf(bare).every((row) => row.provider === "제공처 미기록" && row.license === "미기록" && row.url === ""), "메타 없음: 정의 표 폴백(미기록)");
+
+  const withMeta = plannedWith({ ...oneContext, sourceMeta });
+  const metaRows = sourceRowsOf(withMeta);
+  assert.deepEqual(metaRows.map((row) => row.provider).sort(), ["국토교통부", "서울특별시"], "메타 제공처가 출처 행에 들어간다");
+  assert.ok(metaRows.every((row) => row.license === "이용허락범위 제한 없음" && row.url.startsWith("https://example.test/")), "메타 이용조건·링크가 출처 행에 들어간다");
+  assert.ok(withMeta.filter((slide) => slide.kind === "tile").every((slide) => slide.footer.includes("국토교통부")), "각주 띠에도 메타 제공처가 들어간다");
+
+  assert.equal(sourceRowCountForViews(one.values()), sourceRowsOf(bare).length, "메타 없는 장수 추정 = 실제 행 수");
+  assert.equal(sourceRowCountForViews(one.values(), sourceMeta), metaRows.length, "메타를 넘긴 장수 추정 = 실제 행 수");
+  assert.equal(sourcePageCountForViews(one.values(), sourceMeta), withMeta.filter((slide) => slide.kind === "sources").length, "메타를 넘긴 출처 장 수 = 실제 출처 장 수");
+
+  // 앱 경로 두 곳(발표·쪽 수 계산용 page.tsx, 편집·내보내기용 report-mode.tsx)이 같은 메타를 계획에 넘긴다.
+  const lineOf = (path, needle) => readFileSync(new URL(path, import.meta.url), "utf8").split("\n").find((line) => line.includes(needle)) ?? "";
+  const pageLine = lineOf("../../app/v2/page.tsx", "const reportPlanContext = useMemo");
+  assert.ok(pageLine.split("sourceMeta").length >= 3, "page.tsx reportPlanContext가 sourceMeta를 값과 의존성으로 넘긴다");
+  const modeLine = lineOf("../../components/v2/report/report-mode.tsx", "const planContext = useMemo");
+  assert.ok(modeLine.split("sourceMeta").length >= 3, "report-mode.tsx planContext가 sourceMeta를 값과 의존성으로 넘긴다");
+}
 
 console.log("v2 report doc plan tests passed");

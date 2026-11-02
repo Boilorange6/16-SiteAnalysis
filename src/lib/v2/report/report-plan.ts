@@ -280,14 +280,14 @@ function fallbackSourceRows(view: TileView): SourceDetailRow[] {
 /**
  * 보드의 출처 장 수와 실제 보고서 계획이 같은 정규화 기준을 쓰도록 원천 행을 센다.
  * 같은 자료명·기준일을 여러 원천 ID가 공유하는 경우(예: 시설·구역)는 한 행이다.
- * 화면의 장수 추정 시점에는 서버 출처 메타데이터를 아직 받지 않았으므로 카탈로그 이름을 쓴다.
+ * 실제 계획(planReportDoc)이 쓰는 서버 출처 메타를 넘겨야 행 키(제공처·자료·기준일)가 같다.
+ * 메타를 아직 못 받았으면 비워 두며, 그때는 계획도 같은 폴백을 쓴다.
  */
-export function sourceRowCountForViews(views: Iterable<TileView>): number {
+export function sourceRowCountForViews(views: Iterable<TileView>, sourceMeta: ReadonlyMap<string, SourceMeta> = new Map()): number {
   const keys = new Set<string>();
-  const emptyMeta = new Map<string, SourceMeta>();
   for (const view of views) {
     const details = view.sourceRefs.length > 0
-      ? sourceDetailsFor({ code: view.code, tileType: view.tileType, provenance: { sources: view.sourceRefs } }, emptyMeta)
+      ? sourceDetailsFor({ code: view.code, tileType: view.tileType, provenance: { sources: view.sourceRefs } }, sourceMeta)
       : null;
     const rows = details?.rows ?? fallbackSourceRows(view);
     for (const row of rows) keys.add(`${row.provider}|${row.name}|${row.asOf}`);
@@ -295,7 +295,7 @@ export function sourceRowCountForViews(views: Iterable<TileView>): number {
   return keys.size;
 }
 
-export const sourcePageCountForViews = (views: Iterable<TileView>): number => sourcePageCount(sourceRowCountForViews(views));
+export const sourcePageCountForViews = (views: Iterable<TileView>, sourceMeta?: ReadonlyMap<string, SourceMeta>): number => sourcePageCount(sourceRowCountForViews(views, sourceMeta));
 
 export type TileSlidesContext = {
   summary: SummaryView;

@@ -16,7 +16,7 @@ function sourceKey(row: SourceDetailRow): string {
   return `${row.sourceId}:${row.asOf}:${row.url}`;
 }
 
-async function readSourceMeta(ids: readonly string[]): Promise<ReadonlyMap<string, SourceMeta>> {
+export async function readSourceMeta(ids: readonly string[]): Promise<ReadonlyMap<string, SourceMeta>> {
   if (ids.length === 0) return new Map();
   const query = new URLSearchParams();
   for (const id of ids) query.append("ids", id);

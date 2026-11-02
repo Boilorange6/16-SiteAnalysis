@@ -18,6 +18,7 @@ import { toTileView, type CalloutModel, type SummaryView, type TileView } from "
 import { normalizeA05Filter, type A05Filter } from "@/lib/v2/engine/a05-filter";
 import type { TileResult, MapPolygon } from "@/lib/v2/tile-result";
 import type { Scene } from "@/lib/v2/scene";
+import type { SourceMeta } from "@/lib/v2/ui/source-details";
 import { sheetCells } from "@/lib/v2/ui/sheet";
 import { legendItemsForModel, modelWithHiddenLayers, type MapLegendLayerItem, type MapModel } from "@/lib/v2/ui/map-layers";
 import { useFocusTrap } from "../use-focus-trap";
@@ -92,6 +93,8 @@ export type ReportModeProps = {
   scene?: Scene | null;
   analysisSiteParcel?: readonly MapPolygon[] | null;
   resultFor?: (tileId: string) => TileResult | undefined;
+  /** 서버 출처 메타. 출처 장·각주 띠의 제공처·이용조건·링크가 이 값으로 채워진다. */
+  sourceMeta?: ReadonlyMap<string, SourceMeta>;
 };
 
 function simplePage(doc: ReportDoc, kind: "cover" | "sources" | "blank"): ReportPage {
@@ -348,7 +351,7 @@ function otherCalloutPageLabels(plan: PlannedSlide[], current: CalloutPage): Rea
   return new Map([...labels].map(([key, labelsForKey]) => [key, labelsForKey.join(" · ")]));
 }
 
-export default function ReportMode({ board, dispatch, views, summary, analysisDate, basemap, dirty, demo = false, busy = false, onPresentation, results, scene, analysisSiteParcel, resultFor }: ReportModeProps) {
+export default function ReportMode({ board, dispatch, views, summary, analysisDate, basemap, dirty, demo = false, busy = false, onPresentation, results, scene, analysisSiteParcel, resultFor, sourceMeta }: ReportModeProps) {
   const [history, setHistory] = useState<ReportHistory>({ past: [], present: board.reportDoc, future: [] });
   const historyRef = useRef(history);
   historyRef.current = history;
@@ -468,7 +471,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     setSettingsOpen(false);
   }, [history.present.pages, selectedId]);
 
-  const planContext = useMemo(() => ({ summary, analysisDate, views, results, scene, analysisSiteParcel, resultFor }), [analysisDate, analysisSiteParcel, resultFor, results, scene, summary, views]);
+  const planContext = useMemo(() => ({ summary, analysisDate, views, results, scene, analysisSiteParcel, resultFor, sourceMeta }), [analysisDate, analysisSiteParcel, resultFor, results, scene, sourceMeta, summary, views]);
   // 미리 보기는 계획에만 덮는다. 문서·되돌리기 기록·보드는 그대로다.
   const planDoc = useMemo(
     () => mapColorPreview ? reportDocReducer(history.present, { type: "mapColors", scope: mapColorPreview.scope, id: mapColorPreview.id, patch: mapColorPreview.choice }) : history.present,
