@@ -8,6 +8,7 @@ import type { KeyFigure } from "../tile/types";
 import type { AnalysisCharts } from "./analysis-charts";
 import type { ChartBox } from "./chart-geometry";
 import type { CalloutOverviewFrame } from "./types";
+import { wrapToLines } from "./analysis-column-fit";
 import { keyFigureFit, sentenceFit, type KeyFigureFit } from "./key-figure-fit";
 import { DEFAULT_REPORT_FONT_SIZES, type PagePanels } from "./report-doc";
 import { fitFooterText, footerBasemaps, fontSizeForStyle, textIn } from "./pptx-kit";
@@ -31,10 +32,16 @@ export type LegendFit = {
   /** F1 범례 pt / 10 */
   scale: number;
   labelPt: number; notePt: number;
-  rowH: number; noteH: number; padding: { top: number; right: number; bottom: number; left: number };
+  rowH: number; noteH: number; noteGap: number; padding: { top: number; right: number; bottom: number; left: number };
   iconW: number; iconGap: number; colGap: number;
   items: ReturnType<typeof slideLegend>["items"];
   notes: string[];
+  /** 그리는 항목 글(1열로도 넘는 항목만 …)과 잘림 여부. 잘린 글의 전문은 `items[i].label`이다. */
+  labels: string[]; labelClipped: boolean[];
+  /** 그리는 주석 줄(주석마다 최대 2줄, 넘치면 …)과 잘림 여부. 전문은 `notes[i]`다. */
+  noteLines: string[][]; noteClipped: boolean[];
+  /** 항목 칸·주석 칸(판 왼쪽 위 기준 inch). 화면과 PPT는 이 자리에 그리기만 한다. */
+  itemRects: Rect[]; noteRects: Rect[];
 };
 
 export type ReportPageFrame = {
@@ -111,23 +118,54 @@ export function legendFit(slide: TileSlide): LegendFit | null {
   const format = (slide.format ?? "wide") as SlideFormat;
   const { items, notes } = slideLegend(model, !slide.muted, undefined, true, format, options);
   if (items.length === 0 && notes.length === 0) return null;
-  const scale = fontSizeForStyle(slide.style, "legend") / DEFAULT_REPORT_FONT_SIZES.legend;
+  return legendLayout(items, notes, fontSizeForStyle(slide.style, "legend") / DEFAULT_REPORT_FONT_SIZES.legend);
+}
+
+/** 판 최대 폭(inch)과, 항목이 이보다 좁을 때 주석을 접는 폭(Ruling 30) */
+const LEGEND_MAX_W = 5;
+const LEGEND_NOTE_W = 2.6;
+
+/**
+ * 범례 판의 폭·열·줄·칸을 정한다(Ruling 30). 판 폭의 뼈대는 항목이고, 주석은 항목 폭(좁으면 2.6 in까지)으로 접어 최대 2줄이다.
+ * 2열이 5 in를 넘으면 1열로 내리고, 1열로도 넘는 항목만 …로 줄인다. 높이는 실제 줄 수의 합이다.
+ */
+export function legendLayout(items: LegendFit["items"], notes: string[], scale: number): LegendFit {
   const labelPt = 9 * scale;
   const notePt = 8 * scale;
   const rowH = 0.198 * scale;
-  const noteH = 0.17 * scale;
+  const noteH = 0.1445 * scale;
+  const noteGap = 0.0255 * scale;
   const padding = { top: 0.104 * scale, right: 0.146 * scale, bottom: 0.104 * scale, left: 0.125 * scale };
   const iconW = 0.1875 * scale;
   const iconGap = 0.073 * scale;
   const colGap = 0.1667 * scale;
-  const cols = items.length >= 6 ? 2 : 1;
+  const maxInner = LEGEND_MAX_W - padding.left - padding.right;
+  // 글자 폭 어림의 오차(영문 대문자·− 기호는 0.56 em보다 넓다)와 항목 칸 테두리를 비율 + 고정 여유로 받는다.
+  const labelW = (label: string) => textIn(label, labelPt) * 1.1 + 0.05 * scale;
+  const widthsAt = (cols: number) => Array.from({ length: cols }, (_, c) => iconW + iconGap + Math.max(0, ...items.filter((_, i) => i % cols === c).map((item) => labelW(item.label))));
+  const span = (widths: number[]) => widths.reduce((sum, w) => sum + w, 0) + colGap * (widths.length - 1);
+  const cols = items.length >= 6 && span(widthsAt(2)) <= maxInner ? 2 : 1;
   const rows = Math.ceil(items.length / cols);
-  const colWidths = Array.from({ length: cols }, (_, c) => iconW + iconGap + Math.max(0, ...items.filter((_, i) => i % cols === c).map((item) => textIn(item.label, labelPt) * 1.04)));
-  const noteW = Math.max(0, ...notes.map((note) => textIn(note, notePt) * 1.04));
-  const inner = Math.max(colWidths.reduce((sum, w) => sum + w, 0) + colGap * (cols - 1), noteW);
-  const w = Math.min(5, padding.left + padding.right + inner);
-  const h = padding.top + padding.bottom + rows * rowH + notes.length * noteH;
-  return { size: { w, h }, cols, rows, colWidths, scale, labelPt, notePt, rowH, noteH, padding, iconW, iconGap, colGap, items, notes };
+  const colWidths = widthsAt(cols).map((w) => Math.min(w, maxInner));
+  const labelRoom = maxInner - iconW - iconGap;
+  const labels = items.map((item) => labelW(item.label) <= labelRoom ? item.label : oneLine(item.label, labelPt, (labelRoom - 0.05 * scale) / 1.1));
+  const itemsW = items.length > 0 ? span(colWidths) : 0;
+  const longestNote = Math.max(0, ...notes.map((note) => textIn(note, notePt) * 1.101)); // wrapToLines의 10 % 여유: 이 폭이면 한 줄에 든다
+  const noteW = Math.max(itemsW, Math.min(LEGEND_NOTE_W, maxInner, longestNote));
+  const noteLines = notes.map((note) => wrapToLines(note, notePt, noteW, 2));
+  const noteClipped = notes.map((note) => wrapToLines(note, notePt, noteW, 3).length > 2);
+  const itemRects = items.map((_, i) => {
+    const col = i % cols;
+    return { x: padding.left + colWidths.slice(0, col).reduce((sum, w) => sum + w + colGap, 0), y: padding.top + Math.floor(i / cols) * rowH, w: colWidths[col]!, h: rowH };
+  });
+  let y = padding.top + rows * rowH + (notes.length > 0 ? noteGap : 0);
+  const noteRects = noteLines.map((lines) => {
+    const rect = { x: padding.left, y, w: noteW, h: lines.length * noteH };
+    y += rect.h;
+    return rect;
+  });
+  const size = { w: padding.left + padding.right + Math.max(itemsW, noteW), h: y + padding.bottom };
+  return { size, cols, rows, colWidths, scale, labelPt, notePt, rowH, noteH, noteGap, padding, iconW, iconGap, colGap, items, notes, labels, labelClipped: labels.map((label, i) => label !== items[i]!.label), noteLines, noteClipped, itemRects, noteRects };
 }
 
 /** 한 줄에 맞게 자른다(…). textIn 어림이라 PPT와 화면이 같은 글을 쓴다. */

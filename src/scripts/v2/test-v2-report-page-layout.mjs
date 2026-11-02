@@ -498,6 +498,72 @@ for (const format of ["wide", "a3", "a4"]) {
   assert.equal(capped.filterLines.join(" "), twoLine, "줄인 뒤에도 전문");
 }
 
+// ── Ruling 30: 범례 판. 계산이 곧 그리는 값이다(항목 칸·주석 줄이 판 안, 폭 ≤ 5 in, 주석 ≤ 2줄, 높이 = 계산 합). 입력은 대치동 503 실제 항목·주석.
+{
+  const { legendLayout } = await import("../../lib/v2/report/report-page-frame.ts");
+  const row = (label) => ({ label, color: "#888" });
+  const site = { label: "대지", color: "#111", site: true };
+  const table = {
+    A10: { labels: ["㎡당 하위 20% · ~1,935.5만원/㎡", "㎡당 20~40% · 1,935.5~2,790.2만원/㎡", "㎡당 40~60% · 2,790.2~3,475.9만원/㎡", "㎡당 60~80% · 3,475.9~4,051.1만원/㎡", "㎡당 상위 20% · 4,051.1만원/㎡ 이상"], notes: ["색 구간은 반경 전체 기준"] },
+    A11: { labels: ["전세 ㎡당 하위 20% · ~887.6만원/㎡", "전세 ㎡당 20~40% · 887.6~1,050.2만원/㎡", "전세 ㎡당 40~60% · 1,050.2~1,239.8만원/㎡", "전세 ㎡당 60~80% · 1,239.8~1,603만원/㎡", "전세 ㎡당 상위 20% · 1,603만원/㎡ 이상"], notes: [] },
+    A08: { labels: ["정비사업 · 추진위", "정비사업 · 사업시행", "정비사업 · 미확인", "정비사업 · 정비계획", "정비사업 · 관리처분", "정비사업 · 준공", "정비사업 · 조합"], notes: [] },
+    D01: { labels: [], notes: ["VWorld 항공영상 · 촬영시기 미확인"] },
+    D10: { labels: ["OSM 녹지", "OSM 수계"], notes: ["항공사진 색 기반 수관 검출 · 재현율 미검증 · OSM 녹지 보조"] },
+    도로: { labels: ["보행·자전거", "보조간선·집산", "국지", "간선 이상"], notes: ["도로 중심선 · 실제 폭·공식 도로대장 아님 · © OpenStreetMap contributors"] },
+    D16: { labels: ["−5~5m", "5~20m", "20m 이상", "−20~−5m", "등고선"], notes: ["Copernicus GLO-30 표면모델(DSM, 30 m) · EGM2008 · 중심 상대고"] },
+    도보권: { labels: ["도보 15분", "도보 10분", "도보 5분", "보행망"], notes: ["OSM 보행망 · 80 m/분 · 내부 제안 기준"] },
+    S04: { labels: ["대지 일조"], notes: ["동지 일조시간 · 계절 레이어 · 건물·지형 그림자 반영"] },
+    "아주 긴 주석": { labels: ["항목"], notes: ["아주 긴 주석 ".repeat(30).trim()] },
+    "1열도 넘는 항목": { labels: ["아주 긴 항목 이름 ".repeat(12).trim(), "짧은 항목"], notes: [] },
+  };
+  const within = (r, f) => r.x >= -1e-6 && r.y >= -1e-6 && r.x + r.w <= f.size.w + 1e-6 && r.y + r.h <= f.size.h + 1e-6;
+  // 항목 칸 안 글 자리: 칸 - 견본 - 간격 - 칸 테두리(1 px 양쪽). 실제 글꼴이 어림보다 넓은 만큼을 여유로 받는다.
+  const room = (f, r) => r.w - f.iconW - f.iconGap;
+  for (const scale of [1, 1.4]) for (const [name, { labels, notes }] of Object.entries(table)) {
+    const f = legendLayout([...labels.map(row), site], notes, scale);
+    const tag = `${name} 배율 ${scale}`;
+    assert.ok(f.size.w <= 5 + 1e-6, `${tag} 판 폭 ${f.size.w} ≤ 5 in`);
+    assert.equal(f.itemRects.length, labels.length + 1, `${tag} 항목 칸 수`);
+    for (const r of [...f.itemRects, ...f.noteRects]) assert.ok(within(r, f), `${tag} 칸이 판 안 ${JSON.stringify(r)} / ${JSON.stringify(f.size)}`);
+    f.noteLines.forEach((lines, i) => {
+      assert.ok(lines.length >= 1 && lines.length <= 2, `${tag} 주석 줄 수 ${lines.length}`);
+      for (const l of lines) assert.ok(textIn(l, f.notePt) <= f.noteRects[i].w + 1e-6, `${tag} 주석 줄이 칸 폭 안: ${l}`);
+      near(f.noteRects[i].h, lines.length * f.noteH, `${tag} 주석 칸 높이 = 줄 수`);
+      assert.equal(f.noteClipped[i], lines.join(" ") !== notes[i], `${tag} 주석 잘림 표시`);
+      if (f.noteClipped[i]) assert.match(lines.at(-1), /…$/);
+    });
+    near(f.size.h, f.padding.top + f.rows * f.rowH + f.noteLines.reduce((sum, l) => sum + l.length * f.noteH, 0) + (notes.length ? f.noteGap : 0) + f.padding.bottom, `${tag} 높이 = 계산 합`);
+    f.labels.forEach((l, i) => {
+      assert.ok(textIn(l, f.labelPt) * 1.1 + 0.05 * scale <= room(f, f.itemRects[i]) + 1e-6, `${tag} 항목 글이 칸 안: ${l}`);
+      assert.equal(f.labelClipped[i], l !== [...labels, "대지"][i], `${tag} 항목 잘림 표시`);
+    });
+    for (let i = 0; i < f.itemRects.length; i++) for (let j = i + 1; j < f.itemRects.length; j++) assert.ok(!hit(f.itemRects[i], f.itemRects[j]), `${tag} 항목 칸 겹침`);
+  }
+  const at = (name, scale = 1) => legendLayout([...table[name].labels.map(row), site], table[name].notes, scale);
+  // 2열이 5 in를 넘으면 1열로 내린다(A10·A11). 넘지 않으면 2열 그대로(A08).
+  assert.equal(at("A10").cols, 1);
+  assert.equal(at("A11").cols, 1);
+  assert.equal(at("A08").cols, 2);
+  assert.deepEqual(at("A10").labelClipped, Array(6).fill(false), "1열이면 A10 항목은 자르지 않는다");
+  // 판 폭의 뼈대는 항목이다: 도로 주석은 2.6 in로 접어 두 줄, 판이 주석 한 줄 길이로 벌어지지 않는다.
+  const road = at("도로");
+  assert.equal(road.noteLines[0].length, 2);
+  assert.ok(road.size.w <= 2.6 + road.padding.left + road.padding.right + 1e-6, `도로 판 폭 ${road.size.w}`);
+  // 항목이 넓으면 주석은 항목 폭으로 접고, 짧은 주석은 판을 2.6 in까지 벌리지 않는다.
+  assert.equal(at("A10").noteLines[0].length, 1);
+  const short = legendLayout([row("국지"), site], ["짧은 주석"], 1);
+  assert.ok(short.size.w < 1.5, `짧은 주석 판 폭 ${short.size.w}`);
+  assert.deepEqual(short.noteLines, [["짧은 주석"]]);
+  // 항목 이름은 판 폭이 남아 있으면 자르지 않는다(D10·D16). 1열로도 넘는 항목만 …
+  for (const name of ["D10", "D16"]) assert.ok(at(name).labelClipped.every((c) => !c), `${name} 항목은 잘리지 않는다`);
+  const over = at("1열도 넘는 항목");
+  assert.deepEqual(over.labelClipped, [true, false, false]);
+  assert.match(over.labels[0], /…$/);
+  assert.equal(at("아주 긴 주석").noteClipped[0], true);
+  // 주석만 있는 쪽·아무것도 없는 입력
+  assert.equal(legendLayout([], ["주석"], 1).itemRects.length, 0);
+}
+
 // ── Task 6 위험: 질문 줄과 배지 폭. 긴 배지가 카드 밖으로 나가거나 질문 칸을 덮으면 뒤에서부터 `+n`으로 접는다.
 {
   const fig = { question: "가장 가까운 지하철역", answer: { value: "6분", kind: "number" }, stats: [] };

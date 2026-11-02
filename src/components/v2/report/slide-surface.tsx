@@ -1302,7 +1302,7 @@ function SummaryPanel({ slide, rect, unit, terrainSectionShown = false, interact
   </div>;
 }
 
-function LegendPanel({ slide, rect, unit, format = (slide.format ?? "wide") as SlideFormat, hoverLabel, onLegendHover, onLegendPin, onLegendMenu, interaction, legendOptions, fit }: { slide: Extract<PlannedSlide, { kind: "tile" }>; rect: Rect; unit: number; format?: SlideFormat; hoverLabel?: string | null; onLegendHover?: (label: string | null) => void; onLegendPin?: (label: string) => void; onLegendMenu?: (x: number, y: number, opener: HTMLElement) => void; interaction?: PanelInteraction; legendOptions?: MapFrameState["legend"]; /** 새 장 배치: 내용 크기 판(항목 6개 이상 2열). 글자·행·여백이 모두 이 값이다. */ fit?: LegendFit }) {
+export function LegendPanel({ slide, rect, unit, format = (slide.format ?? "wide") as SlideFormat, hoverLabel, onLegendHover, onLegendPin, onLegendMenu, interaction, legendOptions, fit }: { slide: Extract<PlannedSlide, { kind: "tile" }>; rect: Rect; unit: number; format?: SlideFormat; hoverLabel?: string | null; onLegendHover?: (label: string | null) => void; onLegendPin?: (label: string) => void; onLegendMenu?: (x: number, y: number, opener: HTMLElement) => void; interaction?: PanelInteraction; legendOptions?: MapFrameState["legend"]; /** 새 장 배치: 내용 크기 판(항목 6개 이상 2열). 글자·행·여백이 모두 이 값이다. */ fit?: LegendFit }) {
   const styles = useSurfaceStyles();
   if (!slide.map) return null;
   const legend = fit ?? slideLegend(slide.map, !slide.muted, undefined, true, format, legendOptions);
@@ -1325,9 +1325,7 @@ function LegendPanel({ slide, rect, unit, format = (slide.format ?? "wide") as S
       "--legend-gap": String(fit.iconGap),
       "--legend-row": String(fit.rowH),
       "--legend-note": String(fit.noteH),
-      padding: `${fit.padding.top * unit}px ${fit.padding.right * unit}px ${fit.padding.bottom * unit}px ${fit.padding.left * unit}px`,
-      gridTemplateColumns: fit.colWidths.map((w) => `${w * unit}px`).join(" "),
-      columnGap: fit.colGap * unit,
+      display: "block",
       background: "rgba(255, 255, 255, 0.93)",
       borderColor: "rgba(21, 23, 28, 0.12)",
       borderRadius: 0.104 * unit,
@@ -1344,10 +1342,14 @@ function LegendPanel({ slide, rect, unit, format = (slide.format ?? "wide") as S
         const key = legendKeys.get(item.label) ?? item.label;
         const instruction = focused ? "강조 해제" : "눌러서 강조";
         const rowClass = styles.legendRow + (focused || hovered ? " " + styles.legendRowActive : "");
+        // 새 장 배치: 칸 자리·글은 legendFit 값 그대로다. 잘린 항목만 전문을 title에 단다.
+        const place = fit ? { "data-part": "legend-item", style: { ...rectStyle(fit.itemRects[index]!, unit), position: "absolute" as const } } : {};
+        const text = fit?.labels[index] ?? item.label;
+        const fullTitle = fit?.labelClipped[index] ? item.label : undefined;
         if (item.site) return (
-          <div className={styles.legendRow} key={item.label + "-" + index}>
+          <div className={styles.legendRow} key={item.label + "-" + index} {...place}>
             <span className={styles.legendSwatchSite} aria-hidden="true" />
-            <span className={styles.legendText} style={fontStyle(pt, unit)}>{item.label}</span>
+            <span className={styles.legendText} title={fullTitle} style={fontStyle(pt, unit)}>{text}</span>
           </div>
         );
         // 썸네일(버튼 안)처럼 조작할 수 없는 범례는 button을 중첩하지 않는다.
@@ -1355,22 +1357,23 @@ function LegendPanel({ slide, rect, unit, format = (slide.format ?? "wide") as S
           ? <LegendSwatch item={item} />
           : <span className={styles.legendSwatch} style={{ background: item.color }} aria-hidden="true" />;
         if (!onLegendPin) return (
-          <div className={styles.legendRow} key={key + "-" + index}>
+          <div className={styles.legendRow} key={key + "-" + index} {...place}>
             {swatch}
-            <span className={styles.legendText} style={fontStyle(pt, unit)}>{item.label}</span>
+            <span className={styles.legendText} title={fullTitle} style={fontStyle(pt, unit)}>{text}</span>
           </div>
         );
           return (
-          <button key={key + "-" + index} type="button" className={rowClass} data-panel-action="legend-item" data-preview-legend={item.label} aria-label={`${item.label} 범례 강조`} aria-pressed={focused} title={instruction} onClick={() => onLegendPin?.(key)} onPointerEnter={(event) => { if (event.pointerType !== "touch") onLegendHover?.(item.label); }} onPointerLeave={() => onLegendHover?.(null)} onFocus={() => onLegendHover?.(item.label)} onBlur={() => onLegendHover?.(null)}>
+          <button key={key + "-" + index} type="button" className={rowClass} data-panel-action="legend-item" data-preview-legend={item.label} aria-label={`${item.label} 범례 강조`} aria-pressed={focused} title={instruction} onClick={() => onLegendPin?.(key)} onPointerEnter={(event) => { if (event.pointerType !== "touch") onLegendHover?.(item.label); }} onPointerLeave={() => onLegendHover?.(null)} onFocus={() => onLegendHover?.(item.label)} onBlur={() => onLegendHover?.(null)} {...place}>
             {swatch}
-            <span className={styles.legendText + (dimmed ? " " + styles.legendDimmed : "") + (focused ? " " + styles.legendFocused : "")} style={fontStyle(pt, unit)}>{item.label}</span>
+            <span className={styles.legendText + (dimmed ? " " + styles.legendDimmed : "") + (focused ? " " + styles.legendFocused : "")} title={fullTitle} style={fontStyle(pt, unit)}>{text}</span>
             {focused && <span className={styles.legendCheck} aria-hidden="true">✓</span>}
           </button>
         );
       })}
       {legend.notes.map((note, index) => {
-        const pt = fit ? fit.notePt : fitBlock([note], { w: Math.max(0.2, legendGeometry.noteW), h: SLIDE_LEGEND.note * legendScale }, 8.5 * legendScale, 7);
-        return <div className={styles.legendNote} style={fontStyle(pt, unit, fit ? { gridColumn: "1 / -1" } : {})} key={"note-" + index}>{note}</div>;
+        if (fit) return <div className={styles.legendNote} data-part="legend-note" title={fit.noteClipped[index] ? note : undefined} style={fontStyle(fit.notePt, unit, { ...rectStyle(fit.noteRects[index]!, unit), position: "absolute", minHeight: 0, lineHeight: `${fit.noteH * unit}px`, whiteSpace: "pre", overflow: "hidden" })} key={"note-" + index}>{fit.noteLines[index]!.join("\n")}</div>;
+        const pt = fitBlock([note], { w: Math.max(0.2, legendGeometry.noteW), h: SLIDE_LEGEND.note * legendScale }, 8.5 * legendScale, 7);
+        return <div className={styles.legendNote} style={fontStyle(pt, unit)} key={"note-" + index}>{note}</div>;
       })}
       {onLegendMenu && <button type="button" className={styles.legendMenuButton} aria-label="범례 메뉴" title="범례 메뉴" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); const rect = event.currentTarget.getBoundingClientRect(); onLegendMenu(rect.right - 8, rect.bottom + 8, event.currentTarget); }}>⋯</button>}
     </div>

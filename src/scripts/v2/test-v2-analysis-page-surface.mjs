@@ -364,6 +364,41 @@ for (const format of ["wide", "a3", "a4"]) {
   assert.ok(!render(planOf({ ...tilePage, layout: "map-charts" })).includes("적용 필터"), "필터가 없으면 필터 줄이 없다");
 }
 
+// ── Ruling 30: 범례 판은 legendFit 값을 그대로 그린다(줄 글·칸 자리). 잘린 글만 전문을 title에 단다.
+{
+  const base = planOf({ ...tilePage, layout: "map-key" });
+  const longNote = "도로 중심선 · 실제 폭·공식 도로대장 아님 · © OpenStreetMap contributors · 이 문구는 두 줄을 넘도록 일부러 길게 적은 범례 주석입니다 · 전문은 title에 있다";
+  const slide = { ...base, map: { ...base.map, notes: ["짧은 주석", longNote] } };
+  const fit = frameOf(slide).legend;
+  assert.equal(fit.noteClipped[0], false);
+  assert.equal(fit.noteClipped[1], true);
+  const m = render(slide);
+  const notes = [...m.matchAll(/<div[^>]*data-part="legend-note"[^>]*>([^<]*)<\/div>/g)];
+  assert.deepEqual(notes.map((n) => n[1].replaceAll("&amp;", "&")), fit.noteLines.map((lines) => lines.join("\n")), "주석 줄 글 = legendFit");
+  assert.ok(!/title=/.test(notes[0][0]), "잘리지 않은 주석에는 title이 없다");
+  assert.ok(notes[1][0].includes(`title="${longNote}"`), "잘린 주석에 전문 title");
+  fit.noteRects.forEach((r, i) => {
+    near(px(notes[i][0], "left"), r.x, "주석 x");
+    near(px(notes[i][0], "top"), r.y, "주석 y");
+    near(px(notes[i][0], "width"), r.w, "주석 폭");
+    near(px(notes[i][0], "height"), r.h, "주석 높이");
+  });
+  const rows = [...m.matchAll(/<(?:div|button)[^>]*data-part="legend-item"[^>]*>/g)];
+  assert.equal(rows.length, fit.itemRects.length, "항목 칸 수 = legendFit");
+  rows.forEach(([tag], i) => {
+    near(px(tag, "left"), fit.itemRects[i].x, "항목 x");
+    near(px(tag, "top"), fit.itemRects[i].y, "항목 y");
+    near(px(tag, "width"), fit.itemRects[i].w, "항목 폭");
+  });
+  // 1열로도 넘는 항목: 줄인 글을 그리고 전문은 title
+  const longLabel = "아주 긴 항목 이름 ".repeat(12).trim();
+  const { legendLayout } = await import("../../lib/v2/report/report-page-frame.ts");
+  const { LegendPanel } = await import("../../components/v2/report/slide-surface.tsx");
+  const over = legendLayout([{ label: longLabel, color: "#888" }], [], 1);
+  const overMarkup = renderToStaticMarkup(createElement(LegendPanel, { slide: base, rect: { x: 0, y: 0, ...over.size }, unit: 1, fit: over }));
+  assert.ok(overMarkup.includes(`>${over.labels[0]}<`) && overMarkup.includes(`title="${longLabel}"`), "잘린 항목은 줄인 글 + 전문 title");
+}
+
 // ── 「지도 + 그래프」는 요약 칸이 있는 장에서만 고른다
 {
   const a05 = GODEOK_RESULTS.find((result) => result.tileCode === "A05");
