@@ -60,24 +60,28 @@ export function ChartSvg({ shapes, box, panel, unit, kind, label, styles }: { sh
 }
 
 type Edges = { left: number; top: number; right: number; bottom: number };
-export type NotesPlacement = { up: boolean; width: number; maxHeight: number };
+export type NotesPlacement = { up: boolean; width: number; maxHeight: number; alignRight: boolean };
 
 /**
- * 주석 팝오버 자리. 칩의 왼쪽 가장자리에 붙이고, 폭은 288 px와 슬라이드 오른쪽 끝까지 남은 폭 중 작은 쪽,
+ * 주석 팝오버 자리. 칩의 왼쪽 가장자리에 붙여 오른쪽으로 펼치고, 오른쪽에 288 px가 없고 왼쪽 여유가 더 크면
+ * 칩의 오른쪽 가장자리에 붙여 왼쪽으로 펼친다(② 열 칩은 슬라이드 오른쪽 끝). 폭은 288 px와 펼치는 쪽 여유 중 작은 쪽,
  * 열리는 쪽은 위·아래 중 여유가 큰 쪽이며 최대 높이는 그 여유(슬라이드 표면과 화면이 겹치는 영역 안)다.
  */
 export function placeNotesPopover(chip: Edges, bounds: Edges): NotesPlacement {
-  const width = Math.max(96, Math.min(POPOVER_WIDTH, bounds.right - chip.left - VIEWPORT_MARGIN));
+  const roomRight = bounds.right - chip.left - VIEWPORT_MARGIN;
+  const roomLeft = chip.right - bounds.left - VIEWPORT_MARGIN;
+  const alignRight = roomRight < POPOVER_WIDTH && roomLeft > roomRight;
+  const width = Math.max(96, Math.min(POPOVER_WIDTH, alignRight ? roomLeft : roomRight));
   const above = chip.top - bounds.top - POPOVER_GAP - VIEWPORT_MARGIN;
   const below = bounds.bottom - chip.bottom - POPOVER_GAP - VIEWPORT_MARGIN;
   const up = above >= below;
-  return { up, width, maxHeight: Math.max(48, up ? above : below) };
+  return { up, width, maxHeight: Math.max(48, up ? above : below), alignRight };
 }
 
 /** `주석 N` 칩: 올리거나 포커스하면 각주 목록 팝오버(흰 카드). Esc·포커스를 잃음·포인터가 벗어남으로 닫는다. */
 export function NotesChip({ notes, rect, panel, unit, styles, growUp = false }: { notes: string[]; rect: Rect; panel: Rect; unit: number; styles: Styles; /** 칩은 손가락 크기(24 px)보다 작아지지 않는다. true면 모자란 높이를 위로 키워 열 아래 끝을 넘지 않는다. */ growUp?: boolean }) {
   const [open, setOpen] = useState(false);
-  const [placement, setPlacement] = useState<NotesPlacement>({ up: true, width: POPOVER_WIDTH, maxHeight: 320 });
+  const [placement, setPlacement] = useState<NotesPlacement>({ up: true, width: POPOVER_WIDTH, maxHeight: 320, alignRight: false });
   const buttonRef = useRef<HTMLButtonElement>(null);
   const popoverId = useId();
   useEffect(() => {
@@ -135,7 +139,7 @@ export function NotesChip({ notes, rect, panel, unit, styles, growUp = false }: 
         hidden={!open}
         className={styles.analysisNotesPopover}
         data-placement={placement.up ? "up" : "down"}
-        style={{ width: placement.width, maxHeight: placement.maxHeight + POPOVER_GAP, ...(placement.up ? { bottom: "100%", paddingBottom: POPOVER_GAP } : { top: "100%", paddingTop: POPOVER_GAP }) }}
+        style={{ width: placement.width, maxHeight: placement.maxHeight + POPOVER_GAP, ...(placement.alignRight ? { left: "auto", right: 0 } : {}), ...(placement.up ? { bottom: "100%", paddingBottom: POPOVER_GAP } : { top: "100%", paddingTop: POPOVER_GAP }) }}
       >
         <div className={styles.analysisNotesCard}>
           <ul>{notes.map((note) => <li key={note}>{note}</li>)}</ul>

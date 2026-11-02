@@ -475,30 +475,35 @@ for (const format of ["wide", "a3", "a4"]) {
 // ── 주석 팝오버 자리: 1024·1440 화면에서 화면과 슬라이드 표면 안에 머문다
 {
   const { placeNotesPopover } = await import("../../components/v2/report/analysis-column.tsx");
-  // ① 숫자 카드 아래 칩 자리(실제 기하). ②의 칩은 열 맨 아래 오른쪽 끝이라 팝오버 폭이 모자란다(final-fix-report의 Judge에게 넘김).
-  const column = { notesChip: frameOf(planOf({ ...tilePage, layout: "map-key" })).geometry.keyNotesChip };
+  // ① 숫자 카드 아래 칩, ② 열 맨 아래 오른쪽 끝 칩(실제 기하). ②는 오른쪽 여유가 모자라 칩 오른쪽에 맞춰 왼쪽으로 펼친다.
+  for (const [layout, notesChip] of [["map-key", frameOf(planOf({ ...tilePage, layout: "map-key" })).geometry.keyNotesChip], ["map-charts", frameOf(planOf({ ...tilePage, layout: "map-charts" })).geometry.column.notesChip]])
   for (const [W, H] of [[1024, 900], [1440, 900], [1440, 600]]) {
+    const column = { notesChip };
     // 왼쪽 도구 막대 72 px, 위 머리 줄 56 px, 아래 페이지 줄 120 px을 뺀 무대에 16:9를 맞춘다.
     const stageW = W - 72 - 16;
     const stageH = H - 56 - 120;
     const unit = Math.min(stageW / 13.333, stageH / 7.5);
     const surface = { left: 72, top: 56 + 8, right: 72 + 13.333 * unit, bottom: 56 + 8 + 7.5 * unit };
     const chip = { left: surface.left + column.notesChip.x * unit, top: surface.top + column.notesChip.y * unit, right: 0, bottom: 0 };
-    chip.right = chip.left + 54;
+    chip.right = chip.left + column.notesChip.w * unit;
     chip.bottom = chip.top + 24;
     const bounds = { left: Math.max(0, surface.left), top: Math.max(0, surface.top), right: Math.min(W, surface.right), bottom: Math.min(H, surface.bottom) };
     const p = placeNotesPopover(chip, bounds);
-    assert.ok(p.width <= 288 && chip.left + p.width <= bounds.right, `${W}×${H}: 폭이 288 px 이하이고 슬라이드 오른쪽 끝 안`);
+    const popLeft = p.alignRight ? chip.right - p.width : chip.left;
+    assert.ok(p.width <= 288 && popLeft >= bounds.left && popLeft + p.width <= bounds.right, `${layout} ${W}×${H}: 폭이 288 px 이하이고 슬라이드 좌우 끝 안 (${Math.round(popLeft)}–${Math.round(popLeft + p.width)})`);
+    if (layout === "map-charts") assert.ok(p.alignRight && p.width === 288, `${layout} ${W}×${H}: ② 칩은 왼쪽으로 펼쳐 288 px를 다 쓴다`);
     const top = p.up ? chip.top - 6 - p.maxHeight : chip.bottom + 6;
     const bottom = p.up ? chip.top - 6 : chip.bottom + 6 + p.maxHeight;
-    assert.ok(top >= bounds.top - 1e-9 && bottom <= bounds.bottom + 1e-9 && top >= 0 && bottom <= H, `${W}×${H}: 최대 높이(${Math.round(p.maxHeight)} px)까지 커져도 화면 안 (${Math.round(top)}–${Math.round(bottom)})`);
+    assert.ok(top >= bounds.top - 1e-9 && bottom <= bounds.bottom + 1e-9 && top >= 0 && bottom <= H, `${layout} ${W}×${H}: 최대 높이(${Math.round(p.maxHeight)} px)까지 커져도 화면 안 (${Math.round(top)}–${Math.round(bottom)})`);
   }
   // 위가 좁고 아래가 넓으면 아래로 연다
   const down = placeNotesPopover({ left: 700, right: 754, top: 100, bottom: 124 }, { left: 72, top: 64, right: 1000, bottom: 700 });
   assert.equal(down.up, false, "위 여유가 작으면 아래로");
   assert.equal(down.maxHeight, 700 - 124 - 6 - 8, "아래 여유가 최대 높이");
-  const narrow = placeNotesPopover({ left: 800, right: 854, top: 500, bottom: 524 }, { left: 72, top: 64, right: 1000, bottom: 700 });
-  assert.equal(narrow.width, 1000 - 800 - 8, "슬라이드 끝까지 남은 폭이 288보다 작으면 그 폭");
+  const flip = placeNotesPopover({ left: 800, right: 854, top: 500, bottom: 524 }, { left: 72, top: 64, right: 1000, bottom: 700 });
+  assert.ok(flip.alignRight && flip.width === 288, "오른쪽 여유가 288보다 작고 왼쪽이 넓으면 칩 오른쪽에 맞춰 왼쪽으로");
+  const narrow = placeNotesPopover({ left: 150, right: 204, top: 500, bottom: 524 }, { left: 72, top: 64, right: 400, bottom: 700 });
+  assert.ok(!narrow.alignRight && narrow.width === 400 - 150 - 8, "양쪽 다 좁으면 넓은 쪽(오른쪽) 여유만큼");
 }
 
 // ── Ruling 23: 각주는 한계부터 자리를 잡는다. 실데이터 길이의 출처에서도 첫 한계 앞 글자와 바탕지도 출처가 남고 폭 안이다.
