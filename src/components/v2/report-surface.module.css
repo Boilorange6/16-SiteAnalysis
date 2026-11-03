@@ -1393,13 +1393,14 @@
   table-layout: fixed;
 }
 
+/* 위아래 여백은 PPT 표 셀(세로 여백 0)에 맞춰 좁게 둔다. 넓으면 14행이 카드 높이를 넘어 아래 행이 잘린다. */
 .sourceTable th,
 .sourceTable td {
-  padding: calc(var(--slide-unit) * 0.08);
+  padding: calc(var(--slide-unit) * 0.03) calc(var(--slide-unit) * 0.08);
   border-bottom: 1px solid #d9dce2;
   text-align: left;
   vertical-align: top;
-  line-height: 1.25;
+  line-height: 1.2;
 }
 
 .sourceTable th {

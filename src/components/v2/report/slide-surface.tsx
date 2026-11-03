@@ -1920,6 +1920,9 @@ function CoverSurface({ slide, unit, basemap, interactive, thumbnail = false, on
   );
 }
 
+/** 출처 표가 카드 높이를 넘으면 글자를 줄여 모든 행이 보이게 한다(PPT 표의 `fit: shrink`와 같은 뜻). 이 아래로는 줄이지 않는다. */
+const SOURCE_TABLE_MIN_FIT = 0.6;
+
 function SourcesSurface({ slide, unit, basemap, thumbnail = false, fontHighlight, onFontContextMenu }: { slide: Extract<PlannedSlide, { kind: "sources" }>; unit: number; basemap: BasemapChoice; thumbnail?: boolean; fontHighlight?: FontTargetKey | null; onFontContextMenu?: SurfaceContextMenuHandler }) {
   const format = (slide.format ?? "wide") as SlideFormat;
   const styles = useSurfaceStyles();
@@ -1928,16 +1931,30 @@ function SourcesSurface({ slide, unit, basemap, thumbnail = false, fontHighlight
   const mapPanels = { title: layout.title, summary: null, legend: null };
   const map = slide.map;
   const sourcePt = fontSizeForStyle(slide.style, "source");
+  const tableWrapRef = useRef<HTMLDivElement>(null);
+  const fitKey = `${slide.rows.map((row) => row.source + row.provider + row.license + row.tiles).join("|")}|${unit}|${sourcePt}|${layout.table.h}`;
+  const [fitState, setFitState] = useState({ key: "", fit: 1 });
+  const fit = fitState.key === fitKey ? fitState.fit : 1;
+  React.useLayoutEffect(() => {
+    const wrap = tableWrapRef.current;
+    const table = wrap?.firstElementChild as HTMLElement | null;
+    if (!wrap || !table || fit <= SOURCE_TABLE_MIN_FIT) return;
+    const style = getComputedStyle(wrap);
+    const room = wrap.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+    if (table.offsetHeight <= room + 1) return;
+    setFitState({ key: fitKey, fit: Math.max(SOURCE_TABLE_MIN_FIT, fit * (room / table.offsetHeight) * 0.99) });
+  });
+  const tablePt = sourcePt * fit;
   return (
     <>
       {map && <MapLayer model={map} style={slide.style} unit={unit} basemap={basemap} panels={mapPanels} siteX={0.5} interactive={false} thumbnail={thumbnail} onPatch={() => undefined} format={format} label="출처 장 배경 지도" fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} />}
       <div className={styles.sourceSlide}>
         <ReportTitlePanel color="#7A7E87" title="자료 출처와 기준일" kind="" rect={layout.title} unit={unit} style={slide.style} />
-        <div className={styles.sourceTableWrap} style={rectStyle(layout.table, unit)}>
+        <div ref={tableWrapRef} className={styles.sourceTableWrap} style={rectStyle(layout.table, unit)}>
           <table className={styles.sourceTable} data-report-source-table="true">
             <colgroup><col style={{ width: "24%" }} /><col style={{ width: "14%" }} /><col style={{ width: "16%" }} /><col style={{ width: "25%" }} /><col style={{ width: "21%" }} /></colgroup>
-            <thead><tr><th style={fontStyle(sourcePt, unit)}>제공처·자료</th><th style={fontStyle(sourcePt, unit)}>기준일</th><th style={fontStyle(sourcePt, unit)}>이용조건</th><th style={fontStyle(sourcePt, unit)}>원문 확인</th><th style={fontStyle(sourcePt, unit)}>사용한 타일</th></tr></thead>
-            <tbody>{slide.rows.map((row) => <tr key={row.source + "|" + row.asOf}><td className={styles.sourceCell} style={fontStyle(sourcePt, unit)}><b>{row.provider || "제공처 미기록"}</b><br />{row.source}</td><td className={styles.sourceCell} style={fontStyle(sourcePt, unit)}>{row.asOf}</td><td className={styles.sourceCell} style={fontStyle(sourcePt, unit)}>{row.license || "미기록"}</td><td className={styles.sourceCell} style={fontStyle(sourcePt, unit)}>{row.url ? <a href={row.url}>원문 확인</a> : "원문 링크 미기록"}</td><td className={styles.sourceCell} style={fontStyle(sourcePt, unit)}>{row.tiles}</td></tr>)}</tbody>
+            <thead><tr><th style={fontStyle(tablePt, unit)}>제공처·자료</th><th style={fontStyle(tablePt, unit)}>기준일</th><th style={fontStyle(tablePt, unit)}>이용조건</th><th style={fontStyle(tablePt, unit)}>원문 확인</th><th style={fontStyle(tablePt, unit)}>사용한 타일</th></tr></thead>
+            <tbody>{slide.rows.map((row) => <tr key={row.source + "|" + row.asOf}><td className={styles.sourceCell} style={fontStyle(tablePt, unit)}><b>{row.provider || "제공처 미기록"}</b><br />{row.source}</td><td className={styles.sourceCell} style={fontStyle(tablePt, unit)}>{row.asOf}</td><td className={styles.sourceCell} style={fontStyle(tablePt, unit)}>{row.license || "미기록"}</td><td className={styles.sourceCell} style={fontStyle(tablePt, unit)}>{row.url ? <a href={row.url}>원문 확인</a> : "원문 링크 미기록"}</td><td className={styles.sourceCell} style={fontStyle(tablePt, unit)}>{row.tiles}</td></tr>)}</tbody>
           </table>
         </div>
         {notices.length > 0 && <div className={styles.sourceNotice} data-report-source-notice="true" style={{ ...rectStyle(layout.notice, unit), ...fontStyle(layout.noticePt, unit) }}>{notices.map((notice) => <p key={notice}>{notice}</p>)}</div>}
