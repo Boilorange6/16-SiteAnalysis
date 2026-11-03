@@ -33,7 +33,7 @@ import { FOOTER_BOX, TITLE_BOX, figureSceneSize, framePanelRule, reportMapAvoid,
 import { PAGE_EDGE, frameChromeUnit, type ReportPageGeometry } from "@/lib/v2/ui/report-page-layout";
 import type { CalloutOverviewFrame } from "@/lib/v2/report/types";
 import { AnalysisColumn, NotesChip } from "./analysis-column";
-import { KeyFigureCard } from "./key-figure-card";
+import { FullText, KeyFigureCard } from "./key-figure-card";
 import { fontStyle } from "./surface-style";
 
 type SurfaceStyles = Record<string, string>;
@@ -1306,8 +1306,9 @@ function TitleChip({ frame, color, rect, unit, interaction }: { frame: ReportPag
   return (
     <div className={styles.kfTitle} data-part="title-chip" style={{ ...rectStyle(rect, unit), padding: `0 ${TITLE_BOX.padX * unit}px`, gap: TITLE_BOX.gap * unit }} {...interaction}>
       <span className={styles.titleDot} style={{ background: color, width: TITLE_BOX.dot * unit, height: TITLE_BOX.dot * unit }} aria-hidden="true" />
-      <h3 className={styles.slideTitle} title={frame.title.titleClipped ? frame.title.fullText : undefined} style={fontStyle(pt, unit, { fontWeight: 900, whiteSpace: "nowrap" })}>{text}</h3>
-      {kind && <span className={styles.kfKind} title={frame.title.kindClipped ? frame.title.fullKind : undefined} style={fontStyle(kindPt, unit, { padding: `${TITLE_BOX.kindPadY * unit}px ${TITLE_BOX.kindPadX * unit}px`, borderRadius: TITLE_BOX.kindRadius * unit })}>{kind}</span>}
+      <h3 className={styles.slideTitle} title={frame.title.titleClipped ? frame.title.fullText : undefined} aria-label={frame.title.titleClipped ? frame.title.fullText : undefined} style={fontStyle(pt, unit, { fontWeight: 900, whiteSpace: "nowrap" })}>{text}</h3>
+      {kind && <span className={styles.kfKind} title={frame.title.kindClipped ? frame.title.fullKind : undefined} aria-hidden={frame.title.kindClipped || undefined} style={fontStyle(kindPt, unit, { padding: `${TITLE_BOX.kindPadY * unit}px ${TITLE_BOX.kindPadX * unit}px`, borderRadius: TITLE_BOX.kindRadius * unit })}>{kind}</span>}
+      {kind && <FullText styles={styles} text={frame.title.kindClipped ? frame.title.fullKind : null} />}
     </div>
   );
 }
@@ -1409,7 +1410,8 @@ export function LegendPanel({ slide, rect, unit, format = (slide.format ?? "wide
         if (item.site) return (
           <div className={styles.legendRow} key={item.label + "-" + index} {...place}>
             <span className={styles.legendSwatchSite} aria-hidden="true" />
-            <span className={styles.legendText} title={fullTitle} style={textStyle}>{text}</span>
+            <span className={styles.legendText} title={fullTitle} aria-hidden={fullTitle ? true : undefined} style={textStyle}>{text}</span>
+            <FullText styles={styles} text={fullTitle} />
           </div>
         );
         // 썸네일(버튼 안)처럼 조작할 수 없는 범례는 button을 중첩하지 않는다.
@@ -1422,7 +1424,8 @@ export function LegendPanel({ slide, rect, unit, format = (slide.format ?? "wide
         if (!onLegendPin || item.static) return (
           <div className={styles.legendRow} key={key + "-" + index} {...place}>
             {swatch}
-            <span className={styles.legendText} title={fullTitle} style={textStyle}>{text}</span>
+            <span className={styles.legendText} title={fullTitle} aria-hidden={fullTitle ? true : undefined} style={textStyle}>{text}</span>
+            <FullText styles={styles} text={fullTitle} />
           </div>
         );
           return (
@@ -1434,7 +1437,7 @@ export function LegendPanel({ slide, rect, unit, format = (slide.format ?? "wide
         );
       })}
       {legend.notes.map((note, index) => {
-        if (fit) return <div className={styles.legendNote} data-part="legend-note" title={fit.noteClipped[index] ? note : undefined} style={fontStyle(fit.notePt, unit, { ...rectStyle(fit.noteRects[index]!, unit), position: "absolute", minHeight: 0, lineHeight: `${fit.noteH * unit}px`, whiteSpace: "pre", overflow: "hidden" })} key={"note-" + index}>{fit.noteLines[index]!.join("\n")}</div>;
+        if (fit) return <React.Fragment key={"note-" + index}><div className={styles.legendNote} data-part="legend-note" title={fit.noteClipped[index] ? note : undefined} aria-hidden={fit.noteClipped[index] || undefined} style={fontStyle(fit.notePt, unit, { ...rectStyle(fit.noteRects[index]!, unit), position: "absolute", minHeight: 0, lineHeight: `${fit.noteH * unit}px`, whiteSpace: "pre", overflow: "hidden" })}>{fit.noteLines[index]!.join("\n")}</div><FullText styles={styles} text={fit.noteClipped[index] ? note : null} /></React.Fragment>;
         const pt = fitBlock([note], { w: Math.max(0.2, legendGeometry.noteW), h: SLIDE_LEGEND.note * legendScale }, 8.5 * legendScale, 7);
         return <div className={styles.legendNote} style={fontStyle(pt, unit)} key={"note-" + index}>{note}</div>;
       })}

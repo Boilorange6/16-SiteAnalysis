@@ -651,6 +651,20 @@ assert.ok(charts.blocks.some((b) => textsOf(b).includes("1~4층")) && charts.blo
   const text = rectOf(title);
   assert.ok(text.x + text.w <= plate.x + plate.w + 0.01 && kind.x + kind.w <= plate.x + plate.w + 0.01, "제목 글·종류 칩이 제목 칩 안");
   assert.ok(text.x + text.w <= kind.x + 0.01, "제목 글이 종류 칩을 덮지 않는다");
+  // T18: 잘린 제목의 전문은 마우스 title에만 두지 않고 스크린리더용 aria-label로도 둔다
+  assert.match(render(slide), new RegExp(`<h3[^>]*aria-label="${f.title.fullText}"`), "잘린 제목 전문이 aria-label에 있다");
+}
+
+// T18: 카드 해석 줄이 잘리면 전문이 스크린리더용 숨은 글(srOnly)로 같이 있고, 잘린 쪽은 aria-hidden이다.
+{
+  const sentence = "낮은 층 건물이 대부분이고 높은 건물은 일부다 ".repeat(8).trim();
+  const longViews = new Map([[base.result.tileId, { ...base.view, sentence }]]);
+  const slide = base.planOf({ ...base.tilePage, layout: "map-key" }, longViews);
+  const f = pageFrameFor(slide);
+  assert.ok(f.fit.sentenceClipped, "전제: 해석 줄이 카드 안에서 잘린다");
+  const html = render(slide);
+  assert.match(html, /data-part="key-sentence"[^>]*aria-hidden="true"/, "잘린 해석 줄은 aria-hidden");
+  assert.ok(html.includes(`<span class="srOnly">${f.fit.sentenceFull}</span>`), "해석 전문이 srOnly로 있다");
 }
 
 // T21: 표지 타일 목록은 줄이 많아도 마지막 줄까지 오른쪽 판 안에 든다(와이드 30줄이 판 밖으로 잘리던 문제). 화면 목록 상자도 줄 합 이상이다.
