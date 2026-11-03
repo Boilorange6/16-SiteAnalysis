@@ -761,7 +761,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
     return shownBaseHide ? { ...base, map: withMapColors(base.map, { hide: shownBaseHide }) ?? null } : base;
   }, [siteSummary, results, scene, shownBaseHide]);
   const analysisDate = results[0]?.conditions.analysisDate ?? "기준일 미확인";
-  const sourceMeta = useSourceMeta(views);
+  const { meta: sourceMeta, ready: sourceMetaReady } = useSourceMeta(views);
   const reportPlanContext = useMemo(() => ({ summary, analysisDate, views, results: reportResults, scene, analysisSiteParcel, resultFor: reportResultFor, sourceMeta }), [analysisDate, analysisSiteParcel, reportResultFor, reportResults, scene, sourceMeta, summary, views]);
   const reportDocPageCount = useMemo(() => printedPageCount(board.reportDoc, views, reportPlanContext), [board.reportDoc, reportPlanContext, views]);
   const total = board.order.length;
@@ -1280,7 +1280,7 @@ function Board({ baseResults, siteSummary, analysisId, scene, jobs, refreshSumma
           </>}
         </header>
 
-        {boardMode === "report" && <ReportMode board={board} dispatch={dispatch} views={views} summary={summary} analysisDate={analysisDate} basemap={basemap} dirty={boardDirty} demo={demo} busy={actionBusy} onPresentation={openReportPresentation} results={reportResults} scene={scene} analysisSiteParcel={analysisSiteParcel} resultFor={reportResultFor} sourceMeta={sourceMeta} />}
+        {boardMode === "report" && <ReportMode board={board} dispatch={dispatch} views={views} summary={summary} analysisDate={analysisDate} basemap={basemap} dirty={boardDirty} demo={demo} busy={actionBusy} onPresentation={openReportPresentation} results={reportResults} scene={scene} analysisSiteParcel={analysisSiteParcel} resultFor={reportResultFor} sourceMeta={sourceMeta} sourceMetaPending={!sourceMetaReady} />}
 
         {boardMode === "tile" && <>
         {!demo && <AnalysisProgress jobs={jobs} onCancel={onCancel} canceling={canceling} />}

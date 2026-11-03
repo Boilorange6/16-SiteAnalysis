@@ -95,6 +95,8 @@ export type ReportModeProps = {
   resultFor?: (tileId: string) => TileResult | undefined;
   /** 서버 출처 메타. 출처 장·각주 띠의 제공처·이용조건·링크가 이 값으로 채워진다. */
   sourceMeta?: ReadonlyMap<string, SourceMeta>;
+  /** 출처 메타 요청이 아직 안 끝났다. 끝나기 전에 내보내면 출처 장이 「미기록」으로 나가므로 내보내기·발표를 잠시 막는다. */
+  sourceMetaPending?: boolean;
 };
 
 function simplePage(doc: ReportDoc, kind: "cover" | "sources" | "blank"): ReportPage {
@@ -351,7 +353,7 @@ function otherCalloutPageLabels(plan: PlannedSlide[], current: CalloutPage): Rea
   return new Map([...labels].map(([key, labelsForKey]) => [key, labelsForKey.join(" · ")]));
 }
 
-export default function ReportMode({ board, dispatch, views, summary, analysisDate, basemap, dirty, demo = false, busy = false, onPresentation, results, scene, analysisSiteParcel, resultFor, sourceMeta }: ReportModeProps) {
+export default function ReportMode({ board, dispatch, views, summary, analysisDate, basemap, dirty, demo = false, busy = false, onPresentation, results, scene, analysisSiteParcel, resultFor, sourceMeta, sourceMetaPending = false }: ReportModeProps) {
   const [history, setHistory] = useState<ReportHistory>({ past: [], present: board.reportDoc, future: [] });
   const historyRef = useRef(history);
   historyRef.current = history;
@@ -1755,8 +1757,8 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
               <option value="a4">{formatLabel("a4")}</option>
             </select>
           </label>
-          <button type="button" className={styles.secondaryButton} onClick={onPresentation} disabled={demo || busy || history.present.pages.length === 0} aria-label="발표 미리보기">발표 미리보기</button>
-          <button ref={exportTriggerRef} type="button" className={styles.primaryDarkButton} onClick={() => setExportOpen(true)} disabled={demo || busy || history.present.pages.length === 0} aria-haspopup="dialog" aria-expanded={exportOpen} aria-controls={exportOpen ? "report-export-panel" : undefined}>내보내기</button>
+          <button type="button" className={styles.secondaryButton} onClick={onPresentation} disabled={demo || busy || sourceMetaPending || history.present.pages.length === 0} aria-label="발표 미리보기" title={sourceMetaPending ? "출처 정보를 받는 중입니다" : undefined}>발표 미리보기</button>
+          <button ref={exportTriggerRef} type="button" className={styles.primaryDarkButton} onClick={() => setExportOpen(true)} disabled={demo || busy || sourceMetaPending || history.present.pages.length === 0} title={sourceMetaPending ? "출처 정보를 받는 중입니다" : undefined} aria-haspopup="dialog" aria-expanded={exportOpen} aria-controls={exportOpen ? "report-export-panel" : undefined}>내보내기</button>
         </div>,
         reportActionsTarget,
       )}

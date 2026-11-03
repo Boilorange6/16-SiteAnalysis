@@ -365,6 +365,10 @@ assert.ok(missingPlan.every((slide) => slide.kind === "tile" && slide.body.kind 
   assert.ok(pageLine.split("sourceMeta").length >= 3, "page.tsx reportPlanContext가 sourceMeta를 값과 의존성으로 넘긴다");
   const modeLine = lineOf("../../components/v2/report/report-mode.tsx", "const planContext = useMemo");
   assert.ok(modeLine.split("sourceMeta").length >= 3, "report-mode.tsx planContext가 sourceMeta를 값과 의존성으로 넘긴다");
+  // 메타가 오기 전에는 내보내기·발표를 막는다(출처 장이 「미기록」으로 나가는 경쟁 상태).
+  assert.ok(lineOf("../../components/v2/report/report-mode.tsx", 'aria-label="발표 미리보기"').includes("sourceMetaPending"), "발표 미리보기가 메타를 기다린다");
+  assert.ok(lineOf("../../components/v2/report/report-mode.tsx", "ref={exportTriggerRef}").includes("sourceMetaPending"), "내보내기가 메타를 기다린다");
+  assert.ok(lineOf("../../app/v2/page.tsx", "<ReportMode ").includes("sourceMetaPending={!sourceMetaReady}"), "page.tsx가 메타 대기 상태를 ReportMode에 넘긴다");
 }
 
 // 이용조건 고지문(2026-11-03): Copernicus DEM 행이 있는 출처 장에는 제6조 고정 고지문이 표 아래에 따라오고, 표는 그만큼 줄어 띠를 침범하지 않는다.
