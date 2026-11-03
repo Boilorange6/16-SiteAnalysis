@@ -37,7 +37,7 @@ const { buildOsmSubway, buildPlannedRail, legalCodeFromCore } = await import("..
 const { buildOsmRoads, OSM_ROADS_LAYER, OSM_ROADS_RIGHTS } = await import("../../lib/v2/ingest/sources/osm-roads.ts");
 const { buildOsmAreas, OSM_GREEN_LAYERS, OSM_LANDUSE_SOURCE_ID, OSM_WATER_LAYERS, OSM_WATER_SOURCE_ID } = await import("../../lib/v2/ingest/sources/osm-landuse.ts");
 const { buildDemTiles } = await import("../../lib/v2/ingest/sources/dem.ts");
-const { GLO30_PROVIDER, GLO30_RIGHTS, GLO30_SOURCE_URL } = await import("../../lib/v2/data/terrain.ts");
+const { GLO30_RIGHTS, GLO30_SOURCE_URL } = await import("../../lib/v2/data/terrain.ts");
 const { legacyDbPath, v2DataDir } = await import("../../lib/v2/paths.ts");
 
 const args = process.argv.slice(2);
@@ -407,7 +407,7 @@ if (only.has("terrain")) {
     const checksum = demFiles.map((file, i) => `${basename(file)}:${stats[i].size}-${Math.round(stats[i].mtimeMs)}`).join("|");
     const releaseId = insertRelease(db, {
       sourceId: "terrain_tiles",
-      provider: demSource === "glo30" ? GLO30_PROVIDER : "Mapzen/AWS Terrain Tiles (SRTM 1 arc-second)",
+      provider: demSource === "glo30" ? "Copernicus 프로그램(유럽연합·ESA)" : "Mapzen/AWS Terrain Tiles (SRTM 1 arc-second)",
       sourceUrl: demSource === "glo30" ? GLO30_SOURCE_URL : "https://registry.opendata.aws/terrain-tiles/",
       sourceAsOf: null,
       fetchedAt,
@@ -440,7 +440,7 @@ if (only.has("weather")) {
     const checksum = sourceFiles.map((file, i) => `${file.slice(asosDir.length + 1)}:${fileStats[i].size}-${Math.round(fileStats[i].mtimeMs)}`).join("|");
     const releaseId = insertRelease(db, {
       sourceId: "asos",
-      provider: "기상청 ASOS 시간자료",
+      provider: "기상청",
       sourceUrl: "https://www.data.go.kr/data/15139432/openapi.do",
       sourceAsOf: period.end,
       fetchedAt,
@@ -488,7 +488,7 @@ if (only.has("market")) {
     return buildSupply(db, {
       core: ctx.core,
       legacy: readLegacyPlannedHousing(legacyPath),
-      legacyReleaseId: release(db, "applyhome", legacyPath, "한국부동산원 청약홈(기존 앱 적재본)", "https://www.data.go.kr/data/15101046/fileData.do", "UNRESTRICTED"),
+      legacyReleaseId: release(db, "applyhome", legacyPath, "한국부동산원", "https://www.data.go.kr/data/15101046/fileData.do", "UNRESTRICTED"),
       moveIn: (await csvRecords(moveInFile)).records,
       moveInReleaseId: release(db, "move_in", moveInFile, "한국부동산원", "https://www.data.go.kr/data/15111714/fileData.do", "UNRESTRICTED"),
       ...(applyhomeTypesFile ? {
@@ -585,7 +585,7 @@ if (only.has("reference")) {
     const sts = vworldFiles.map(({ file }) => statSync(file));
     return insertRelease(db_, {
       sourceId: SCHOOL_ZONE_SOURCE_ID,
-      provider: "국토교통부(VWorld Data API 학교 학구도·학교군)",
+      provider: "한국교육시설안전원(VWorld 2D 데이터 API 제공)",
       sourceUrl: "https://api.vworld.kr/req/data",
       sourceAsOf: baseDates.at(-1) ?? null,
       fetchedAt: new Date(Math.max(...sts.map((st) => st.mtimeMs))).toISOString(),
@@ -636,12 +636,12 @@ if (only.has("reference")) {
     const railManifest = JSON.parse(readFileSync(railManifestFile, "utf8"));
     if (!core_) console.warn("⚠ core가 없어 철도 feature의 시도 코드를 (미상)으로 기록합니다");
     const generated = typeof subway.generated_at === "string" && /^\d{4}-\d{2}-\d{2}/.test(subway.generated_at) ? subway.generated_at.slice(0, 10) : null;
-    return buildOsmSubway(db_, subway, railRelease("osm_subway", subwayFile, generated, "https://overpass-api.de/", "OpenStreetMap contributors(Overpass API, 기존 앱 스냅샷)", "ODbL-1.0", { attribution: subway.license ?? null, railSnapshotVersion: railManifest.snapshotVersion ?? null }), legalCodeFromCore(core_));
+    return buildOsmSubway(db_, subway, railRelease("osm_subway", subwayFile, generated, "https://overpass-api.de/", "OpenStreetMap contributors(Overpass API)", "ODbL-1.0", { attribution: subway.license ?? null, railSnapshotVersion: railManifest.snapshotVersion ?? null }), legalCodeFromCore(core_));
   });
   step("rail/planned", [plannedFile], 0, SLOT.planned, async () => {
     const planned = JSON.parse(readFileSync(plannedFile, "utf8"));
     const verified = planned.map((p) => p.lastVerifiedAt).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort().at(-1) ?? null;
-    return buildPlannedRail(db_, planned, railRelease("planned_rail", plannedFile, verified, "https://news.seoul.go.kr/citybuild/city_railroad", "기존 앱 계획 철도 공개 투영(공식 상태 + OSM 보조 선형)", "ODbL-1.0", { note: "선형이 OSM 공사 선형 보조(approximation)" }), legalCodeFromCore(core_));
+    return buildPlannedRail(db_, planned, railRelease("planned_rail", plannedFile, verified, "https://news.seoul.go.kr/citybuild/city_railroad", "서울특별시(공식 상태)·OpenStreetMap contributors(선형)", "KOGL_4+ODbL-1.0", { note: "선형이 OSM 공사 선형 보조(approximation)", rights: "공식 상태 공공누리 제4유형(출처표시·상업적 이용금지·변경금지) · 선형 ODbL 1.0" }), legalCodeFromCore(core_));
   });
 
   // 점 CSV 3종

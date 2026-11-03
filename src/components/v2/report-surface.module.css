@@ -1419,6 +1419,18 @@
   padding: 0;
 }
 
+.sourceNotice {
+  position: absolute;
+  z-index: 2;
+  color: #5b606b;
+  line-height: 1.25;
+  overflow: hidden;
+}
+
+.sourceNotice p {
+  margin: 0;
+}
+
 .sheetSlide {
   position: absolute;
   inset: 0;

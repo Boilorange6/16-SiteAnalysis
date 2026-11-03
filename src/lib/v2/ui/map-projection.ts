@@ -206,7 +206,8 @@ export const BASEMAP_STACK: Record<BasemapChoice, BasemapLayer[]> = { vector: []
 export function tileUrl(layer: BasemapLayer, z: number, x: number, y: number): string {
   return `/site/api/v2/tiles/${layer}/${z}/${y}/${x}`;
 }
-export const BASEMAP_ATTRIBUTION = "© VWorld(국토교통부)";
+/** VWorld 지도·영상 타일 바탕의 출처 표기. 이용약관 제13조 9항: 지도 화면에는 오픈플랫폼을 이용해 만든 것임을 밝힌다(화면·출처 띠·PNG·PPT 공통). */
+export const BASEMAP_ATTRIBUTION = "© VWorld(국토교통부) · VWorld 오픈플랫폼을 이용하여 만든 것임";
 /** 벡터 바탕(OSM 도로·녹지·수계 + 국토교통부 건물·필지)의 출처 표기. 화면의 지도·출처 띠·요약이 같은 문구를 쓴다. */
 export const VECTOR_ATTRIBUTION = "© OpenStreetMap contributors · 국토교통부";
 /** 실제로 그려지는 바탕에 맞는 출처 표기 */

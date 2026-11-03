@@ -549,7 +549,7 @@ function sourceRowsForViews(views: Iterable<TileView>, sourceMeta: ReadonlyMap<s
     const rows = sourceRowsFor(view, sourceMeta) ?? fallbackSourceRows(view);
     for (const row of rows) {
       const key = `${row.provider}|${row.name}|${row.asOf}`;
-      const current = bySource.get(key) ?? { source: row.name, asOf: row.asOf, tiles: [], provider: row.provider, license: row.license, url: row.url };
+      const current = bySource.get(key) ?? { source: row.name, asOf: row.asOf, tiles: [], provider: row.provider, license: row.license, url: row.url, ...(row.notices ? { notices: row.notices } : {}) };
       if (!current.tiles.includes(view.title)) current.tiles.push(view.title);
       if ((!current.provider || current.provider === "제공처 미기록") && row.provider) current.provider = row.provider;
       if ((!current.license || current.license === "미기록") && row.license) current.license = row.license;

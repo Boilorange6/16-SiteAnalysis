@@ -32,6 +32,8 @@ export type ReportSourceRow = {
   provider?: string | null;
   license?: string | null;
   url?: string | null;
+  /** 이용조건이 요구하는 고정 고지문. 이 행이 있는 출처 장의 표 아래에 그대로 싣는다. */
+  notices?: readonly string[];
 };
 
 export type ReportSlide =
@@ -484,7 +486,7 @@ export function buildReportPlan(input: {
     const rows = reportRowsFor(v) ?? fallbackSourceRows(v);
     for (const row of rows) {
       const key = `${row.provider}|${row.name}|${row.asOf}`;
-      const e = bySource.get(key) ?? { source: row.name, asOf: row.asOf, tiles: [], provider: row.provider, license: row.license, url: row.url };
+      const e = bySource.get(key) ?? { source: row.name, asOf: row.asOf, tiles: [], provider: row.provider, license: row.license, url: row.url, ...(row.notices ? { notices: row.notices } : {}) };
       if (!e.tiles.includes(v.title)) e.tiles.push(v.title);
       if ((!e.provider || e.provider === "제공처 미기록") && row.provider) e.provider = row.provider;
       if ((!e.license || e.license === "미기록") && row.license) e.license = row.license;

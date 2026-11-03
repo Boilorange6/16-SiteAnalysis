@@ -9,7 +9,7 @@ import { metersPerPixel, slideViewport, zoomViewAt, type MapView } from "@/lib/v
 import { frameBasemap } from "@/lib/v2/ui/basemap";
 import { mapFrameScaleOptions, scaleOptionsForFrame, zoomForScale } from "@/lib/v2/ui/report-scale";
 import { SLIDE_LEGEND, calloutLegendEntries, layoutRects, slideCalloutAvoidance, slideCalloutLegendLayout, slideGeometry, slideLayout, slideLegend, slideLegendGeometry, slidePanelRects, slidePanelScale, slideReserved, slideSize, slideSiteX, terrainSectionLayout, type Rect, type SlideFormat, type TerrainSectionLayout } from "@/lib/v2/ui/overlay-layout";
-import { coverLayout, fitBlock, fitFooterText, fontSizeForStyle, footerBasemaps, footerCredit, shrinkPt, sourceLayout, titlePlateRect, type Slide } from "@/lib/v2/report/pptx-kit";
+import { coverLayout, fitBlock, fitFooterText, fontSizeForStyle, footerBasemaps, footerCredit, shrinkPt, sourceLayout, sourceNotices, titlePlateRect, type Slide } from "@/lib/v2/report/pptx-kit";
 import { SLIDE_OVERVIEW_FILL, calloutHoverText, calloutKeyFromTag, calloutKeyTag, calloutPageTitleTail, slideCalloutFrame } from "@/lib/v2/ui/callout-layout";
 import { a05ReportModule } from "@/lib/v2/tile/a05/report";
 import { layerStyle, legendItemsOf, legendLabelOf, modelWithHiddenLayers, rasterSwatchBackground, type MapModel } from "@/lib/v2/ui/map-layers";
@@ -1923,7 +1923,8 @@ function CoverSurface({ slide, unit, basemap, interactive, thumbnail = false, on
 function SourcesSurface({ slide, unit, basemap, thumbnail = false, fontHighlight, onFontContextMenu }: { slide: Extract<PlannedSlide, { kind: "sources" }>; unit: number; basemap: BasemapChoice; thumbnail?: boolean; fontHighlight?: FontTargetKey | null; onFontContextMenu?: SurfaceContextMenuHandler }) {
   const format = (slide.format ?? "wide") as SlideFormat;
   const styles = useSurfaceStyles();
-  const layout = sourceLayout(slide.rows.length, slide.style, format);
+  const notices = sourceNotices(slide.rows);
+  const layout = sourceLayout(slide.rows.length, slide.style, format, notices);
   const mapPanels = { title: layout.title, summary: null, legend: null };
   const map = slide.map;
   const sourcePt = fontSizeForStyle(slide.style, "source");
@@ -1939,6 +1940,7 @@ function SourcesSurface({ slide, unit, basemap, thumbnail = false, fontHighlight
             <tbody>{slide.rows.map((row) => <tr key={row.source + "|" + row.asOf}><td className={styles.sourceCell} style={fontStyle(sourcePt, unit)}><b>{row.provider || "제공처 미기록"}</b><br />{row.source}</td><td className={styles.sourceCell} style={fontStyle(sourcePt, unit)}>{row.asOf}</td><td className={styles.sourceCell} style={fontStyle(sourcePt, unit)}>{row.license || "미기록"}</td><td className={styles.sourceCell} style={fontStyle(sourcePt, unit)}>{row.url ? <a href={row.url}>원문 확인</a> : "원문 링크 미기록"}</td><td className={styles.sourceCell} style={fontStyle(sourcePt, unit)}>{row.tiles}</td></tr>)}</tbody>
           </table>
         </div>
+        {notices.length > 0 && <div className={styles.sourceNotice} data-report-source-notice="true" style={{ ...rectStyle(layout.notice, unit), ...fontStyle(layout.noticePt, unit) }}>{notices.map((notice) => <p key={notice}>{notice}</p>)}</div>}
         <p className={styles.sourceAsOf} style={{ ...rectStyle(layout.footer, unit), ...fontStyle(sourcePt, unit) }}>분석 생성일 {slide.analysisDate} · 기준일은 원천 자료 날짜{slide.rows.length > 12 ? ` · 원천 ${slide.rows.length}건` : ""}</p>
       </div>
       <SlideFooter slide={slide} basemap={basemap} unit={unit} fontHighlight={fontHighlight} onFontContextMenu={onFontContextMenu} interactive={!thumbnail && !!onFontContextMenu} />

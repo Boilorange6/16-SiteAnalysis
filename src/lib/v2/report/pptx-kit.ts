@@ -148,21 +148,34 @@ export function titlePlateRect(title: string, kind: string, maxW: number, style:
   return { ...base, w };
 }
 
-export type SourceLayout = { title: Rect; table: Rect; dense: boolean; tableContent: Rect; footer: Rect };
+export type SourceLayout = { title: Rect; table: Rect; dense: boolean; tableContent: Rect; footer: Rect; notice: Rect; noticePt: number };
 
-/** 출처 장의 표·기준일 자리를 미리보기와 PPT가 함께 사용한다. */
-export function sourceLayout(rowCount: number, style: PageStyle = {}, format: SlideFormat = "wide"): SourceLayout {
+/** 출처 장 표 아래 이용조건 고지문의 글자 크기(pt). 라이선스 고정 문구라 줄이지 않고 한 줄 폭을 넘으면 줄을 더 쓴다. */
+const SOURCE_NOTICE_PT = 7.5;
+
+/** 이 쪽 출처 행들이 요구하는 고지문(중복 제거, 행 순서). 화면 미리보기와 PPT가 같은 목록을 쓴다. */
+export function sourceNotices(rows: readonly { notices?: readonly string[] }[]): string[] {
+  return [...new Set(rows.flatMap((row) => row.notices ?? []))];
+}
+
+/** 출처 장의 표·기준일 자리를 미리보기와 PPT가 함께 사용한다. 고지문이 있으면 표 바로 아래에 그 높이만큼 자리를 떼고 표를 줄인다. */
+export function sourceLayout(rowCount: number, style: PageStyle = {}, format: SlideFormat = "wide", notices: readonly string[] = []): SourceLayout {
   const size = slideSize(format);
   const geometry = slideLayout(format);
   const edge = format === "wide" ? E : geometry.title.x;
   const dense = rowCount >= 12;
-  const table = { x: edge, y: 1.2, w: size.w - 2 * edge, h: Math.min(geometry.strip.y - 1.2 - 0.46, 0.5 + (dense ? 0.34 : 0.4) * (rowCount + 1)) };
+  const width = size.w - 2 * edge - 0.6;
+  const noticeH = notices.length === 0 ? 0 : notices.reduce((sum, value) => sum + linesOf(value, SOURCE_NOTICE_PT, width), 0) * (SOURCE_NOTICE_PT / 72) * 1.25 + 0.06;
+  const table = { x: edge, y: 1.2, w: size.w - 2 * edge, h: Math.min(geometry.strip.y - 1.2 - 0.46 - noticeH, 0.5 + (dense ? 0.34 : 0.4) * (rowCount + 1)) };
+  const noticeY = table.y + table.h + 0.04;
   return {
     title: titlePlateRect("자료 출처와 기준일", "", size.w - 2 * edge, style, false, format),
     table,
     dense,
     tableContent: { x: table.x + 0.3, y: table.y + 0.2, w: table.w - 0.6, h: Math.max(0, table.h - 0.3) },
-    footer: { x: table.x + 0.3, y: table.y + table.h + 0.08, w: table.w - 0.6, h: 0.24 },
+    notice: { x: table.x + 0.3, y: noticeY, w: table.w - 0.6, h: noticeH },
+    noticePt: SOURCE_NOTICE_PT,
+    footer: { x: table.x + 0.3, y: noticeY + noticeH + (noticeH > 0 ? 0.02 : 0.04), w: table.w - 0.6, h: 0.24 },
   };
 }
 

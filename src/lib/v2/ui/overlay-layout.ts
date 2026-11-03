@@ -7,7 +7,7 @@
  */
 import { isBuildingLayer, legendItemsForModel, normalizeLegendStripLabels, rasterLegendItems, type MapLegendLayerItem, type MapModel } from "./map-layers";
 import type { PagePanelKey, PageStyle } from "./board-state";
-import { VECTOR_ATTRIBUTION, type BasemapChoice } from "./map-projection";
+import { BASEMAP_ATTRIBUTION, VECTOR_ATTRIBUTION, type BasemapChoice } from "./map-projection";
 import type { CalloutModel } from "./tile-view";
 
 export type Box = { x0: number; y0: number; x1: number; y1: number };
@@ -26,7 +26,7 @@ export const OV = {
   stripH: 24,
   /** 핵심 값 카드 아래 상태 배지는 최대 이만큼, 나머지는 "+n" */
   maxBadges: 2,
-  sourceCredit: "© VWorld(국토교통부)",
+  sourceCredit: BASEMAP_ATTRIBUTION,
 } as const;
 
 export function badgesToShow<T>(items: T[], max: number = OV.maxBadges): { shown: T[]; more: number } {

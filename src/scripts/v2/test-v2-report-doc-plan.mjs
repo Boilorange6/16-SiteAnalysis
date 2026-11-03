@@ -367,4 +367,30 @@ assert.ok(missingPlan.every((slide) => slide.kind === "tile" && slide.body.kind 
   assert.ok(modeLine.split("sourceMeta").length >= 3, "report-mode.tsx planContext가 sourceMeta를 값과 의존성으로 넘긴다");
 }
 
+// 이용조건 고지문(2026-11-03): Copernicus DEM 행이 있는 출처 장에는 제6조 고정 고지문이 표 아래에 따라오고, 표는 그만큼 줄어 띠를 침범하지 않는다.
+{
+  const { sourceLayout, sourceNotices } = await import("../../lib/v2/report/pptx-kit.ts");
+  const ref = (sourceId) => ({ sourceId, releaseId: `${sourceId}-r1`, sourceAsOf: "2026-01-01" });
+  const withDem = new Map([["t-A01", { ...views.get("t-A01"), sourceRefs: [ref("terrain_tiles"), ref("building")] }]]);
+  const demContext = { ...context, views: withDem };
+  const demDoc = { v: 1, format: "wide", pages: recommendedPages(EMPTY_REPORT_DOC, withDem, board, demContext) };
+  const demSlides = planReportDoc(demDoc, withDem, demContext).filter((slide) => slide.kind === "sources");
+  const demRow = demSlides.flatMap((slide) => slide.rows).find((row) => row.source.includes("Copernicus"));
+  assert.ok(demRow, "Copernicus DEM 행이 출처 장에 있다");
+  assert.match(demRow.license, /Copernicus WorldDEM-30 라이선스/);
+  const notices = sourceNotices(demSlides.flatMap((slide) => slide.rows));
+  assert.equal(notices.length, 2);
+  assert.ok(notices[0].startsWith("produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018"));
+  assert.deepEqual(sourceNotices([{ source: "x" }]), [], "고지문이 없는 쪽은 그대로");
+  for (const rowCount of [3, 14]) {
+    const bare = sourceLayout(rowCount, {}, "wide");
+    const noted = sourceLayout(rowCount, {}, "wide", notices);
+    assert.equal(bare.notice.h, 0, "고지문 없음: 자리 없음");
+    assert.deepEqual(bare.footer.y, bare.table.y + bare.table.h + 0.08, "고지문 없음: 기존 자리 그대로");
+    assert.ok(noted.notice.h > 0.2 && noted.notice.y >= noted.table.y + noted.table.h, "고지문은 표 바로 아래");
+    assert.ok(noted.footer.y >= noted.notice.y + noted.notice.h && noted.footer.y + noted.footer.h <= 7.14, `기준일 줄이 띠 위(${rowCount}행)`);
+    if (rowCount === 14) assert.ok(noted.table.h < bare.table.h, "꽉 찬 쪽은 표를 줄여 자리를 만든다");
+  }
+}
+
 console.log("v2 report doc plan tests passed");

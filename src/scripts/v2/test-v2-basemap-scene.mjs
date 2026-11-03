@@ -146,8 +146,8 @@ const build = (model, options = {}) => buildMapScene({ model, width: 800, height
   assert.equal(basemapAttribution("vector"), VECTOR_ATTRIBUTION);
   for (const layer of ["white", "Base", "Satellite"]) assert.equal(basemapAttribution(layer), BASEMAP_ATTRIBUTION);
   assert.equal(stripText("국토부 2026-01-01", true, "vector"), `국토부 2026-01-01 · ${VECTOR_ATTRIBUTION}`);
-  assert.equal(stripText("국토부 2026-01-01", true, "white"), "국토부 2026-01-01 · © VWorld(국토교통부)");
-  assert.equal(stripText("국토부 2026-01-01"), "국토부 2026-01-01 · © VWorld(국토교통부)");
+  assert.equal(stripText("국토부 2026-01-01", true, "white"), "국토부 2026-01-01 · © VWorld(국토교통부) · VWorld 오픈플랫폼을 이용하여 만든 것임");
+  assert.equal(stripText("국토부 2026-01-01"), "국토부 2026-01-01 · © VWorld(국토교통부) · VWorld 오픈플랫폼을 이용하여 만든 것임");
   assert.equal(stripText("국토부 2026-01-01", false, "vector"), "국토부 2026-01-01");
 }
 

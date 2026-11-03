@@ -3,7 +3,7 @@ import type BetterSqlite3 from "better-sqlite3";
 import { DATA_FILE_KINDS } from "../data/schema";
 import { openDataFile, readManifest } from "../data/manifest";
 import { v2DataDir } from "../paths";
-import { SOURCE_DETAIL_DEFINITIONS } from "./source-details";
+import { SOURCE_DETAIL_DEFINITIONS, termsFor } from "./source-details";
 
 export type GuideSourceRelease = {
   sourceId: string;
@@ -81,15 +81,16 @@ export function readGuideSourceSnapshot(dataDir: string = v2DataDir()): GuideSou
         for (const release of releases) {
           if (seen.has(release.release_id)) continue;
           seen.add(release.release_id);
+          const terms = termsFor(release.source_id, { provider: release.provider, license: release.license_code, sourceUrl: release.source_url });
           rows.push({
             sourceId: release.source_id,
             releaseId: release.release_id,
-            provider: release.provider,
-            sourceUrl: release.source_url,
+            provider: terms.provider ?? release.provider,
+            sourceUrl: terms.sourceUrl ?? release.source_url,
             sourceAsOf: release.source_as_of,
             publishedAt: release.published_at,
             fetchedAt: release.fetched_at,
-            licenseCode: release.license_code,
+            licenseCode: terms.license ?? release.license_code,
             rights: rightsOf(release.rights_json),
             fileKey,
           });

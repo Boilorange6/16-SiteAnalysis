@@ -11,7 +11,7 @@ assert.deepEqual(L.badgesToShow(["a"]), { shown: ["a"], more: 0 });
 
 // 출처 띠는 항상 출처와 기준일을 담는다
 assert.equal(L.stripText("rail 2026-09-01", false), "rail 2026-09-01");
-assert.match(L.stripText("rail 2026-09-01"), /© VWorld\(국토교통부\)$/);
+assert.match(L.stripText("rail 2026-09-01"), /© VWorld\(국토교통부\) · VWorld 오픈플랫폼을 이용하여 만든 것임$/);
 assert.match(L.stripText("출처 없음"), /출처 없음 · 기준일 해당 없음/);
 for (const r of GODEOK_RESULTS) assert.match(L.stripText(toTileView(r).sourceLine), /기준일|\d{4}-\d{2}/, `${r.tileCode} 출처 띠`);
 

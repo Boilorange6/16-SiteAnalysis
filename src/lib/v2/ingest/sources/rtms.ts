@@ -24,12 +24,11 @@ type Item = Record<string, string>;
 
 const PROPERTY: Record<RtmsType, string> = { "apt-trade": "apt", "apt-rent": "apt", "offi-trade": "offi", "offi-rent": "offi" };
 const PROVIDER = "국토교통부(실거래가 공개시스템)";
-// A0 표 15행에서 확인한 개별 데이터셋 번호(아파트 매매·오피스텔 전월세). 나머지는 모음 페이지.
-const COLLECTION = "https://www.data.go.kr/dataset/3050988/openapi.do";
+// 공공데이터포털 개별 데이터셋 번호. 모음 페이지(3050988)는 열면 데이터셋 정보가 없어 쓰지 않는다.
 const URLS: Record<RtmsType, string> = {
   "apt-trade": "https://www.data.go.kr/data/15126469/openapi.do",
-  "apt-rent": COLLECTION,
-  "offi-trade": COLLECTION,
+  "apt-rent": "https://www.data.go.kr/data/15126474/openapi.do",
+  "offi-trade": "https://www.data.go.kr/data/15126464/openapi.do",
   "offi-rent": "https://www.data.go.kr/data/15126475/openapi.do",
 };
 

@@ -40,6 +40,7 @@ export type SourceDetailRow = {
   license: string;
   url: string;
   usedFor: string | null;
+  notices?: readonly string[];
 };
 
 export type SourceDetails = {
@@ -49,16 +50,28 @@ export type SourceDetails = {
 
 export type SourceDefinition = {
   role?: "보강";
+  /** provider·sourceUrl·license는 게시 manifest 값보다 먼저 쓴다(`termsFor`). 이미 적재된 값이 틀렸거나 내부 말일 때의 표시 정정과 런타임 원천용이다. */
   provider?: string;
   name?: string;
   sourceUrl?: string;
   license?: string;
+  /** 이 원천이 출처 장 표에 있으면 표 아래에 그대로 싣는 이용조건 고지문(라이선스가 고정 문구를 요구할 때). */
+  notices?: readonly string[];
   asOf?: string;
   usedFor: string | null;
   collect: SourceCollect;
   cycle: string;
   group?: string;
 };
+
+const KOGL4_LABEL = "공공누리 제4유형(출처표시·상업적 이용금지·변경금지)";
+const ODBL_LABEL = "ODbL 1.0(출처표시·동일조건)";
+
+/** Copernicus WorldDEM-30 라이선스 제6조 고정 고지문: 가공물 문구와 무책임 문구(번역). 후원·승인으로 읽히는 표현은 쓰지 않는다. */
+const COPERNICUS_NOTICES = [
+  "produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved",
+  "Copernicus 프로그램을 법 또는 위임으로 관장하는 기관은 Copernicus WorldDEM-30의 어떠한 사용에 대해서도 책임을 지지 않습니다.",
+] as const;
 
 /**
  * 원천의 역할과 사용처는 화면이나 엔진 곳곳에 흩뜨리지 않고 이 표에서만 정의한다.
@@ -75,9 +88,9 @@ export const SOURCE_DETAIL_DEFINITIONS: Readonly<Record<string, SourceDefinition
   school: { usedFor: null, collect: "수동 파일", cycle: "반기", group: "학교·학구도 4종" },
   school_zone_link: { usedFor: null, collect: "수동 파일", cycle: "반기", group: "학교·학구도 4종" },
   school_zone_elem: { usedFor: null, collect: "수동 파일", cycle: "반기", group: "학교·학구도 4종" },
-  school_zone: { usedFor: null, collect: "수동 API 배치", cycle: "반기", group: "학교·학구도 4종" },
-  osm_subway: { usedFor: "OSM 철도역·노선", collect: "수동 API 배치", cycle: "수시" },
-  planned_rail: { usedFor: null, collect: "수동 정리", cycle: "수시" },
+  school_zone: { provider: "한국교육시설안전원(VWorld 2D 데이터 API 제공)", usedFor: null, collect: "수동 API 배치", cycle: "반기", group: "학교·학구도 4종" },
+  osm_subway: { provider: "OpenStreetMap contributors(Overpass API)", sourceUrl: "https://www.openstreetmap.org/copyright", usedFor: "OSM 철도역·노선", collect: "수동 API 배치", cycle: "수시" },
+  planned_rail: { provider: "서울특별시(공식 상태)·OpenStreetMap contributors(선형)", license: `${KOGL4_LABEL} · ODbL 1.0(선형)`, usedFor: null, collect: "수동 정리", cycle: "수시" },
   store: { usedFor: null, collect: "수동 파일", cycle: "분기" },
   bus_stop: { usedFor: null, collect: "수동 파일", cycle: "연간" },
   park: { usedFor: null, collect: "수동 파일", cycle: "연간" },
@@ -109,20 +122,28 @@ export const SOURCE_DETAIL_DEFINITIONS: Readonly<Record<string, SourceDefinition
   facility_health_hygiene: { usedFor: null, collect: "수동 파일", cycle: "일별", group: "도시계획시설 8종" },
   facility_environmental_basic: { usedFor: null, collect: "수동 파일", cycle: "일별", group: "도시계획시설 8종" },
   facility_other_infrastructure: { usedFor: null, collect: "수동 파일", cycle: "일별", group: "도시계획시설 8종" },
-  applyhome: { usedFor: null, collect: "기존 앱 적재본", cycle: "일", group: "청약·입주예정" },
+  applyhome: { provider: "한국부동산원", usedFor: null, collect: "기존 앱 적재본", cycle: "일", group: "청약·입주예정" },
   applyhome_types: { role: "보강", usedFor: "청약홈 주택관리번호별 주택형과 일반·특별공급 세대수", collect: "수동 파일", cycle: "수시", group: "청약·입주예정" },
   move_in: { usedFor: null, collect: "수동 파일", cycle: "반기", group: "청약·입주예정" },
   maintenance_integrated: { usedFor: null, collect: "수동 파일", cycle: "연 1회", group: "정비사업 명부" },
   maintenance_std: { usedFor: null, collect: "수동 파일", cycle: "수시", group: "정비사업 명부" },
   seoul_plan_zone: { role: "보강", usedFor: "서울 정비·소규모정비 사업의 이름·종류·단계·단계일·개요", collect: "수동 API 배치", cycle: "반기(경계)·분기(현황)" },
   rtms_apt_trade: { usedFor: null, collect: "수동 API 배치", cycle: "수시 신고", group: "RTMS 아파트" },
-  rtms_apt_rent: { usedFor: null, collect: "수동 API 배치", cycle: "수시 신고", group: "RTMS 아파트" },
-  rtms_offi_trade: { usedFor: null, collect: "수동 API 배치", cycle: "수시 신고", group: "RTMS 오피스텔" },
+  rtms_apt_rent: { sourceUrl: "https://www.data.go.kr/data/15126474/openapi.do", usedFor: null, collect: "수동 API 배치", cycle: "수시 신고", group: "RTMS 아파트" },
+  rtms_offi_trade: { sourceUrl: "https://www.data.go.kr/data/15126464/openapi.do", usedFor: null, collect: "수동 API 배치", cycle: "수시 신고", group: "RTMS 오피스텔" },
   rtms_offi_rent: { usedFor: null, collect: "수동 API 배치", cycle: "수시 신고", group: "RTMS 오피스텔" },
   building: { usedFor: "건물 도형·사용승인일·높이", collect: "수동 파일", cycle: "수시" },
   building_juso: { role: "보강", usedFor: "GIS에 없는 건물과 층수·건물명 보강", collect: "수동 파일", cycle: "월간" },
   gis_bldg: { usedFor: "GIS건물통합정보 건물 도형·속성", collect: "수동 파일", cycle: "수시" },
-  terrain_tiles: { usedFor: "DEM 표면고·지형·경사·하늘열림 보강", collect: "수동 파일", cycle: "갱신 없음" },
+  terrain_tiles: {
+    provider: "Copernicus 프로그램(유럽연합·ESA)",
+    sourceUrl: "https://registry.opendata.aws/copernicus-dem/",
+    license: "Copernicus WorldDEM-30 라이선스(출처·가공 고지 필수)",
+    notices: COPERNICUS_NOTICES,
+    usedFor: "DEM 표면고·지형·경사·하늘열림 보강",
+    collect: "수동 파일",
+    cycle: "갱신 없음",
+  },
   ngii_topo: {
     provider: "국토지리정보원",
     name: "연속수치지형도",
@@ -133,8 +154,16 @@ export const SOURCE_DETAIL_DEFINITIONS: Readonly<Record<string, SourceDefinition
     collect: "사용자 업로드",
     cycle: "분석별",
   },
-  asos: { usedFor: "최근접 ASOS 관측소의 풍향·기상", collect: "수동 API 배치", cycle: "시간(10년 집계)" },
-  vworld_wmts: { usedFor: null, collect: "실시간", cycle: "—" },
+  asos: { provider: "기상청", usedFor: "최근접 ASOS 관측소의 풍향·기상", collect: "수동 API 배치", cycle: "시간(10년 집계)" },
+  // 런타임 타일 원천이라 manifest release가 없다. 약관 제13조 9항: 지도 화면에는 오픈플랫폼을 이용해 만든 것임을 표기한다(`BASEMAP_ATTRIBUTION`).
+  vworld_wmts: {
+    provider: "국토교통부(VWorld 오픈플랫폼)",
+    sourceUrl: "https://www.vworld.kr/dev/v4dv_wmtsguide_s001.do",
+    license: "VWorld 이용약관(오픈플랫폼 이용 표기)",
+    usedFor: null,
+    collect: "실시간",
+    cycle: "—",
+  },
   browser_lbm: { role: "보강", usedFor: "브라우저 바람 흐름 계산", collect: "앱 계산", cycle: "—" },
   fallback_d2q9: { role: "보강", usedFor: "바람 흐름 내장 보정 계산", collect: "앱 계산", cycle: "—" },
 };
@@ -157,13 +186,32 @@ function metaFor(meta: ReadonlyMap<string, SourceMeta>, source: SourceRefLike): 
   return meta.get(`${source.sourceId}:${source.releaseId}`) ?? meta.get(source.sourceId);
 }
 
-function licenseOf(meta: SourceMeta | undefined, fallback = "미기록"): string {
-  const raw = nonEmpty(meta?.licenseCode) ?? nonEmpty(meta?.license);
-  if (!raw || /^(?:UNKNOWN|UNRECORDED|미기록)$/i.test(raw)) return fallback;
-  if (/^UNRESTRICTED$/i.test(raw)) return "이용허락범위 제한 없음";
-  if (/^attribution$/i.test(raw)) return "출처 표시";
-  if (/^KOGL_4$/i.test(raw)) return "공공누리 제4유형(출처표시·상업적 이용금지·변경금지)";
-  return raw;
+const LICENSE_LABELS: ReadonlyArray<readonly [RegExp, string]> = [
+  [/^UNRESTRICTED$/i, "이용허락범위 제한 없음"],
+  [/^attribution$/i, "출처 표시"],
+  [/^KOGL[-_]?1$/i, "공공누리 제1유형(출처표시)"],
+  [/^KOGL[-_]?4$/i, KOGL4_LABEL],
+  [/^CC[- ]BY$/i, "CC BY 2.0 KR(저작자표시)"],
+  [/^ODbL(?:[- ]?1\.0)?$/i, ODBL_LABEL],
+];
+
+/** 적재된 라이선스 코드(`KOGL-1`·`ODbL-1.0` 등)를 사람이 읽는 말로 푼다. `A+B`는 둘을 ` · `로 잇고, 모르는 값은 그대로 둔다. */
+export function licenseLabel(raw: string): string {
+  return raw.split("+").map((part) => {
+    const code = part.trim();
+    return LICENSE_LABELS.find(([pattern]) => pattern.test(code))?.[1] ?? code;
+  }).join(" · ");
+}
+
+/** 제공처·이용조건·원문 링크: 정의에 적힌 값(표시 정정)이 manifest 값보다 먼저다. guide 표와 출처 장이 같은 규칙을 쓴다. */
+export function termsFor(sourceId: string, raw: { provider?: string | null; license?: string | null; sourceUrl?: string | null }): { provider: string | null; license: string | null; sourceUrl: string | null } {
+  const definition = SOURCE_DETAIL_DEFINITIONS[sourceId];
+  const license = definition?.license ?? nonEmpty(raw.license);
+  return {
+    provider: definition?.provider ?? nonEmpty(raw.provider),
+    license: license && !/^(?:UNKNOWN|UNRECORDED|미기록)$/i.test(license) ? licenseLabel(license) : null,
+    sourceUrl: definition?.sourceUrl ?? nonEmpty(raw.sourceUrl),
+  };
 }
 
 function nameOf(sourceId: string, meta: SourceMeta | undefined, definition: SourceDefinition | undefined): string {
@@ -191,15 +239,21 @@ export function sourceDetailsFor(tile: SourceDetailTile, meta: ReadonlyMap<strin
           ? (primaryAssigned = true, "주 원천")
           : "보강";
     const sourceMeta = metaFor(meta, source);
+    const terms = termsFor(source.sourceId, {
+      provider: sourceMeta?.provider,
+      license: nonEmpty(sourceMeta?.licenseCode) ?? sourceMeta?.license,
+      sourceUrl: nonEmpty(sourceMeta?.sourceUrl) ?? sourceMeta?.url,
+    });
     return {
       sourceId: source.sourceId,
-      provider: nonEmpty(sourceMeta?.provider) ?? definition?.provider ?? "제공처 미기록",
+      provider: terms.provider ?? "제공처 미기록",
       name: nameOf(source.sourceId, sourceMeta, definition),
       role,
       asOf: definition?.asOf ?? nonEmpty(source.sourceAsOf) ?? UNKNOWN_AS_OF,
-      license: licenseOf(sourceMeta, definition?.license),
-      url: nonEmpty(sourceMeta?.sourceUrl) ?? nonEmpty(sourceMeta?.url) ?? definition?.sourceUrl ?? "",
+      license: terms.license ?? "미기록",
+      url: terms.sourceUrl ?? "",
       usedFor: definition?.usedFor ?? null,
+      ...(definition?.notices ? { notices: definition.notices } : {}),
     };
   });
 

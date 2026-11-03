@@ -542,7 +542,7 @@ for (const format of ["wide", "a3", "a4"]) {
   assert.ok(textIn(cut.text, cut.pt) <= width + 1e-6 && /…$/.test(cut.text) && cut.text.includes("VWorld"), "긴 한계는 …로 닫히고 바탕지도 출처는 그대로");
   // 짧은 출처는 요약하지 않고 순서대로
   const short = footnoteText({ ...withBasemap(base, "air"), footer: "출처 제공처 미기록 · 건물 · 2026-09-09", view: { ...base.view, caveats: ["표본 한계"], notes: [] } }, undefined, width).text;
-  assert.equal(short, "출처 건물 · 2026-09-09 · © VWorld(국토교통부) · 표본 한계");
+  assert.equal(short, "출처 건물 · 2026-09-09 · © VWorld(국토교통부) · VWorld 오픈플랫폼을 이용하여 만든 것임 · 표본 한계");
   // 바탕지도를 그리지 않는 장(그림 타일)은 credit이 없다
   const figureSlide = { ...slide, map: null };
   assert.ok(!footnoteText(figureSlide, undefined, width).text.includes("©"), "그림 장 각주에는 바탕지도 출처가 없다");
@@ -722,7 +722,8 @@ for (const format of ["wide", "a3", "a4"]) {
       const longFrame = frameOf(longSlide);
       assert.equal(longFrame.fit.filterClipped, true);
       assert.match(longFrame.fit.filterLines[1], /…$/);
-      assert.ok(longFrame.footer.text.includes(longLine), `각주에 필터 전문: ${longFrame.footer.text}`);
+      // VWorld credit이 「오픈플랫폼을 이용하여 만든 것임」까지 길어져 이 극단 입력(필터 전문 두 줄 초과)은 한계 자리에 전문이 다 안 들어가면 끝이 …로 잘린다. credit은 자르지 않는다(Ruling 23).
+      assert.ok(longFrame.footer.text.includes(longLine.slice(0, 40)), `각주에 필터가 앞에서부터 있다: ${longFrame.footer.text}`);
       assert.ok(longFrame.footer.text.startsWith("출처 ") && !longFrame.footer.text.startsWith("출처 적용 필터"), `출처로 시작: ${longFrame.footer.text}`);
       assert.ok(longFrame.footer.text.includes("©") && fits(longFrame), "credit이 있고 폭 안");
       const longTag = partTag(render(longSlide), "key-filter");
