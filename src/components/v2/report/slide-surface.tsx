@@ -1523,6 +1523,15 @@ function TerrainSectionPreview({ slide, unit, rect, card = false }: { slide: Ext
     gridTemplateRows: `${bands.plot.h * unit}px ${bands.axis.h * unit}px`,
     rowGap: `${bands.gapY * unit}px`,
   };
+  // 표 행 높이는 PPT(`terrain-section-pptx.ts`)와 같은 식: 머리 0.2 in, 행 0.14~0.2 in, 주의 문구 0.16 in를 표 칸 안에 맞춘다.
+  const tableLines = Math.max(1, visibleCrossings.length + (crossings.length > visibleCrossings.length ? 1 : 0));
+  const tableHeadH = 0.2;
+  const tableCaveatH = 0.16;
+  const tableRowH = Math.min(0.2, Math.max(0.14, (bands.table.h - tableHeadH - tableCaveatH - 0.03) / tableLines));
+  const tableFillH = Math.max(0, bands.table.h - tableHeadH - tableLines * tableRowH - tableCaveatH);
+  const rowHeight = (h: number): CSSProperties => ({ height: h * unit });
+  const cellStyle = fontStyle(7.2, unit, { paddingTop: 0, paddingBottom: 0, verticalAlign: "middle" });
+  const headStyle = fontStyle(7.5, unit, { padding: `0 ${0.04 * unit}px`, fontWeight: 700, color: "#5b606b", textAlign: "left", verticalAlign: "top" });
   return (
     <section className={styles.terrainPreview} style={{ ...terrainGridStyle, ...(card ? { border: "1px solid #e1e4e9", borderRadius: 0.125 * unit, background: "#fff", boxShadow: "0 1px 2px rgba(21, 23, 28, 0.05), 0 3px 10px rgba(21, 23, 28, 0.05)" } : {}), left: preview.x * unit, top: preview.y * unit, width: preview.w * unit, height: preview.h * unit }} aria-label={`${TERRAIN_SECTION_LABELS[slide.terrainSection]} 보고서 미리보기`}>
       <div className={styles.terrainPreviewHeader}>
@@ -1560,12 +1569,17 @@ function TerrainSectionPreview({ slide, unit, rect, card = false }: { slide: Ext
           </div>
         </div>
       </div>
-      <table className={styles.terrainPreviewTable} style={bands.stacked ? { gridColumn: 1, gridRow: 3, minWidth: 0 } : undefined} aria-label="단면 시설 표">
+      <table className={styles.terrainPreviewTable} style={{ ...(bands.stacked ? { gridColumn: 1, gridRow: 3, minWidth: 0 } : {}), height: bands.table.h * unit, tableLayout: "fixed" }} aria-label="단면 시설 표">
         <caption className={styles.srOnly}>단면 시설 표</caption>
+        <thead>
+          <tr style={rowHeight(tableHeadH)}><th scope="col" style={headStyle}>종류</th><th scope="col" style={headStyle}>위치</th><th scope="col" style={{ ...headStyle, textAlign: "right" }}>높이</th></tr>
+        </thead>
         <tbody>
-          {visibleCrossings.map((crossing, index) => <tr key={`${crossing.d}-${crossing.kind}-${index}`}><td>{TERRAIN_CROSSING_LABELS[crossing.kind]}</td><td className={styles.terrainPosition}>{terrainSectionPosition(section, crossing.d)}</td><td>{crossing.heightM === null ? "높이 미확인" : `${crossing.heightM.toFixed(1)}m`}</td></tr>)}
-          {crossings.length > visibleCrossings.length && <tr><td colSpan={3}>{`외 ${crossings.length - visibleCrossings.length}건`}</td></tr>}
-          <tr className={styles.terrainPreviewCaveat}><td colSpan={3} style={fontStyle(7, unit)}>{TERRAIN_CAVEAT}</td></tr>
+          {visibleCrossings.map((crossing, index) => <tr key={`${crossing.d}-${crossing.kind}-${index}`} style={rowHeight(tableRowH)}><td style={cellStyle}>{TERRAIN_CROSSING_LABELS[crossing.kind]}</td><td className={styles.terrainPosition} style={cellStyle}>{terrainSectionPosition(section, crossing.d)}</td><td style={cellStyle}>{crossing.heightM === null ? "높이 미확인" : `${crossing.heightM.toFixed(1)}m`}</td></tr>)}
+          {visibleCrossings.length === 0 && <tr style={rowHeight(tableRowH)}><td style={{ ...cellStyle, color: "#5b606b" }}>시설 없음</td><td style={{ ...cellStyle, color: "#5b606b" }}>—</td><td style={cellStyle}>—</td></tr>}
+          {crossings.length > visibleCrossings.length && <tr style={rowHeight(tableRowH)}><td style={cellStyle} /><td style={{ ...cellStyle, color: "#5b606b" }}>{`외 ${crossings.length - visibleCrossings.length}건`}</td><td style={cellStyle} /></tr>}
+          {tableFillH > 0 && <tr aria-hidden="true" style={rowHeight(tableFillH)}><td colSpan={3} style={{ padding: 0, border: 0 }} /></tr>}
+          <tr className={styles.terrainPreviewCaveat} style={rowHeight(tableCaveatH)}><td colSpan={3} style={fontStyle(7, unit, { paddingTop: 0, paddingBottom: 0, verticalAlign: "middle", textAlign: "left" })}>{TERRAIN_CAVEAT}</td></tr>
         </tbody>
       </table>
       <div className={styles.terrainPreviewSummary} style={fontStyle(7.4, unit)}>{`대지 고저차 ${format(range, "m")} · 대지 평균 경사 ${format(slope, "°")} · 반경 내 단차 시설 수 ${facilityCount}개`}</div>
