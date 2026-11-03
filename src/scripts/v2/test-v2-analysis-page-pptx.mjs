@@ -408,6 +408,21 @@ assert.ok(charts.blocks.some((b) => textsOf(b).includes("1~4층")) && charts.blo
     assert.ok(block, `주석 ${i} 글상자(줄 = legendFit)`);
     assert.equal(szOf(block), Math.round(fit.notePt * 100), `주석 ${i} 글자 크기 = notePt`);
   });
+
+  // T23a: 항목 이름이 열 폭을 넘어 2줄로 접히는 장(엔진 범례 이름을 길게 한 표본)에서도 PPT 글상자가 접힌 줄(`\n`)을 그대로 싣는다.
+  const foldedLegend = fit.items.filter((item) => !item.site).map((item) => ({ label: `${item.label} · 열 폭을 넘는 긴 이름`, min: null, max: null }));
+  const foldedView = toTileView({ ...result, presentation: { ...result.presentation, legend: foldedLegend } });
+  const foldedViews = new Map([[result.tileId, foldedView]]);
+  const foldedCtx = { ...lCtx, views: foldedViews };
+  const foldedPages = recommendedPages(EMPTY_REPORT_DOC, foldedViews, initBoard([result]), foldedCtx).filter((p) => p.kind === "tile");
+  const bigSlide = planReportDoc({ ...EMPTY_REPORT_DOC, pages: foldedPages }, foldedViews, foldedCtx).find((s) => s.kind === "tile");
+  const bigFit = pageFrameFor(bigSlide).legend;
+  assert.ok(bigFit.labelLines.some((lines) => lines.length === 2), "항목 이름이 2줄로 접힌다(전제)");
+  const bigLegendBlocks = (await deckOf(bigSlide)).blocks.filter((b) => /panel-legend/.test(nameOf(b)));
+  bigFit.labelLines.forEach((lines, i) => {
+    if (lines.length !== 2) return;
+    assert.ok(bigLegendBlocks.some((b) => textsOf(b).join("\n") === lines.join("\n")), `2줄 항목 ${i} 「${lines.join(" / ")}」가 PPT 글상자에서 줄바꿈을 지킨다`);
+  });
 }
 
 // M1: A12식 카드(구성 막대 + 큰 % 두 줄 설명)와 배지 3개 이상의 `+n` 칩
@@ -636,6 +651,28 @@ assert.ok(charts.blocks.some((b) => textsOf(b).includes("1~4층")) && charts.blo
   const text = rectOf(title);
   assert.ok(text.x + text.w <= plate.x + plate.w + 0.01 && kind.x + kind.w <= plate.x + plate.w + 0.01, "제목 글·종류 칩이 제목 칩 안");
   assert.ok(text.x + text.w <= kind.x + 0.01, "제목 글이 종류 칩을 덮지 않는다");
+}
+
+// T21: 표지 타일 목록은 줄이 많아도 마지막 줄까지 오른쪽 판 안에 든다(와이드 30줄이 판 밖으로 잘리던 문제). 화면 목록 상자도 줄 합 이상이다.
+{
+  const { coverLayout } = await import("../../lib/v2/report/pptx-kit.ts");
+  for (const format of ["wide", "a4", "a3"]) {
+    for (const n of [1, 10, 15, 30, 40]) {
+      const l = coverLayout({ address: "서울특별시 강남구 대치동 503", metricCount: 4, lineCount: n, incomplete: false }, format);
+      const last = l.row(n - 1);
+      assert.ok(last.y + last.h <= l.right.y + l.right.h + 1e-9, `${format} ${n}줄: 마지막 줄 아래 ${last.y + last.h} ≤ 판 아래 ${l.right.y + l.right.h}`);
+      assert.ok(l.right.h - 0.67 >= n * l.rowH - 1e-9, `${format} ${n}줄: 화면 목록 상자 ${l.right.h - 0.67} ≥ 줄 합 ${n * l.rowH}`);
+    }
+  }
+}
+
+// 표지 목록은 카드 큰 답(keyFigure)을 쓰고, 카드가 없을 때만 headline을 쓴다(「반경 교차면적: 기타 …」 같은 거짓 인상 숫자 방지).
+{
+  const views = new Map([[base.result.tileId, { ...base.view, headline: { value: "10,567,076㎡", label: "반경 교차면적: 기타" } }]]);
+  const coverOf = (v) => planReportDoc({ ...EMPTY_REPORT_DOC, pages: [{ ...base.tilePage, id: "cover", kind: "cover" }, base.tilePage] }, v, { ...base.ctx ?? { summary: toSummaryView(GODEOK_SUMMARY, [base.result]), analysisDate: "2026-10-27" }, views: v }).find((s) => s.kind === "cover");
+  assert.equal(coverOf(views).lines[0].text, "1~4층 건물", "표지 목록 = 카드 큰 답");
+  const noCard = new Map([[base.result.tileId, { ...views.get(base.result.tileId), keyFigure: null }]]);
+  assert.equal(coverOf(noCard).lines[0].text, "반경 교차면적: 기타 10,567,076㎡", "카드가 없으면 headline");
 }
 
 console.log("✓ v2 analysis page pptx");

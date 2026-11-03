@@ -638,6 +638,13 @@ function calloutSlideForPage(doc: ReportDoc, page: CalloutPage, pageIndex: numbe
   };
 }
 
+/** 표지 타일 목록 한 줄. 카드 큰 답(keyFigure)이 있으면 그것을 쓰고, 없을 때만 headline을 쓴다. */
+function coverLineText(view: TileView): string {
+  const answer = view.keyFigure?.answer;
+  if (answer) return `${answer.pre ? `${answer.pre} ` : ""}${answer.value}${answer.post ?? ""}`;
+  return view.headline ? `${view.headline.label} ${view.headline.value}` : "결과 없음";
+}
+
 /** 독립 보고서 문서를 PPT 렌더러가 소비하는 슬라이드로 계획한다. */
 export function planReportDoc(doc: ReportDoc, views: ReadonlyMap<string, TileView>, ctx: ReportDocPlanContext): PlannedSlide[] {
   const sourceMeta = ctx.sourceMeta ?? new Map<string, SourceMeta>();
@@ -660,7 +667,7 @@ export function planReportDoc(doc: ReportDoc, views: ReadonlyMap<string, TileVie
         ],
         asOfLine: ctx.summary.asOfLine,
         incomplete: ctx.summary.incomplete ? `지역 자료 불완전 · ${ctx.summary.incompleteCount}개 타일` : null,
-        lines: sourceViews.map((view) => ({ title: view.title, color: view.color, text: view.headline ? `${view.headline.label} ${view.headline.value}` : "결과 없음" })),
+        lines: sourceViews.map((view) => ({ title: view.title, color: view.color, text: coverLineText(view) })),
         map: ctx.summary.map,
       }, page, page.id, `${ctx.summary.asOfLine} · 출처와 기준일은 마지막 장 참조`, pageStyleFor(doc, page), doc.format));
       continue;

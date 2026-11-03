@@ -382,6 +382,10 @@ assert.match(selectionXml, new RegExp(`GRP\\|map-D13-label-${selectionKeyPart}\\
 assert.doesNotMatch(selectionXml, /지울 지점/u, "PPT 삭제 지점 라벨이 남아 있다");
 const selectionLabelBox = taggedShapeBlocks(selectionXml).find((block) => block.includes(`GRP|map-D13-label-${selectionKeyPart}|`) && block.includes("|box"));
 assert.ok(selectionLabelBox, "PPT 저장 라벨 상자 도형이 없다");
+// T22: 화면 SVG와 같다 — 설명선 이름은 굵게(b="1"), 세부는 회색(5C5F66) 별도 run(정본 §8)
+const selectionLabelText = taggedShapeBlocks(selectionXml).find((block) => block.includes(`GRP|map-D13-label-${selectionKeyPart}|`) && block.includes("|text"));
+assert.ok(selectionLabelText, "PPT 저장 라벨 글상자가 없다");
+assert.match(selectionLabelText, /<a:rPr[^>]*\bb="1"/u, "PPT 설명선 이름 run이 굵지 않다");
 const selectionLabelGeometry = geometryForBlock(selectionLabelBox);
 assert.ok(selectionLabelGeometry, "PPT 저장 라벨 상자 geometry가 없다");
 assert.ok(Math.abs(selectionLabelGeometry.x / EMU_PER_INCH - selectionBox.x * SLIDE.w) < 0.002, "PPT 라벨 상자 x가 지도 frame 비율과 같다");

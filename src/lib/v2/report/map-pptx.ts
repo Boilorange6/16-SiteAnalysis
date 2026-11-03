@@ -1036,8 +1036,14 @@ function addLabels(slide: Slide, code: string, scene: MapScene): void {
     slide.addShape("roundRect", { x: pxX(box.x0), y: pxY(box.y0), w: pxW(box.x1 - box.x0), h: pxH(box.y1 - box.y0), rectRadius: 0.04, fill: { color: "FFFFFF", transparency: dimmed ? 80 : 0 }, line: { color: color(INK), width: pxPt(1.2 * scene.unit), transparency: dimmed ? 80 : 0 }, objectName: tag(code, key, `라벨 · ${display}`, "box") });
     const dot = Math.max(1.8 * scene.unit, placement.text.fontSize * 0.2);
     slide.addShape("ellipse", { x: pxX(box.x0 + 4 * scene.unit - dot), y: pxY((box.y0 + box.y1) / 2 - dot), w: pxW(dot * 2), h: pxH(dot * 2), fill: { color: color(INK), transparency: dimmed ? 80 : 0 }, line: { color: color(INK), width: 0, transparency: dimmed ? 80 : 0 }, objectName: tag(code, key, `라벨 · ${display}`, "box-dot") });
-    const text = placement.text.lines.map((line) => line.kind === "joined" ? `${line.title} · ${line.detail}` : line.text).join("\n");
-    slide.addText(text, { x: pxX(box.x0 + 8 * scene.unit), y: pxY(box.y0 + 3 * scene.unit), w: pxW(Math.max(1, box.x1 - box.x0 - 12 * scene.unit)), h: pxH(Math.max(1, box.y1 - box.y0 - 6 * scene.unit)), valign: "top", fontFace: FONT, fontSize: fontPt(placement.text.fontSize, 7), color: dimmed ? "8C919B" : INK, transparency: dimmed ? 80 : 0, margin: 0, fit: "shrink", breakLine: false, objectName: tag(code, key, `라벨 · ${display}`, "text") });
+    // 화면 SVG(map-figure.tsx)와 같다: 이름(title)은 굵게 INK, 세부(detail)는 보통 굵기 회색(정본 §8).
+    const lastLine = placement.text.lines.length - 1;
+    const runs = placement.text.lines.flatMap((line, li) => {
+      const br = li < lastLine ? { breakLine: true } : {};
+      if (line.kind === "joined") return [{ text: line.title, options: { bold: true, color: INK } }, { text: ` · ${line.detail}`, options: { color: "5C5F66", ...br } }];
+      return [line.kind === "title" ? { text: line.text, options: { bold: true, color: INK, ...br } } : { text: line.text, options: { color: "5C5F66", ...br } }];
+    });
+    slide.addText(runs, { x: pxX(box.x0 + 8 * scene.unit), y: pxY(box.y0 + 3 * scene.unit), w: pxW(Math.max(1, box.x1 - box.x0 - 12 * scene.unit)), h: pxH(Math.max(1, box.y1 - box.y0 - 6 * scene.unit)), valign: "top", fontFace: FONT, fontSize: fontPt(placement.text.fontSize, 7), color: dimmed ? "8C919B" : INK, transparency: dimmed ? 80 : 0, margin: 0, fit: "shrink", breakLine: false, objectName: tag(code, key, `라벨 · ${display}`, "text") });
   }
 }
 

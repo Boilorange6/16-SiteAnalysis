@@ -115,7 +115,8 @@ export function coverLayout(input: { address: string; metricCount: number; lineC
   const leftH = 0.25 + 0.3 + addressH + 0.15 + metricsH + 0.3 + chipH + 0.2;
   const left = { x: edge, y: edge, w: leftW, h: leftH };
   const rightW = 5.6;
-  const rowH = Math.min(0.4, 6 / Math.max(1, input.lineCount));
+  // 판(info.h) 안에 마지막 줄까지 들어오게 한다: 제목 0.62 + 아래 여백 0.12를 뺀 높이를 줄 수로 나눈다.
+  const rowH = Math.min(0.4, 6 / Math.max(1, input.lineCount), (geometry.info.h - 0.74) / Math.max(1, input.lineCount));
   const rightH = Math.min(0.62 + input.lineCount * rowH + 0.12, geometry.info.h);
   const right = { x: size.w - edge - rightW, y: edge, w: rightW, h: rightH };
   const rightHeading = { x: right.x + 0.3, y: edge + 0.18, w: rightW - 0.6, h: 0.28 };
