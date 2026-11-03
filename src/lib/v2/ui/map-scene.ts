@@ -356,8 +356,24 @@ export const mapFeatureKey = (layer: string, fid: string | undefined, index: num
 export const mapElementKey = (kind: MapLabelKind, layer: string, fid: string | undefined, index: number): string => `${kind}|${mapFeatureKey(layer, fid, index)}`;
 export const mapLabelText = formatMapLabelText;
 
-/** SVG와 PPT가 공유하는 고정폭 문자 측정. 브라우저 폰트 측정에 의존하지 않는다. */
-export const mapTextWidth = (s: string, fs: number) => [...s].reduce((w, ch) => w + (ch.charCodeAt(0) > 0x2e80 ? fs : fs * 0.58), 0);
+/**
+ * Noto Sans KR 글자 폭(em). 브라우저(SVG, 500·700)와 PowerPoint(편집 도형, 400·700) 실측 가운데 더 넓은 쪽에 맞춘다.
+ * 한글 음절은 SVG 0.92·PPT 0.94(작은 글자에서 PowerPoint가 조금 더 넓게 그린다)라 0.95, `·`는 PPT에서 0.575라 기본값 0.58에 둔다.
+ */
+const mapGlyphEm = (ch: string): number => {
+  const code = ch.charCodeAt(0);
+  if (code >= 0xac00 && code <= 0xd7a3) return 0.95;
+  if (code > 0x2e80) return 1;
+  if (" .,:;'|!ilIjtf".includes(ch)) return 0.32;
+  if ("()[]/-".includes(ch)) return 0.4;
+  if ("m%".includes(ch)) return 0.97;
+  if ("wWM".includes(ch)) return 0.9;
+  if (ch >= "A" && ch <= "Z") return 0.66;
+  return 0.58;
+};
+
+/** SVG와 PPT가 공유하는 고정폭 문자 측정. 브라우저 폰트 측정에 의존하지 않고 글꼴 폭 표(`mapGlyphEm`)로 어림한다. */
+export const mapTextWidth = (s: string, fs: number) => [...s].reduce((w, ch) => w + fs * mapGlyphEm(ch), 0);
 
 /** 사용자가 폭을 줄인 말풍선의 줄바꿈. 띄어쓰기에서 먼저 끊고, 한 단어가 넘치면 글자 단위로 끊는다. */
 export function wrapMapText(text: string, fs: number, width: number): string[] {

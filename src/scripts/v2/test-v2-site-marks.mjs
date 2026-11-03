@@ -7,7 +7,7 @@ import { createElement } from "react";
 globalThis.React = React;
 
 const { toLngLat, toUtmk } = await import("../../lib/v2/crs.ts");
-const { buildMapScene } = await import("../../lib/v2/ui/map-scene.ts");
+const { buildMapScene, mapTextWidth } = await import("../../lib/v2/ui/map-scene.ts");
 const { makeProjector } = await import("../../lib/v2/ui/map-projection.ts");
 const { mapBaseFromScene } = await import("../../lib/v2/ui/basemap.ts");
 const { default: MapFigure } = await import("../../components/v2/map-figure.tsx");
@@ -138,7 +138,7 @@ const BOTH = { dims: true, elevations: true };
         { points: line(-60, -450, -60, 450), widthM: 10, hierarchy: "집산", name: "삼성로" },
       ],
       green: [[box(100, 100, 60, 60)]], greenKinds: ["park"], water: [], rail: [], stations: [],
-      places: [{ name: "역삼동", kind: "dong", x: 0, y: -80 }, { name: "대치동", kind: "dong", x: 0, y: 80 }],
+      places: [{ name: "역삼동", kind: "dong", x: 20, y: -80 }, { name: "대치동", kind: "dong", x: 20, y: 80 }],
     },
     counts: { buildingsTotal: 0, buildingsIncluded: 0, parcelsTotal: 0, parcelsIncluded: 0 },
     sources: [], limitations: [],
@@ -156,7 +156,7 @@ const BOTH = { dims: true, elevations: true };
 // crowded: 작은 축척(대지가 작게 보임) — 변이 글자보다 짧으면 생략, 치수 글자끼리·표고와 치수 글자·대지 표식이 겹치지 않음
 {
   const fit = 0.6;
-  const textWidth = (dim) => [...dim.text].reduce((w, ch) => w + (ch.charCodeAt(0) > 0x2e80 ? dim.fontSize : dim.fontSize * 0.58), 0) + dim.fontSize * 0.36;
+  const textWidth = (dim) => mapTextWidth(dim.text, dim.fontSize) + dim.fontSize * 0.36;
   const edgePx = (dim) => Math.hypot(dim.line[1][0] - dim.line[0][0], dim.line[1][1] - dim.line[0][1]);
   const notch = [[-100, -60], [100, -60], [100, 60], [-60, 60], [-60, 0], [-100, 0]];
   for (const [name, locals] of [["ㄱ자 윤곽", notch], ["100×60 직사각형", rect(100, 60)], ["300×200 직사각형", rect(300, 200)]]) {
