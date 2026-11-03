@@ -16,7 +16,7 @@ const { d10 } = await import("../../lib/v2/tile/d10/engine.ts");
 const { canopyFor } = await import("../../lib/v2/engine/tiles/canopy-shared.ts");
 const { satelliteMosaic } = await import("../../lib/v2/engine/imagery.ts");
 const { detectCanopy } = await import("../../lib/v2/sim/canopy.ts");
-const { toUtmk } = await import("../../lib/v2/crs.ts");
+const { toUtmk, toLngLat } = await import("../../lib/v2/crs.ts");
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
 const { inflateRawSync } = await import("node:zlib");
 const { buffer: bufferLine } = await import("@turf/turf");
@@ -153,14 +153,18 @@ function roadRect(cx, cy, x0, x1, y0, y1) {
 }
 
 function roadPolygonsFor(ctx) {
-  const hits = ctx.hits("reference", ["road"]);
+  // 「도로 위 수관」 전제는 차도(motorway~tertiary와 link, 터널 제외)에만 맞는다 — 보행로·주거 골목은 실제로 가로수 아래다(Ruling 48).
+  const carriageway = new Set(["고속도로", "간선", "보조간선", "집산"]);
+  const hits = ctx.hits("reference", ["road"]).filter((hit) => carriageway.has(hit.properties.hierarchy) && !["T", "yes", "true"].includes(String(hit.properties.tunnel ?? "").trim()));
   if (hits.length > 0) {
+    const toLngLatLine = (geometry) => ({ ...geometry, coordinates: geometry.type === "LineString" ? geometry.coordinates.map(toLngLat) : geometry.coordinates.map((part) => part.map(toLngLat)) });
     const polygons = [];
     for (const hit of hits) {
-      const buffered = bufferLine({ type: "Feature", properties: {}, geometry: hit.geometry }, 8, { units: "meters" });
+      // FeatureHit.geometry는 EPSG:5179(미터)다 — turf는 경위도를 가정하므로 되돌린 뒤 버퍼한다.
+      const buffered = bufferLine({ type: "Feature", properties: {}, geometry: toLngLatLine(hit.geometry) }, 4, { units: "meters" });
       if (buffered?.geometry) polygons.push(...polygonRingsInUtm(buffered.geometry));
     }
-    if (polygons.length > 0) return { source: "published OSM road centerlines buffered 8m", polygons };
+    if (polygons.length > 0) return { source: "published OSM carriageway centerlines (tunnels excluded) buffered 4m", polygons };
   }
   const [cx, cy] = toUtmk(ctx.input.center);
   return {
@@ -265,7 +269,7 @@ async function runRealSiteRegression() {
     assert.ok(spatial.pct >= 90, `D10 grid vs T15 pixel alignment ${spatial.pct.toFixed(2)}% < 90%`);
     const roads = roadPolygonsFor(realCtx);
     const roadOverlap = canopyOverRoadPct(canopy.grid, REAL_RADIUS_M, roads.polygons);
-    assert.ok(roadOverlap.roadArea > 0, "OSM road regression polygons have no in-radius cells");
+    assert.ok(roadOverlap.roadArea > 0, `OSM carriageway regression polygons have no in-radius cells (${roads.source})`);
     assert.ok(roadOverlap.pct < 5, `detected canopy over ${roads.source}: ${roadOverlap.pct.toFixed(2)}%`);
     console.log(`D10 real-site perf: ${elapsedMs.toFixed(1)} ms (first-run budget 22000 ms)`);
     console.log(`D10 real-site regression: z=${t15Mosaic.z}, tiles=${t15Mosaic.totalTiles}, missing=${t15Mosaic.missingTiles}, T15=${t15Detection.coveragePct.toFixed(2)}%, D10=${d10Metric.value.toFixed(2)}%, grid-match=${spatial.pct.toFixed(2)}%, road-overlap=${roadOverlap.pct.toFixed(2)}% (${roads.source})`);
