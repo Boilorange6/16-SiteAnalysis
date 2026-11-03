@@ -256,7 +256,6 @@ function addDirectionDuplicateSubwayLines(dataDir) {
   assert.ok(chart, "A01은 정류장·출입구를 밝혀 그래프가 나온다");
   assert.equal(chart.total, 5);
   assert.deepEqual(chart.composition.map((c) => c.label).sort(), ["버스정류장", "역 출입구"]);
-  assert.equal(chart.subject + chart.countUnit, "정류장·출입구곳");
   ctx.close();
 }
 

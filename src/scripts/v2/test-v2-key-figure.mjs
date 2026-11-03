@@ -119,7 +119,7 @@ const a01 = (presentation = {}, { status = "partial", metrics = a01Metrics() } =
   ];
   const view = toTileView(result("A01", "analysis", noRail));
   assert.equal(view.headline.value, "미확인", "타일 카드 자체의 headline은 그대로");
-  assert.deepEqual(view.keyFigure, { question: "최근접 버스정류장", answer: { value: "153m", kind: "number" }, stats: [] });
+  assert.deepEqual(view.keyFigure, { question: "최근접 버스정류장", answer: { value: "153m", kind: "number" }, sub: "직선", stats: [] });
   assert.doesNotMatch(JSON.stringify(view.keyFigure), /미확인|비공개|해당 없음/);
   // 값이 있는 headline 지표가 하나도 없으면 카드를 그리지 않는다.
   const none = noRail.map((metric) => metric.id === "nearest_bus_m" ? missing("nearest_bus_m", "최근접 버스정류장", "m") : metric);
@@ -191,9 +191,11 @@ const d03 = (status = "partial") => {
 {
   const kf = toTileView(d03()).keyFigure;
   assert.equal(kf.question, "가장 많은 건물 용도");
-  assert.deepEqual(kf.answer, { pre: "주거", value: "61.0%", kind: "number" });
-  assert.equal(kf.sub, "용도가 확인된 947동 중 578동");
-  assert.deepEqual(kf.stats.map((s) => s.value), ["1,734동", "23.2%", "45.4%"]);
+  // 큰 답·보조 숫자 모두 전체(1,734동) 기준 — 그래프·보드 headline(33.3%)과 같은 숫자(Ruling 47)
+  assert.deepEqual(kf.answer, { pre: "주거", value: "33.3%", kind: "number" });
+  assert.equal(kf.sub, "전체 1,734동 중 578동");
+  assert.deepEqual(kf.stats.map((s) => s.value), ["1,734동", "12.7%", "45.4%"]);
+  assert.equal(toTileView(d03()).headline.value, kf.answer.value, "보드 headline과 카드 큰 답이 같은 숫자");
   assert.deepEqual(kf.stats.map((s) => s.label), ["1km 안 건물", "근린생활 · 220동", "용도 미상 · 787동"]);
 }
 
@@ -352,7 +354,7 @@ const a07Metrics = [
   assert.deepEqual(unknownOnly.stats, [stat("4곳", "교차 정비구역")]);
 }
 
-// A10— 계획·공사 사업(계획역 거리는 있을 때만, 개통 예정은 엔진이 항상 미확인이라 싣지 않는다)
+// A10 — 계획·공사 사업(계획역 거리는 있을 때만, 개통 예정은 엔진이 항상 미확인이라 싣지 않는다)
 {
   const base = [m("planned_projects", "반경 내 계획·공사 사업", 0, "건"), missing("opening_schedule", "개통 예정 시점", "")];
   const kf = kfOf(result("A10", "analysis", [...base, missing("nearest_planned_station_m", "최근접 계획역", "m")]));
@@ -643,6 +645,22 @@ for (const [code, missingId, valuedId, value] of [["S03", "urel_median_annual", 
     const view = toTileView(result(code, type, ids.map((id) => missing(id, id, ""))));
     assert.doesNotMatch(JSON.stringify(view.keyFigure), junk, code);
   }
+}
+
+// T1 — headline 대체 카드도 「직선」을 잃지 않고, 추정 지표가 헤드라인이면 추정 배지가 있다
+{
+  const kf = kfOf(result("A01", "analysis", [m("nearest_rail_m", "최근접 철도역 출입구", 321, "m")]));
+  assert.equal(kf.sub, "직선", "headline 대체 카드가 aux를 보조 줄로 싣는다");
+  const a08 = toTileView(result("A08", "analysis", [m("jeonse_to_trade_ratio_pct", "대응 전세가율", 41.8, "%", { status: "estimated", numerator: 20 })]));
+  assert.equal(a08.badges[0].text, "추정", "추정 headline이면 추정 배지를 앞에");
+  const observed = toTileView(result("A08", "analysis", [m("jeonse_to_trade_ratio_pct", "대응 전세가율", 41.8, "%", { numerator: 20 })]));
+  assert.ok(!observed.badges.some((b) => b.text === "추정"), "관측값에는 추정 배지를 만들지 않는다");
+}
+
+// T5 — 음수 m(고저차)는 「미확인」이 아니라 부호 있는 값
+{
+  const view = toTileView(result("D17", "diagram", [m("relief_min_m", "중심 대비 최저 고저차", -10.3, "m", { status: "estimated" })]));
+  assert.equal(view.rows[0].value, "-10m");
 }
 
 // ── D01: headline이 있어도 카드를 그리지 않는다 ──

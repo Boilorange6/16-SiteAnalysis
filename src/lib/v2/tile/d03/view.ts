@@ -4,7 +4,7 @@ import type { KeyFigure, TileClientModule } from "../types";
 
 const USE_PREFIX = "구성비: ";
 
-/** 몫(%)은 용도가 확인된 건물 수를 분모로 한다. 분모와 동수는 엔진이 지표에 적은 분자·분모에서 읽는다. */
+/** 몫(%)은 반경 안 전체 건물 수를 분모로 한다(그래프·보드 headline·엔진 `share_use_*`와 같은 숫자, Ruling 8·47). 분모와 동수는 엔진이 지표에 적은 분자·분모에서 읽는다. */
 function d03KeyFigure(result: TileResult): KeyFigure | null {
   const fill = result.metrics.find((metric) => metric.id === "fill_use_pct");
   const total = fill?.denominator ?? null;
@@ -20,12 +20,12 @@ function d03KeyFigure(result: TileResult): KeyFigure | null {
   const second = uses[1];
   const unknown = result.metrics.find((metric) => metric.id === "share_use_10")?.numerator ?? null;
   const stats: KeyFigure["stats"] = [{ value: countText(total, "동"), label: `${radiusLabel(result.conditions.radiusM)} 안 건물` }];
-  if (second && second.count > 0) stats.push({ value: percentText((second.count / known) * 100), label: `${second.name} · ${countText(second.count, "동")}` });
+  if (second && second.count > 0) stats.push({ value: percentText((second.count / total) * 100), label: `${second.name} · ${countText(second.count, "동")}` });
   if (unknown !== null) stats.push({ value: percentText((unknown / total) * 100), label: `용도 미상 · ${countText(unknown, "동")}` });
   return {
     question: "가장 많은 건물 용도",
-    answer: { pre: top.name, value: percentText((top.count / known) * 100), kind: "number" },
-    sub: `용도가 확인된 ${countText(known, "동")} 중 ${countText(top.count, "동")}`,
+    answer: { pre: top.name, value: percentText((top.count / total) * 100), kind: "number" },
+    sub: `전체 ${countText(total, "동")} 중 ${countText(top.count, "동")}`,
     stats,
   };
 }

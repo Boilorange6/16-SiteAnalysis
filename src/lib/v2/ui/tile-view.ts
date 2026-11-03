@@ -297,7 +297,8 @@ export function formatDistanceM(distanceM: number): string {
   return distanceM >= 1000 ? `${(distanceM / 1000).toFixed(1)} km` : `${formatMetricValue(distanceM, "m")}m`;
 }
 const withUnit = (n: number, unit: string) => {
-  if (unit === "m") return formatDistanceM(n);
+  // 음수 고저차는 거리가 아니다 — 「미확인」으로 바꾸지 않는다.
+  if (unit === "m") return n < 0 ? `${formatMetricValue(n, "m")}m` : formatDistanceM(n);
   // 설계 숫자 규칙은 면적을 정수로 표시하되, 1 km² 미만을 0 km²로
   // 뭉개지 않는다. 작은 면적은 같은 정수 규칙의 ㎡로 전환한다.
   if ((unit === "km²" || unit === "㎢") && Math.abs(n) < 1) {
@@ -384,7 +385,7 @@ function keyFigureOf(r: TileResult, module: ReturnType<typeof tileClientModuleFo
   const defined = module?.keyFigureFor?.(r, helpers) ?? null;
   if (defined === "none") return null;
   if (defined) return defined;
-  let card: { value: string; label: string } | null = view.headline;
+  let card: { value: string; label: string; aux?: string } | null = view.headline;
   const selected = metrics.find((metric) => metric.id === view.headlineMetricId);
   if (selected && !hasMetricValue(selected)) {
     const ids = [...(HEADLINE_POLICY[r.tileCode as TileCode]?.ids ?? []), ...(r.judgment?.basisMetricIds ?? [])];
@@ -392,7 +393,7 @@ function keyFigureOf(r: TileResult, module: ReturnType<typeof tileClientModuleFo
     card = next ? metricRow(next) : null;
   }
   if (!card) return null;
-  return { question: card.label, answer: { value: card.value, kind: /^[-+]?[\d.,]/.test(card.value) ? "number" : "name" }, stats: [] };
+  return { question: card.label, answer: { value: card.value, kind: /^[-+]?[\d.,]/.test(card.value) ? "number" : "name" }, ...(card.aux ? { sub: card.aux } : {}), stats: [] };
 }
 
 export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParcel?: readonly MapPolygon[] | null, a05Filter?: A05Filter | null): TileView {
@@ -459,7 +460,8 @@ export function toTileView(r: TileResult, scene?: Scene | null, analysisSiteParc
     title: cat.title,
     color: cat.color,
     status: r.status,
-    badges: [...merged.values()],
+    // 추정 지표가 헤드라인인데 추정 배지가 없으면 앞에 붙인다(보드 headline의 「추정」과 같은 정직성).
+    badges: headline?.tag === "추정" && !merged.has("추정") ? [{ text: "추정", tone: "limit" }, ...merged.values()] : [...merged.values()],
     headline,
     headlineMetricId,
     keyFigure: null,

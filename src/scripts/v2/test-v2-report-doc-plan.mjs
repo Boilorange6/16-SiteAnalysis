@@ -36,7 +36,7 @@ const restoredLegacyLayout = restoreReportDoc({
 }, new Set(["t-A01"]));
 assert.equal(restoredLegacyLayout.pages[0]?.layout, "map-key", "저장된 단일 타일 side-by-side는 map-key로 마이그레이션");
 
-// 새 쪽 기본: 그림 타일(장미·매스)은 「그림 + 요약」, 그 밖의 지도 없는 장은 「숫자 먼저」 (2026-10-30 결정 C)
+// 새 쪽 기본: 그림 타일(장미·매스)은 「그림 + 숫자」, 그 밖의 지도 없는 장은 「숫자 먼저」 (2026-10-30 결정 C)
 {
   const base = views.get("t-A01");
   const roseModel = { station: "near", dirs: Array.from({ length: 16 }, () => [1, 0, 0, 0, 0]), calmHours: 1, missingHours: 0, totalHours: 100 };
