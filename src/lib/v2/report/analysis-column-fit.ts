@@ -16,8 +16,8 @@ function lineSpans(chars: string[], pt: number, width: number): { starts: number
   let lastSpace = -1;
   for (let i = 0; i < chars.length; i++) {
     const start = starts[starts.length - 1]!;
-    if (chars[i] === " ") lastSpace = i;
-    if (fits(start, i + 1)) continue;
+    if (chars[i] === " " && chars[i + 1] !== "·") lastSpace = i; // 「 · 」 앞 공백은 줄바꿈 후보가 아니다(줄이 「·」로 시작하지 않게)
+    if (fits(start, i + 1) || (chars[i] === " " && chars[i + 1] === "·")) continue;
     let at = lastSpace > start && chars[i] !== " " ? lastSpace : i; // 공백이 있으면 그 자리에서 줄을 바꾸고, 없으면 글자 단위로
     if (at === start) at = i + 1; // 글자 하나가 폭보다 넓은 극단: 한 줄에 한 글자씩
     while (at > start + 1 && CLOSING.includes(chars[at]!)) at--; // 닫는 괄호·쉼표가 줄 맨 앞에 혼자 남지 않게 앞 글자와 함께 내린다

@@ -135,9 +135,11 @@ function place(input: GeometryInput): { geometry: ReportPageGeometry; cardMoved:
     while (slots > 0 && room(slots) < CHART_MIN * slots) slots--;
     let chart1: Rect | null = null;
     let chart2: Rect | null = null;
-    if (slots === 1) chart1 = { x: rect.x, y: top, w: rect.w, h: room(1) };
+    // 카드 하나만 남아도 내용보다 큰 빈 여백을 두지 않는다(열 바탕이 비는 쪽이 낫다).
+    if (slots === 1) chart1 = { x: rect.x, y: top, w: rect.w, h: Math.min(room(1), input.chart1Content ?? Infinity) };
     if (slots === 2) {
-      const h1 = Math.min(room(2) * CHART1_SHARE, input.chart1Content ?? Infinity);
+      // 구성비 카드는 내용 높이를 받고(spec §3-3: 그래프 카드 2부터 줄인다), 거리 카드가 CHART_MIN 아래로 줄지 않게만 막는다.
+      const h1 = Math.min(input.chart1Content ?? room(2) * CHART1_SHARE, room(2) - CHART_MIN);
       chart1 = { x: rect.x, y: top, w: rect.w, h: h1 };
       chart2 = { x: rect.x, y: bottom(chart1) + CARD_GAP, w: rect.w, h: room(2) - h1 };
     }

@@ -185,7 +185,7 @@ export function legendLayout(items: LegendFit["items"], notes: string[], scale: 
   const rowHeights = Array.from({ length: rows }, (_, r) => rowH + (Math.max(1, ...labelLines.slice(r * cols, (r + 1) * cols).map((lines) => lines.length)) - 1) * labelLineH);
   const itemsW = items.length > 0 ? span(colWidths) : 0;
   const longestNote = Math.max(0, ...notes.map((note) => textIn(note, notePt) * 1.101)); // wrapToLines의 10 % 여유: 이 폭이면 한 줄에 든다
-  const noteW = Math.max(itemsW, Math.min(LEGEND_NOTE_W, maxInner, longestNote));
+  const noteW = Math.max(itemsW, Math.min(LEGEND_NOTE_W * scale, maxInner, longestNote));
   const noteLines = notes.map((note) => wrapToLines(note, notePt, noteW, 2));
   const noteClipped = notes.map((note) => wrapToLines(note, notePt, noteW, 3).length > 2);
   const itemRects = items.map((_, i) => {
@@ -245,7 +245,7 @@ export function footnoteText(slide: TileSlide, basemap: BasemapChoice | undefine
   const credit = drawn.length > 0 ? fitFooterText(footer, true, 1e6, 9, drawn).text.slice(bare.length) : "";
   const filterText = filterInFootnote ? filterLine : null;
   const caveat = slide.view.caveats[0] ?? slide.view.notes[0];
-  const limit = [filterText, caveat].filter(Boolean).join(" · ");
+  const limit = caveat ?? ""; // filterText가 있는 갈래는 아래 `limits`가 따로 만든다
   const cleaned = bare.replace(/제공처 미기록 · /g, "");
   const shares = [0.5, 0.4, 0.3, 0.2, 0.1, 0.05];
   const cut = (text: string) => shares.map((share) => oneLine(text, pt, width * share));

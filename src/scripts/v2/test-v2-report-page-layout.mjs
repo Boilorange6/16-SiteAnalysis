@@ -174,8 +174,13 @@ for (const format of ["wide", "a3", "a4"]) {
   near(bottom(capped.chart2), bottom(full.chart2), "거리 카드 아래 끝은 그대로");
   assert.ok(full.chart1.h > 1.1, "전제: 몫이 내용보다 크다");
   near(capped.chart2.h, full.chart2.h + (full.chart1.h - 1.1), "거리 카드가 남는 높이만큼 커진다");
+  // T8a·T14a: 내용이 몫(45 %)보다 커도 구성비 카드는 내용 높이를 받는다(막대 줄을 촘촘히 하지 않는다). 거리 카드는 최소 높이(1.2 in) 아래로 줄지 않는다.
+  const share = full.chart1.h + full.chart2.h;
+  const grown = geo({ layout: "map-charts", chart1Content: full.chart1.h + 0.2 }).column;
+  near(grown.chart1.h, full.chart1.h + 0.2, "내용이 몫보다 크면 구성비 카드가 내용 높이");
   const big = geo({ layout: "map-charts", chart1Content: 9 }).column;
-  near(big.chart1.h, full.chart1.h, "내용이 더 크면 몫 그대로");
+  near(big.chart2.h, 1.2, "거리 카드 최소 높이 1.2 in 아래로 줄지 않는다");
+  near(big.chart1.h, share - 1.2, "구성비 카드는 나머지 전부");
 }
 
 // ── 숫자 카드 지움
@@ -561,6 +566,10 @@ for (const format of ["wide", "a3", "a4"]) {
     for (let i = 0; i < f.itemRects.length; i++) for (let j = i + 1; j < f.itemRects.length; j++) assert.ok(!hit(f.itemRects[i], f.itemRects[j]), `${tag} 항목 칸 겹침`);
   }
   const at = (name, scale = 1) => legendLayout([...table[name].labels.map(row), site], table[name].notes, scale);
+  // T17c: 범례 글자를 키워도(10~16 pt) 실제 주석은 2줄 안에 다 들어간다(주석 폭이 글자 배율을 따른다) — 한계·출처 문구가 …로 잘리지 않는다.
+  for (const scale of [1, 1.2, 1.4, 1.6]) for (const name of Object.keys(table).filter((n) => n !== "아주 긴 주석")) {
+    assert.deepEqual(at(name, scale).noteClipped, table[name].notes.map(() => false), `${name} 배율 ${scale} 주석 잘림 없음`);
+  }
   // Ruling 31: 2열이 5 in를 넘으면 2열을 유지하고 항목 이름을 열 폭에 맞춰 최대 2줄로 접는다(` · ` 앞에서 먼저). A07·A08 범례.
   for (const name of ["A10", "A11", "A08"]) {
     const f = at(name);
@@ -577,6 +586,12 @@ for (const format of ["wide", "a3", "a4"]) {
   const unfoldable = legendLayout([...["아주긴이름".repeat(40), "가", "나", "다", "라"].map(row), site], [], 1);
   assert.equal(unfoldable.cols, 1, "접어도 안 되면 1열");
   assert.equal(unfoldable.labelClipped[0], true);
+  // T15: 어떤 폭에서도 줄이 「·」로 시작하지 않는다(「 · 」 앞 공백은 줄바꿈 후보가 아니다)
+  {
+    const { wrapToLines } = await import("../../lib/v2/report/analysis-column-fit.ts");
+    const note = table.도로.notes[0];
+    for (let w = 1.2; w <= 3.2; w += 0.05) for (const line of wrapToLines(note, 8, w, 4)) assert.ok(!line.startsWith("·"), `폭 ${w.toFixed(2)} 줄머리 「·」: ${line}`);
+  }
   // 판 폭의 뼈대는 항목이다: 도로 주석은 2.6 in로 접어 두 줄, 판이 주석 한 줄 길이로 벌어지지 않는다.
   const road = at("도로");
   assert.equal(road.noteLines[0].length, 2);
