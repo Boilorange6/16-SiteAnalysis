@@ -375,7 +375,10 @@ const mapGlyphEm = (ch: string): number => {
 /** SVG와 PPT가 공유하는 고정폭 문자 측정. 브라우저 폰트 측정에 의존하지 않고 글꼴 폭 표(`mapGlyphEm`)로 어림한다. */
 export const mapTextWidth = (s: string, fs: number) => [...s].reduce((w, ch) => w + fs * mapGlyphEm(ch), 0);
 
-/** 사용자가 폭을 줄인 말풍선의 줄바꿈. 띄어쓰기에서 먼저 끊고, 한 단어가 넘치면 글자 단위로 끊는다. */
+/** 띄어쓰기 없는 이름이 넘칠 때 끊어도 되는 끝말(긴 것부터). 「…부속고/등학교」 대신 「…부속/고등학교」. */
+const NAME_TAIL_BREAKS = ["주민센터", "고등학교", "초등학교", "어린이집", "오피스텔", "중학교", "대학교", "유치원", "도서관", "아파트", "빌딩", "타워", "센터", "병원", "공원", "시장", "교회", "성당"];
+
+/** 사용자가 폭을 줄인 말풍선의 줄바꿈. 띄어쓰기에서 먼저 끊고, 한 단어가 넘치면 글자 단위로 끊되 이름 끝말(`NAME_TAIL_BREAKS`)은 한 덩어리로 넘긴다. */
 export function wrapMapText(text: string, fs: number, width: number): string[] {
   const out: string[] = [];
   let line = "";
@@ -383,11 +386,16 @@ export function wrapMapText(text: string, fs: number, width: number): string[] {
     const next = line ? `${line} ${word}` : word;
     if (mapTextWidth(next, fs) <= width) { line = next; continue; }
     if (line) out.push(line);
-    line = "";
-    for (const ch of word) {
-      if (line && mapTextWidth(line + ch, fs) > width) { out.push(line); line = ""; }
-      line += ch;
+    let rest = [...word];
+    while (rest.length > 1 && mapTextWidth(rest.join(""), fs) > width) {
+      let fit = 1;
+      while (fit < rest.length && mapTextWidth(rest.slice(0, fit + 1).join(""), fs) <= width) fit++;
+      const tail = NAME_TAIL_BREAKS.find((s) => rest.join("").endsWith(s) && rest.length - s.length <= fit && rest.length - s.length >= Math.ceil(fit / 2));
+      const cut = tail ? rest.length - tail.length : fit;
+      out.push(rest.slice(0, cut).join(""));
+      rest = rest.slice(cut);
     }
+    line = rest.join("");
   }
   if (line || out.length === 0) out.push(line);
   return out;

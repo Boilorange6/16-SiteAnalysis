@@ -125,6 +125,10 @@ assert.equal(boxedPlacement.autoBox !== undefined, true, "저장 라벨 상자�
 // 폭을 줄인 말풍선은 말줄임 대신 줄바꿈한다(미리보기·PPT가 같은 lines를 쓴다).
 assert.deepEqual(wrapMapText("고덕 그라시움 정류장", 10, 35), ["고덕", "그라시", "움", "정류장"]);
 assert.deepEqual(wrapMapText("버스정류장", 10, 1000), ["버스정류장"]);
+// 띄어쓰기 없는 긴 이름은 끝말(고등학교)을 한 덩어리로 넘긴다 — 글자 단위면 「…부속고 / 등학교」
+assert.deepEqual(wrapMapText("단국대학교사범대학부속고등학교", 10, 115), ["단국대학교사범대학부속", "고등학교"]);
+// 끝말이 앞줄의 절반보다 앞에서 시작하면 끝말을 기다리지 않고 글자 단위로 끊는다
+assert.deepEqual(wrapMapText("가나다라마바사아자차고등학교", 10, 40), ["가나다라", "마바사아", "자차", "고등학교"]);
 const narrowScene = buildMapScene({ ...sceneOptions, labelBoxes: { [featureKey]: { x: 0.1, y: 0.1, w: 0.06, h: 0.2 } } });
 const narrow = narrowScene.labelPlacements.find((placement) => placement.entry.key === featureKey);
 assert.ok(narrow && narrow.text.lines.length > 1, "좁은 말풍선 글이 여러 줄로 나뉜다");
