@@ -183,13 +183,19 @@ function scatterShapes(d: Scatter, radiusM: number, box: ChartBox, scale: number
     if (yMed <= yMean) yMeanLabel = room ? yMean + gap : first - th - gap;
     else yMedLabel = room ? yMed + gap : first - th - gap;
   }
-  // 글자는 점이 덜 깔린 쪽(오른쪽 끝 또는 왼쪽 끝)에 둔다. 같으면 오른쪽(기본). 대지 점·글자가 왼쪽 끝에 있으면 오른쪽만 쓴다.
-  const sides = (d.site === null ? ["right", "left"] as const : ["right"] as const).map((align) => {
+  // 글자는 점이 덜 깔린 쪽(오른쪽 끝 또는 왼쪽 끝)에 둔다. 같으면 오른쪽(기본).
+  // 대지 점이 있으면 왼쪽 끝 글자가 대지 점(가운데 줄)을 덮지 않고, 대지 글자가 갈 자리(점 위 또는 아래)가 하나는 남을 때만 왼쪽을 쓴다.
+  const siteSpots = d.site === null ? [] : [Y(d.site) - 0.05 * scale - th, Y(d.site) - th / 2, Y(d.site) + 0.05 * scale]
+    .map((y) => text("site-zone", `대지 평균 ${tickText(d.site!, unit)}${unit}`, pt, C.siteStroke, "left", X(0) - 5 * PX * scale, y, true));
+  const [siteAbove, siteMid, siteBelow] = siteSpots;
+  const sides = (["right", "left"] as const).map((align) => {
     const ax = align === "right" ? right : px + 0.04 * scale;
     const labels = [text("median-label", medText, pt, C.strong, align, ax, yMedLabel, true), text("mean-label", meanText, pt, C.label, align, ax, yMeanLabel)];
     const r = (dense ? 0.018 : 0.03) * scale;
     const covered = d.points.filter((p) => labels.some((l) => X(p.d) > l.x - r && X(p.d) < l.x + l.w + r && Y(p.v) > l.y - r && Y(p.v) < l.y + l.h + r)).length;
-    return { labels, covered };
+    const hits = (s: TextShape | undefined) => !!s && labels.some((l) => overlapArea(l, s) > 0);
+    const blocked = align === "left" && (hits(siteMid) || (hits(siteAbove) && hits(siteBelow)));
+    return { labels, covered: blocked ? Infinity : covered };
   });
   const chosen = sides.reduce((best, side) => (side.covered < best.covered ? side : best));
   out.push(...chosen.labels);

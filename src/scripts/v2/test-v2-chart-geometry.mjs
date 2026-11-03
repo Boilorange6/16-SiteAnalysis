@@ -186,6 +186,21 @@ for (const scale of SCALES) {
     for (const l of [medLabel, meanLabel]) assert.ok(l.y + l.h <= upperLine + EPS || l.y >= lowerLine - EPS, `글자가 두 선 사이에 끼지 않는다 x${scale}`);
   }
 }
+// 대지 점이 있어도 오른쪽 끝에 점이 몰리면 왼쪽 끝을 쓴다(fe9e688b 10쪽: 오른쪽 글자가 점을 덮음). 왼쪽 글자가 대지 점·대지 글자 자리를 덮으면 오른쪽에 남는다.
+{
+  const crowd = Array.from({ length: 30 }, (_, i) => ({ d: 700 + i * 10, v: 2900 + (i % 5) * 100, color: COLORS[1] }));
+  const base = { kind: "scatter", axis: { label: "㎡당 매매가", unit: "만원/㎡" }, qualifier: "단지별", points: crowd, median: 3088, mean: 3116, max: 6000, sampled: false };
+  for (const scale of SCALES) {
+    const box = { ...BOX, w: 2.9 * scale, h: BOX.h * scale }; // 실제 열 카드(2.9 in)를 배율대로 키운 판
+    const far = distanceShapes({ ...base, site: 4428 }, 1000, box, scale);
+    assert.ok(byName(far, "chart-distance-mean-label").x < box.x + box.w * 0.25, `대지가 선에서 멀면 왼쪽 x${scale}`);
+    assertNoTextOverlap(far, `대지 + 왼쪽 글자 x${scale}`);
+    assertInside(far, box, `대지 + 왼쪽 글자 x${scale}`);
+    const near = distanceShapes({ ...base, site: 3100 }, 1000, box, scale);
+    const nearMean = byName(near, "chart-distance-mean-label");
+    assert.ok(nearMean.x + nearMean.w > box.x + box.w * 0.75, `대지가 선 가까이면 오른쪽 x${scale}`);
+  }
+}
 // 통계 서식은 중앙값·평균·요약 통계 줄이 하나: 100 미만은 소수 한 자리까지(정수면 정수), 100 이상은 정수
 assert.equal(byName(distanceShapes({ ...floors, median: 3.5, mean: 6 }, 1000, BOX, 1), "chart-distance-median-label").text, "중앙값 3.5층");
 assert.equal(byName(distanceShapes({ ...floors, median: 3.5, mean: 6 }, 1000, BOX, 1), "chart-distance-mean-label").text, "평균 6층");
