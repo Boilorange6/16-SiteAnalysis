@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { createPortal } from "react-dom";
 import type { Dispatch, RefObject } from "react";
 import type { BasemapChoice } from "@/lib/v2/ui/map-projection";
-import { clampTextBox, defaultFrame, DEFAULT_REPORT_FONT_SIZES, EMPTY_REPORT_DOC, newPageId, REPORT_FONT_SIZE_KEYS, REPORT_FONT_SIZE_LIMITS, reportDocReducer, textBoxDefaults, TEXT_BOX_DEFAULTS, type FontSizeKey, type MapColorChoice, type MapFrameState, type PageElementKey, type PagePanels, type ReportDoc, type ReportDocAction, type ReportFontSizeOverrides, type ReportFontSizes, type ReportFormat, type ReportPage, type TextBox, type TextBoxKind, type TilePart } from "@/lib/v2/report/report-doc";
+import { clampTextBox, defaultFrame, DEFAULT_REPORT_FONT_SIZES, EMPTY_REPORT_DOC, newPageId, pageElementDeleted, REPORT_FONT_SIZE_KEYS, REPORT_FONT_SIZE_LIMITS, reportDocReducer, textBoxDefaults, TEXT_BOX_DEFAULTS, type FontSizeKey, type MapColorChoice, type MapFrameState, type PageElementKey, type PagePanels, type ReportDoc, type ReportDocAction, type ReportFontSizeOverrides, type ReportFontSizes, type ReportFormat, type ReportPage, type TextBox, type TextBoxKind, type TilePart } from "@/lib/v2/report/report-doc";
 import { mapFrameScaleOptions, scaleForFrame, scaleOptionsForFrame, siteAnchoredZoomPatch, siteFitPatch, zoomForScale } from "@/lib/v2/ui/report-scale";
 import { SLIDE_OVERVIEW_FILL, calloutKeyFromTag, calloutPageItems, sortComplexes, type CalloutSort, type Complex } from "@/lib/v2/ui/callout-layout";
 import { legendMatches, slideGeometry, slideLayout, slideLegend, slidePanelRects, slideSiteX, slideSize, terrainSectionLayout } from "@/lib/v2/ui/overlay-layout";
@@ -1306,13 +1306,18 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
       if (!mapFrame) return;
       applyFrame(mapCell, { legend: { ...mapFrame.legend, placement: "hidden" } }, "범례 칸을 지웠습니다. Ctrl+Z로 되돌릴 수 있습니다.");
     } else {
+      // 카드를 이미 지운 장(예: 수치지형도 단면 장)에서 열 판을 다시 지우면 문서가 그대로인데 빈 되돌리기 단계와 토스트만 생긴다.
+      if (pageElementDeleted(selectedPage, key)) {
+        setSelection(null);
+        return;
+      }
       const label = key === "title" ? "제목" : key === "summary" ? "요약" : "출처 줄";
       apply({ type: "pageElement", id: selectedId, key, deleted: true }, `${label}을 지웠습니다. Ctrl+Z로 되돌릴 수 있습니다.`);
     }
     setSelection(null);
     setMapMoveActive(false);
     setSettingsOpen(false);
-  }, [apply, applyFrame, mapCell, mapFrame, selectedId]);
+  }, [apply, applyFrame, mapCell, mapFrame, selectedId, selectedPage]);
   const deleteDecoration = useCallback((key: "north" | "scaleBar" | "locator", cell = mapCell) => {
     if (!mapFrame) return;
     const labels = { north: "방위표", scaleBar: "축척 막대", locator: "위치도" } as const;
@@ -1516,7 +1521,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
     const targetCell = "cell" in target ? target.cell : undefined;
     if (target.kind === "panel" || target.kind === "element" || target.kind === "decoration") {
       const key = target.kind === "element" ? target.key : target.key;
-      const panels = selectedPage.kind === "compare" && targetCell !== undefined ? selectedPage.cells[targetCell]?.panels : selectedPage.panels;
+      const panels = selectedPage.kind === "compare" && targetCell !== undefined ? selectedPage.cells[targetCell]?.panels : selectedSlide?.page?.panels ?? selectedPage.panels; // 초기화(resetContextPosition)와 같이 그려진 자리를 읽는다
       return !!panels && Object.prototype.hasOwnProperty.call(panels, key);
     }
     if (target.kind === "mapLabel") {
@@ -1524,7 +1529,7 @@ export default function ReportMode({ board, dispatch, views, summary, analysisDa
       return !!frame && Object.prototype.hasOwnProperty.call(frame.labelBoxes, target.key);
     }
     return false;
-  }, [fontContext?.target, mapCell, selectedPage]);
+  }, [fontContext?.target, mapCell, selectedPage, selectedSlide]);
   const contextActions = useMemo<ContextMenuAction[]>(() => {
     const target = fontContext?.target;
     if (!target || !selectedPage) return [];

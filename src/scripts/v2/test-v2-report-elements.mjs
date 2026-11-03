@@ -46,5 +46,8 @@ assert.doesNotMatch(surfaceSource, /textBoxDeleteButton/, "글상자 전용 휴�
 assert.match(modeSource, /onDirectStylePatch=\{directPatch\}|onDirectStylePatch=\{/, "요약·패널 직접 수정 callback이 보고서 모드까지 연결된다");
 assert.match(modeSource, /pageElement/, "보고서 모드가 페이지 요소 삭제 reducer를 사용한다");
 assert.match(pptSource, /pageElementDeleted|deletedElementKeys/, "PPT가 페이지 지운 요소 상태를 읽는다");
+// T25a: 이미 지운 요소를 다시 지우면 reducer가 문서를 그대로 둔다 → 보고서 모드는 apply(빈 되돌리기 단계 + 거짓 토스트) 전에 돌아선다
+assert.equal(reportDocReducer(deletedSummary, { type: "pageElement", id: "p1", key: "summary", deleted: true }).pages[0].deletedElementKeys.length, 1, "다시 지워도 키는 하나");
+assert.match(modeSource, /if \(pageElementDeleted\(selectedPage, key\)\) \{\s*setSelection\(null\);\s*return;\s*\}[\s\S]{0,200}apply\(\{ type: "pageElement"/, "deletePageElement가 이미 지운 요소는 apply 전에 돌아선다");
 
 console.log("v2 report element action contract tests passed");
