@@ -31,7 +31,7 @@ const BASELINE_HASHES = {
   D05: "2b5965a4dcabda48dacc1055e803aaee2be20e6ac14c9959f555dbc527797414", // 2026-10-28 분석 장: 지물 value·valueAxis(Task 1), 건물 면 counted(Task 4)로 갱신
   D06: "4ff7a0359142e9280230ee697f72415683fffef3e7ff80d2b545a83f2c338276", // 2026-10-28 분석 장 Task 4: 건물 면 counted 추가로 갱신
   D07: "c81a0694f5ad126d6aa4a0433ad5ec04846865aac35da89a18205c444f085985", // 2026-10-28 분석 장 Task 4: 건물 면 counted 추가로 갱신
-  D10: "d6713c1843d3eb6bf270ba51a18573d8afa2cb786dd3650b34be15c1d204585c",
+  D10: "7ac6f15bc1316f5be5de3cb03fdc4717629321de8a0f20b0db0ab7276a0bdac4", // 2026-11-04 VWorld 위성영상 수관 검출 중지로 갱신(옛 d6713c18…은 9d7bb7f8에서 수관 있는 출력으로 재현, 나머지 차이는 한계 문구)
   D16: "61edc5ebc98a921c31de55b381f14f2a954f00e9e6bcab48188b543ebfae8317",
   S01: "aff5b8d52517cf3355f406d7b96dbe42b27f6eda07de8f9ba8049d78d4966a2e",
   scene: "12e75a01c3f44974f33d7c12aa146616a16b6f17fe122ceacc3892a324ec39c1", // 2026-10-27 벡터 바탕지도 Task 1: 장면 맥락층 optional 필드 추가로 갱신
