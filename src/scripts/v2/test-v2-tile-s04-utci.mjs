@@ -190,6 +190,12 @@ async function main() {
     assert.equal(normal.conditions.simulation.hours.join(","), UTCI_HOURS.join(","));
     assert.equal(normal.conditions.simulation.treeHeightM, 8);
     assert.match(normal.limitations.map((item) => item.note).join(" "), /대표 기상|수목 높이/);
+    assert.ok(normal.limitations.some(({ note }) => note.includes("수목 높이 8 m 가정")));
+    const noCanopyContext = makeContext(dataDir, makeWindReader(), false, 100);
+    const noCanopy = s04(noCanopyContext);
+    assert.ok(noCanopy.limitations.some(({ note }) => note === "수관 검출을 하지 않아(VWorld 영상 이용조건) 수관 그림자를 반영하지 않았습니다."));
+    assert.ok(!noCanopy.limitations.some(({ note }) => note.includes("수목 높이 8 m 가정")));
+    noCanopyContext.close();
     assert.match(normal.judgment.sentence, /대표 범주 .*그늘/);
     assert.doesNotMatch(normal.judgment.sentence, /건강|위험|안전/);
     const legendLabels = normal.presentation.legend.map((item) => item.label);

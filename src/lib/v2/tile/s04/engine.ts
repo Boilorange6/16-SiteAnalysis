@@ -461,7 +461,6 @@ function representativeAliases(metrics: TileResult["metrics"], result: SeasonHou
 function fixedLimitations(): TileResult["limitations"] {
   return [
     { kind: "estimated", note: "기상 대표자료(계절·시각 10년 중앙값)와 단순화한 복사·바람 입력에 따른 UTCI 근사값입니다. 현장 측정·개인별 건강 위험 예측을 뜻하지 않습니다 — 숫자를 인용하지 말고 자리끼리 비교하세요." },
-    { kind: "estimated", note: "수목 높이 8 m 가정(항공사진 수관)" },
     { kind: "estimated", note: "바람 = S03 보행층(6 m) 상대풍속 × 관측소 10 m 풍속(국지 10 m 등가 가정)" },
     { kind: "estimated", note: "지면·벽 온도는 경험식(양지 가열)" },
   ];
@@ -634,7 +633,8 @@ export function s04(ctx: EngineContext): TileResult {
   const analysisRows = buildingRows(ctx, Math.min(5000, ctx.input.radiusM + SVF_MAX_DIST_M + SVF_CELL_M)) ?? [];
   const assumedLimitation = assumedOneFloorLimitation(analysisRows);
   const limitations = [...fixedLimitations(), ...(assumedLimitation ? [assumedLimitation] : []), ...buildingRetirementLimitations(ctx, Math.min(5000, ctx.input.radiusM + SVF_MAX_DIST_M + SVF_CELL_M))];
-  if (calcReady && !canopy) limitations.push({ kind: "not_provided", note: "항공사진 수관 자료를 확인하지 못해 수관 그림자를 반영하지 않았습니다." });
+  if (canopy) limitations.push({ kind: "estimated", note: "수목 높이 8 m 가정(항공사진 수관)" });
+  if (calcReady && !canopy) limitations.push({ kind: "not_provided", note: "수관 검출을 하지 않아(VWorld 영상 이용조건) 수관 그림자를 반영하지 않았습니다." });
 
   const allObstacles = shared ? sunObstaclesFor(ctx, canopy?.polygons ?? null) : [];
   const buildingMask = new Uint8Array(shared ? shared.grid.cols * shared.grid.rows : 0);

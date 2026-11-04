@@ -1,32 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { performance } from "node:perf_hooks";
-import sharp from "sharp";
 
-const { satelliteMosaic } = await import("../../lib/v2/engine/imagery.ts");
 const { canopyToGrid, detectCanopy } = await import("../../lib/v2/sim/canopy.ts");
 const { MAX_Z } = await import("../../lib/v2/tiles.ts");
 
 const CENTER = [127.15592, 37.56253];
 const TILE_SIZE = 256;
-
-function tileParams(url) {
-  const match = new URL(url).pathname.match(/\/Satellite\/(\d+)\/(\d+)\/(\d+)\.jpeg$/);
-  assert.ok(match, `unexpected WMTS URL: ${url}`);
-  return { z: Number(match[1]), y: Number(match[2]), x: Number(match[3]) };
-}
-
-async function jpegTile(rgb) {
-  return sharp({
-    create: { width: TILE_SIZE, height: TILE_SIZE, channels: 3, background: { r: rgb[0], g: rgb[1], b: rgb[2] } },
-  }).jpeg({ quality: 95 }).toBuffer();
-}
-
-function response(bytes, status = 200, type = "image/jpeg") {
-  return new Response(status === 200 ? bytes : "missing", { status, headers: { "content-type": type } });
-}
 
 function worldPixel([lng, lat], z) {
   const size = TILE_SIZE * 2 ** z;
@@ -117,60 +96,6 @@ function syntheticMosaic(width = 256, height = 256) {
 
 assert.equal(MAX_Z, 19, "the existing tile proxy still accepts z19");
 
-const cacheRoot = await mkdtemp(join(tmpdir(), "v2-canopy-tiles-"));
-try {
-  let fetchCount = 0;
-  const fakeFetch = async (url) => {
-    fetchCount += 1;
-    const { x, y } = tileParams(url);
-    return response(await jpegTile([x % 251, y % 251, 33]));
-  };
-  const mosaic = await satelliteMosaic(CENTER, 80, { key: "fixture-key", cacheRoot, fetch: fakeFetch });
-  assert.equal(mosaic.z, 18);
-  assert.equal(mosaic.width * mosaic.height * 3, mosaic.rgb.length);
-  assert.equal(mosaic.missingTiles, 0);
-  assert.ok(mosaic.totalTiles >= 4, "80 m fixture spans multiple WMTS tiles");
-  assert.equal(fetchCount, mosaic.totalTiles);
-  assert.ok(mosaic.valid?.every((value) => value === 1));
-  const firstPixel = Array.from(mosaic.rgb.slice(0, 3));
-  assert.notDeepEqual(firstPixel, [0, 0, 0], "the stitched tile is not an all-black placeholder");
-  const firstTileX = Math.floor(mosaic.x0Px / TILE_SIZE);
-  const firstTileY = Math.floor(mosaic.y0Px / TILE_SIZE);
-  const expectedFirst = [firstTileX % 251, firstTileY % 251, 33];
-  assert.ok(firstPixel.every((value, index) => Math.abs(value - expectedFirst[index]) <= 4), `first stitched tile pixel ${firstPixel}`);
-  const xBoundary = TILE_SIZE - ((mosaic.x0Px % TILE_SIZE) + TILE_SIZE) % TILE_SIZE;
-  if (xBoundary < mosaic.width) {
-    const boundaryPixel = Array.from(mosaic.rgb.slice(xBoundary * 3, xBoundary * 3 + 3));
-    const expectedBoundary = [(firstTileX + 1) % 251, firstTileY % 251, 33];
-    assert.ok(boundaryPixel.every((value, index) => Math.abs(value - expectedBoundary[index]) <= 4), `x tile boundary pixel ${boundaryPixel}`);
-  }
-  const yBoundary = TILE_SIZE - ((mosaic.y0Px % TILE_SIZE) + TILE_SIZE) % TILE_SIZE;
-  if (yBoundary < mosaic.height) {
-    const boundaryOffset = yBoundary * mosaic.width * 3;
-    const boundaryPixel = Array.from(mosaic.rgb.slice(boundaryOffset, boundaryOffset + 3));
-    const expectedBoundary = [firstTileX % 251, (firstTileY + 1) % 251, 33];
-    assert.ok(boundaryPixel.every((value, index) => Math.abs(value - expectedBoundary[index]) <= 4), `y tile boundary pixel ${boundaryPixel}`);
-  }
-
-  const missingCacheRoot = await mkdtemp(join(tmpdir(), "v2-canopy-missing-"));
-  try {
-    let failed = false;
-    const missingFetch = async (url) => {
-      const { x, y } = tileParams(url);
-      if (!failed) {
-        failed = true;
-        return response(new Uint8Array(), 502, "text/plain");
-      }
-      return response(await jpegTile([x % 251, y % 251, 33]));
-    };
-    const partial = await satelliteMosaic(CENTER, 80, { key: "fixture-key", cacheRoot: missingCacheRoot, fetch: missingFetch });
-    assert.equal(partial.missingTiles, 1);
-    assert.equal(partial.totalTiles, mosaic.totalTiles);
-    assert.ok(partial.valid?.some((value) => value === 0));
-  } finally {
-    await rm(missingCacheRoot, { recursive: true, force: true });
-  }
-
   const { mosaic: synthetic, truth, roof, water } = syntheticMosaic();
   const detected = detectCanopy(synthetic, { minAreaM2: 4, openM: 0.5, closeM: 1 });
   let truePositive = 0;
@@ -250,6 +175,3 @@ try {
   console.log(`canopy benchmark: ${elapsedMs.toFixed(1)} ms`);
 
   console.log("✓ v2 canopy imagery, detection, and grid");
-} finally {
-  await rm(cacheRoot, { recursive: true, force: true });
-}

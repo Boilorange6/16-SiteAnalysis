@@ -3,10 +3,10 @@
  * 실행: tsx src/scripts/v2/test-v2-tiles.mjs
  */
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parseTile, resetLimiter, serveTile, takeToken, tileCachePath } from "../../lib/v2/tiles.ts";
+import { parseTile, resetLimiter, serveTile, takeToken, TILE_CACHE_CONTROL } from "../../lib/v2/tiles.ts";
 import { tileUrl } from "../../lib/v2/ui/map-projection.ts";
 
 const KEY = "SECRETKEY-1234567890";
@@ -29,9 +29,7 @@ for (const bad of [
 assert.ok(parseTile({ layer: "Satellite", z: "19", y: "524287", x: "0" }));
 assert.equal(parseTile({ layer: "Hybrid", z: "6", y: "64", x: "0" }), null);
 
-// ── 캐시 경로 ──
-assert.match(tileCachePath(parseTile({ ...ok, layer: "Satellite" }), "/c").replaceAll("\\", "/"), /\/c\/Satellite\/15\/12700\/27946\.jpeg$/);
-assert.match(tileCachePath(parseTile(ok), "/c").replaceAll("\\", "/"), /\/c\/white\/15\/12700\/27946\.png$/);
+assert.equal(TILE_CACHE_CONTROL, "no-store");
 
 // ── tileUrl: basePath /site, 행(y)·열(x) 순서 ──
 assert.equal(tileUrl("Base", 15, 27946, 12700), "/site/api/v2/tiles/Base/15/12700/27946");
@@ -47,27 +45,28 @@ try {
 
   // 키 없음 → 503 (상류 호출 없음)
   resetLimiter();
-  const nokey = await serveTile(ok, "same-origin", { key: undefined, fetch: okFetch, cacheRoot: root });
+  const nokey = await serveTile(ok, "same-origin", { key: undefined, fetch: okFetch });
   assert.equal(nokey.status, 503);
   assert.equal(nokey.body, "배경지도 키 미설정");
   assert.equal(calls.length, 0);
 
   // 같은 출처 아님 → 403
-  assert.equal((await serveTile(ok, "cross-site", { key: KEY, fetch: okFetch, cacheRoot: root })).status, 403);
+  assert.equal((await serveTile(ok, "cross-site", { key: KEY, fetch: okFetch })).status, 403);
   assert.equal(calls.length, 0);
   // 잘못된 인자 → 400
-  assert.equal((await serveTile({ ...ok, z: "3" }, "same-origin", { key: KEY, fetch: okFetch, cacheRoot: root })).status, 400);
+  assert.equal((await serveTile({ ...ok, z: "3" }, "same-origin", { key: KEY, fetch: okFetch })).status, 400);
 
-  // 성공: 상류 주소는 z/행/열 순서, 디스크에 저장, 두 번째는 캐시(상류 호출 없음)
-  const first = await serveTile(ok, "same-origin", { key: KEY, fetch: okFetch, cacheRoot: root });
+  // 성공: 상류 주소는 z/행/열 순서, 매번 상류 호출, 디스크 저장 없음
+  const first = await serveTile(ok, "same-origin", { key: KEY, fetch: okFetch });
   assert.equal(first.status, 200);
   assert.equal(first.type, "image/png");
   assert.equal(calls.length, 1);
   assert.equal(calls[0], `https://api.vworld.kr/req/wmts/1.0.0/${KEY}/white/15/12700/27946.png`);
-  assert.deepEqual(new Uint8Array(await readFile(tileCachePath(parseTile(ok), root))), png);
-  const second = await serveTile(ok, "same-origin", { key: KEY, fetch: okFetch, cacheRoot: root });
+  assert.deepEqual(first.body, png);
+  const second = await serveTile(ok, "same-origin", { key: KEY, fetch: okFetch });
   assert.equal(second.status, 200);
-  assert.equal(calls.length, 1, "캐시 적중");
+  assert.equal(calls.length, 2, "매 요청마다 원본 호출");
+  assert.deepEqual(await readdir(root), [], "디스크 파일 없음");
 
   // 상류 오류 → 502, 키·주소 비노출 (HTTP 오류, 예외, 200+XML 모두)
   const leaks = (r) => {
@@ -82,14 +81,14 @@ try {
     async () => new Response("<xml/>", { status: 200, headers: { "content-type": "application/xml" } }),
   ];
   for (const f of bad) {
-    const r = await serveTile({ ...ok, layer: "Base", x: "27947" }, "same-origin", { key: KEY, fetch: f, cacheRoot: root });
+    const r = await serveTile({ ...ok, layer: "Base", x: "27947" }, "same-origin", { key: KEY, fetch: f });
     assert.equal(r.status, 502);
     assert.ok(!leaks(r), "키·주소 노출");
   }
 
   // 위성은 jpeg 확장자로 요청
   calls = [];
-  const sat = await serveTile({ ...ok, layer: "Satellite" }, null, { key: KEY, fetch: okFetch, cacheRoot: root });
+  const sat = await serveTile({ ...ok, layer: "Satellite" }, null, { key: KEY, fetch: okFetch });
   assert.equal(sat.type, "image/jpeg");
   assert.match(calls[0], /\/Satellite\/15\/12700\/27946\.jpeg$/);
 } finally {

@@ -1,10 +1,8 @@
 /** D10 수관 래스터·벡터를 S04가 재사용하는 공통 계산. */
-import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { deflateSync, inflateSync } from "node:zlib";
-import type { LngLat } from "../../crs";
 import type { Mosaic } from "../imagery";
 import type { EngineContext } from "../context";
 import { areaInCircle, polygonArea, simplifyRing } from "./geo";
@@ -28,8 +26,7 @@ export interface CanopyResult {
 export interface CanopyForOptions {
   /** 테스트·재현용으로 이미 디코드한 모자이크를 주입한다. 작업자는 기본 경로를 사용한다. */
   mosaic?: Mosaic;
-  cacheRoot?: string;
-  /** 검출 결과(격자·벡터)를 분석 간에 재사용하는 디렉터리. 기본은 항공사진 캐시 옆 `canopy-result`. 'off'면 끈다. */
+  /** 검출 결과(격자·벡터)를 분석 간에 재사용하는 디렉터리. 명시적으로 지정할 때만 사용한다. 'off'면 끈다. */
   resultCacheDir?: string;
 }
 
@@ -39,21 +36,6 @@ type Loop = { points: LatticePoint[]; signedArea: number };
 
 const MAX_VECTOR_POLYGONS = 3000;
 const MAX_VECTOR_VERTICES = 200;
-const DEFAULT_AERIAL_CACHE_ROOT = "D:/V-coding/16-SiteAnalysis/.cache/v2/raw/aerial";
-
-/** Next bundles this module under .next, while sharp is supplied by the main checkout. */
-function sharpEntry(): string | null {
-  let root = process.cwd();
-  for (let depth = 0; depth < 8; depth += 1) {
-    const candidate = resolve(root, "node_modules", "sharp", "lib", "index.js");
-    if (existsSync(candidate)) return candidate;
-    const parent = dirname(root);
-    if (parent === root) break;
-    root = parent;
-  }
-  return null;
-}
-
 function key(point: LatticePoint): string {
   return `${point.col},${point.row}`;
 }
@@ -206,145 +188,17 @@ export function canopyCellStats(grid: LocalGrid, radiusM: number): { valid: numb
   return { valid, canopy };
 }
 
-/**
- * The T3 worker calls tile engines synchronously. T15's sharp decoder is
- * asynchronous, so the worker-side bridge performs the WMTS fetch/decode in a
- * short-lived Node child and returns a binary payload. This keeps sharp off the
- * event loop without weakening the production cache or the 22s first-run cap.
- */
-function satelliteMosaicSync(center: LngLat, radiusM: number, cacheRoot: string): Mosaic | null {
-  const sharpPath = sharpEntry();
-  if (!sharpPath) return null;
-  const worker = String.raw`
-const fs = require("fs");
-const path = require("path");
-const sharp = require(process.argv[1]);
-const input = JSON.parse(process.argv[2]);
-const TILE = 256;
-const MAX_LAT = 85.05112878;
-const EARTH_RADIUS_M = 6378137;
-function worldSize(z) { return TILE * 2 ** z; }
-function globalPixel(center, z) {
-  const lat = Math.max(-MAX_LAT, Math.min(MAX_LAT, center[1]));
-  const size = worldSize(z);
-  const sin = Math.sin(lat * Math.PI / 180);
-  return [((center[0] + 180) / 360) * size, (0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * size];
-}
-function mPerPixel(lat, z) { return Math.cos(lat * Math.PI / 180) * 2 * Math.PI * EARTH_RADIUS_M / worldSize(z); }
-function wrapX(x, z) { const n = 2 ** z; return ((x % n) + n) % n; }
-function cachePath(x, y, z) { return path.join(input.cacheRoot, "Satellite", String(z), String(y), String(x) + ".jpeg"); }
-async function decode(bytes) {
-  const decoded = await sharp(bytes, { failOn: "none" }).raw().toBuffer({ resolveWithObject: true });
-  let data = decoded.data;
-  let info = decoded.info;
-  if (info.width !== TILE || info.height !== TILE) {
-    const resized = await sharp(bytes, { failOn: "none" }).resize(TILE, TILE, { fit: "fill" }).raw().toBuffer({ resolveWithObject: true });
-    data = resized.data; info = resized.info;
-  }
-  const rgb = Buffer.alloc(TILE * TILE * 3);
-  for (let i = 0; i < TILE * TILE; i++) {
-    const from = i * info.channels;
-    const to = i * 3;
-    const value = data[from] || 0;
-    rgb[to] = value;
-    rgb[to + 1] = info.channels > 2 ? data[from + 1] || 0 : value;
-    rgb[to + 2] = info.channels > 2 ? data[from + 2] || 0 : value;
-  }
-  return rgb;
-}
-async function fetchTile(x, y, z) {
-  const wrapped = wrapX(x, z);
-  const file = cachePath(wrapped, y, z);
-  let bytes;
-  try { bytes = fs.readFileSync(file); }
-  catch {
-    const key = process.env.VWORLD_API_KEY;
-    if (!key || y < 0 || y >= 2 ** z) return null;
-    try {
-      const url = "https://api.vworld.kr/req/wmts/1.0.0/" + encodeURIComponent(key) + "/Satellite/" + z + "/" + y + "/" + wrapped + ".jpeg";
-      const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
-      if (!response.ok || !(response.headers.get("content-type") || "").startsWith("image/")) return null;
-      bytes = Buffer.from(await response.arrayBuffer());
-      try { const tmp = file + "." + process.pid + ".tmp"; fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(tmp, bytes); fs.renameSync(tmp, file); } catch {}
-    } catch { return null; }
-  }
-  try { return { x, y, rgb: await decode(bytes) }; } catch { return null; }
-}
-(async () => {
-  const z = input.radiusM <= 1000 ? 18 : 17;
-  const resolution = mPerPixel(input.center[1], z);
-  const [cx, cy] = globalPixel(input.center, z);
-  const half = input.radiusM / resolution;
-  const x0 = Math.floor(cx - half); const y0 = Math.floor(cy - half);
-  const x1 = Math.ceil(cx + half); const y1 = Math.ceil(cy + half);
-  const width = Math.max(1, x1 - x0); const height = Math.max(1, y1 - y0);
-  const firstX = Math.floor(x0 / TILE); const lastX = Math.floor((x1 - 1) / TILE);
-  const firstY = Math.floor(y0 / TILE); const lastY = Math.floor((y1 - 1) / TILE);
-  const coords = [];
-  for (let y = firstY; y <= lastY; y++) for (let x = firstX; x <= lastX; x++) coords.push({ x, y });
-  const tiles = await Promise.all(coords.map((coordinate) => fetchTile(coordinate.x, coordinate.y, z)));
-  const rgb = Buffer.alloc(width * height * 3); const valid = Buffer.alloc(width * height);
-  let missing = 0;
-  for (let i = 0; i < coords.length; i++) {
-    const tile = tiles[i]; if (!tile) { missing++; continue; }
-    const left = Math.max(x0, tile.x * TILE); const right = Math.min(x1, tile.x * TILE + TILE);
-    const top = Math.max(y0, tile.y * TILE); const bottom = Math.min(y1, tile.y * TILE + TILE);
-    if (tile.y < 0 || tile.y >= 2 ** z) { missing++; continue; }
-    for (let gy = top; gy < bottom; gy++) for (let gx = left; gx < right; gx++) {
-      const from = ((gy - tile.y * TILE) * TILE + gx - tile.x * TILE) * 3;
-      const to = ((gy - y0) * width + gx - x0) * 3;
-      rgb[to] = tile.rgb[from]; rgb[to + 1] = tile.rgb[from + 1]; rgb[to + 2] = tile.rgb[from + 2];
-      valid[(gy - y0) * width + gx - x0] = 1;
-    }
-  }
-  const header = Buffer.from(JSON.stringify({ z, x0Px: x0, y0Px: y0, width, height, mPerPx: resolution, missingTiles: missing, totalTiles: coords.length, rgbBytes: rgb.length }));
-  const output = Buffer.alloc(4 + header.length + rgb.length + valid.length);
-  output.writeUInt32LE(header.length, 0); header.copy(output, 4); rgb.copy(output, 4 + header.length); valid.copy(output, 4 + header.length + rgb.length);
-  process.stdout.write(output);
-})().catch((error) => { process.stderr.write(String(error)); process.exit(1); });
-`;
-  const result = spawnSync(process.execPath, ["-e", worker, sharpPath, JSON.stringify({ center, radiusM, cacheRoot })], {
-    encoding: "buffer",
-    maxBuffer: 128 * 1024 * 1024,
-    timeout: 35_000,
-    windowsHide: true,
-  });
-  if (result.status !== 0 || !result.stdout || result.stdout.length < 4) return null;
-  try {
-    const headerLength = result.stdout.readUInt32LE(0);
-    const header = JSON.parse(result.stdout.subarray(4, 4 + headerLength).toString("utf8"));
-    const start = 4 + headerLength;
-    const rgbEnd = start + header.rgbBytes;
-    if (rgbEnd + header.width * header.height !== result.stdout.length) return null;
-    return {
-      z: header.z,
-      x0Px: header.x0Px,
-      y0Px: header.y0Px,
-      width: header.width,
-      height: header.height,
-      rgb: new Uint8Array(result.stdout.subarray(start, rgbEnd)),
-      mPerPx: header.mPerPx,
-      missingTiles: header.missingTiles,
-      totalTiles: header.totalTiles,
-      valid: new Uint8Array(result.stdout.subarray(rgbEnd)),
-    };
-  } catch {
-    return null;
-  }
-}
-
-function loadMosaic(ctx: EngineContext, options: CanopyForOptions): Mosaic | null {
-  if (options.mosaic) return options.mosaic;
-  return satelliteMosaicSync(ctx.input.center, ctx.input.radiusM, options.cacheRoot ?? process.env.V2_AERIAL_CACHE_DIR ?? DEFAULT_AERIAL_CACHE_ROOT);
+// shortcut: 허가된 영상 원천이 없어 주입된 모자이크만 쓴다. 대체 원천(토지피복지도·정사영상 등)을 정하면 여기에 연결.
+function loadMosaic(options: CanopyForOptions): Mosaic | null {
+  return options.mosaic ?? null;
 }
 
 const CANOPY_RESULT_VERSION = "canopy-result-1";
 
 /** 같은 영상 픽셀·중심·반경이면 검출·격자·벡터 결과가 같으므로, 영상 내용 해시를 키로 디스크에 보관한다. */
 function resultCachePath(ctx: EngineContext, mosaic: Mosaic, options: CanopyForOptions): string | null {
-  if (options.resultCacheDir === "off" || (options.mosaic && !options.resultCacheDir)) return null;
-  const aerialRoot = options.cacheRoot ?? process.env.V2_AERIAL_CACHE_DIR ?? DEFAULT_AERIAL_CACHE_ROOT;
-  const dir = options.resultCacheDir ?? process.env.V2_CANOPY_RESULT_DIR ?? join(dirname(aerialRoot), "canopy-result");
+  const dir = options.resultCacheDir ?? process.env.V2_CANOPY_RESULT_DIR;
+  if (!dir || dir === "off") return null;
   const hash = createHash("sha1");
   hash.update(JSON.stringify([CANOPY_RESULT_VERSION, ctx.input.center, ctx.input.radiusM, mosaic.z, mosaic.x0Px, mosaic.y0Px, mosaic.width, mosaic.height, mosaic.mPerPx, mosaic.missingTiles, mosaic.totalTiles]));
   hash.update(mosaic.rgb);
@@ -385,7 +239,7 @@ function writeResultCache(file: string, result: CanopyResult): void {
 /** 한 분석의 모든 무거운 수관 소비자가 같은 모자이크·벡터를 재사용한다. */
 export function canopyFor(ctx: EngineContext, options: CanopyForOptions = {}): CanopyResult | null {
   return ctx.memo("canopy:polygons", () => {
-    const mosaic = loadMosaic(ctx, options);
+    const mosaic = loadMosaic(options);
     if (!mosaic || mosaic.totalTiles <= 0 || mosaic.missingTiles >= mosaic.totalTiles) return null;
     const cacheFile = resultCachePath(ctx, mosaic, options);
     const cached = cacheFile ? readResultCache(cacheFile) : null;

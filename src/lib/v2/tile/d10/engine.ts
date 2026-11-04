@@ -154,7 +154,7 @@ export function d10(ctx: EngineContext, options: CanopyForOptions = {}): TileRes
   const waterSources = ctx.sources("reference", ["osm_water"]);
   const canopy = canopyFor(ctx, options);
   const hasOsm = greenSources.length > 0 || waterSources.length > 0;
-  if (!canopy && !hasOsm && !topoWater.applied) return notProvided(ctx, "D10", "VWorld 항공영상과 OSM 녹지·수계 보조 자료를 확인하지 못했습니다.");
+  if (!canopy && !hasOsm && !topoWater.applied) return notProvided(ctx, "D10", "OSM 녹지·수계 보조 자료를 확인하지 못했습니다. VWorld 영상은 이용조건상 수관 분석에 쓰지 않습니다.");
 
   const imagerySources = canopy ? [VWORLD_WMTS_SOURCE] : [];
   const canopyStats = canopy ? canopyCellStats(canopy.grid, ctx.input.radiusM) : null;
@@ -196,17 +196,16 @@ export function d10(ctx: EngineContext, options: CanopyForOptions = {}): TileRes
 
   const status: TileResult["status"] = canopy && canopy.missingTiles === 0 ? "complete" : "partial";
   const sources = [...imagerySources, ...greenSources, ...waterSources, ...(topoWater.applied ? [ctx.topo!.source] : [])];
-  const limitations: TileResult["limitations"] = [
+  const limitations: TileResult["limitations"] = canopy ? [
     { kind: "estimated", note: "항공사진 색 지수(ExG) 기반 수관 검출 · 재현율 미검증(sitedia 공개 재현율 약 70% 수준 예상)" },
     { kind: "estimated", note: `수관 높이 ${CANOPY_ASSUMED_HEIGHT_M}m 가정(그림자·SVF 연결용)` },
     { kind: "unknown", note: "그림자 속 수목·잔디는 놓치거나 섞일 수 있음" },
     { kind: "unknown", note: "촬영시기 미확인" },
-    { kind: "unknown", note: "VWorld 이용 허가 범위 안 분석·PPT 삽입 · © VWorld(국토교통부)" },
-  ];
-  if (!canopy) limitations.push({ kind: "not_provided", note: "VWorld 항공영상을 받지 못해 수관 래스터·수관 면을 계산하지 않았습니다." });
+  ] : [];
+  if (!canopy) limitations.push({ kind: "not_provided", note: "수관 검출을 하지 않았습니다. VWorld 영상은 이용조건상 분석(가공)에 쓸 수 없어 수관 면적률·수관 면을 계산하지 않고 OSM 녹지·수계만 표시합니다." });
   if (canopy && canopy.missingTiles > 0) limitations.push({ kind: "partial", note: `VWorld 항공영상 ${canopy.missingTiles}/${canopy.totalTiles}개 타일을 받지 못해 유효 영역만 표시했습니다.` });
-  if (greenSources.length === 0) limitations.push({ kind: "not_provided", note: "OSM 녹지 면 자료를 확인하지 못해 항공사진 수관과 별도인 보조층을 표시하지 않았습니다." });
-  if (!waterAvailable) limitations.push({ kind: "not_provided", note: "OSM 수계 면 자료를 확인하지 못해 항공사진 수관과 별도인 보조층을 표시하지 않았습니다." });
+  if (greenSources.length === 0) limitations.push({ kind: "not_provided", note: "OSM 녹지 면 자료를 확인하지 못해 수관과 별도인 보조층을 표시하지 않았습니다." });
+  if (!waterAvailable) limitations.push({ kind: "not_provided", note: "OSM 수계 면 자료를 확인하지 못해 수관과 별도인 보조층을 표시하지 않았습니다." });
   limitations.push({ kind: "unknown", note: "수관·OSM 녹지·OSM 수계는 독립 레이어라 서로 겹칠 수 있어 구성비 합이 100%가 아닐 수 있습니다. 수관 구성비의 분모는 π·반경²이며 항공영상 결측 영역은 분자에서 제외합니다." });
 
   const polygonCandidates: PolygonCandidate[] = [];
