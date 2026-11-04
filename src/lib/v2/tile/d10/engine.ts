@@ -1,11 +1,10 @@
-/** D10 수관·녹지 — VWorld 항공영상 수관 검출과 OSM 보조층. */
+/** D10 수관·녹지 — 국토정보플랫폼 영상지도 수관 검출과 OSM 보조층. */
 import type { Feature, MultiPolygon as GeoMultiPolygon, Polygon as GeoPolygon, Position } from "geojson";
 import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../../engine/context";
 import { featureCollection, multiPolygon, polygon, union } from "@turf/turf";
-import { VWORLD_WMTS_SOURCE } from "../d01/engine";
 import { areaInCircle, polygonArea } from "../../engine/tiles/geo";
-import { canopyCellStats, canopyFor, CANOPY_ASSUMED_HEIGHT_M, type CanopyForOptions } from "../../engine/tiles/canopy-shared";
+import { canopyCellStats, canopyFor, canopySource, CANOPY_ASSUMED_HEIGHT_M, type CanopyForOptions } from "../../engine/tiles/canopy-shared";
 import { est, makeTile, missing, obs, polygonCandidate, type PolygonCandidate } from "../../engine/tiles/common";
 import { notProvided } from "../../engine/tiles/not-provided";
 
@@ -154,9 +153,9 @@ export function d10(ctx: EngineContext, options: CanopyForOptions = {}): TileRes
   const waterSources = ctx.sources("reference", ["osm_water"]);
   const canopy = canopyFor(ctx, options);
   const hasOsm = greenSources.length > 0 || waterSources.length > 0;
-  if (!canopy && !hasOsm && !topoWater.applied) return notProvided(ctx, "D10", "OSM 녹지·수계 보조 자료를 확인하지 못했습니다. VWorld 영상은 이용조건상 수관 분석에 쓰지 않습니다.");
+  if (!canopy && !hasOsm && !topoWater.applied) return notProvided(ctx, "D10", "영상지도와 OSM 녹지·수계 보조 자료를 확인하지 못했습니다.");
 
-  const imagerySources = canopy ? [VWORLD_WMTS_SOURCE] : [];
+  const imagerySources = canopy ? [canopySource(canopy.year)] : [];
   const canopyStats = canopy ? canopyCellStats(canopy.grid, ctx.input.radiusM) : null;
   const validAreaM2 = canopyStats ? canopyStats.valid * canopy!.grid.cellM ** 2 : 0;
   const canopyAreaM2 = canopyStats ? canopyStats.canopy * canopy!.grid.cellM ** 2 : 0;
@@ -169,7 +168,7 @@ export function d10(ctx: EngineContext, options: CanopyForOptions = {}): TileRes
   const siteMetric = siteCanopyPct(ctx, canopy);
   const imageryFillMetric = canopy && canopy.totalTiles > 0
     ? obs("fill_imagery_pct", "항공영상 타일 채움률", percent(canopy.totalTiles - canopy.missingTiles, canopy.totalTiles), "%", "d10-imagery-fill@1:성공 타일÷요청 타일", canopy.totalTiles - canopy.missingTiles, canopy.totalTiles)
-    : missing("fill_imagery_pct", "항공영상 타일 채움률", "%", "d10-imagery-fill@1:VWorld WMTS 타일을 받지 못함");
+    : missing("fill_imagery_pct", "항공영상 타일 채움률", "%", "d10-imagery-fill@1:영상지도 타일을 받지 못함");
   const metrics: TileResult["metrics"] = [
     canopyMetric,
     siteMetric,
@@ -200,10 +199,10 @@ export function d10(ctx: EngineContext, options: CanopyForOptions = {}): TileRes
     { kind: "estimated", note: "항공사진 색 지수(ExG) 기반 수관 검출 · 재현율 미검증(sitedia 공개 재현율 약 70% 수준 예상)" },
     { kind: "estimated", note: `수관 높이 ${CANOPY_ASSUMED_HEIGHT_M}m 가정(그림자·SVF 연결용)` },
     { kind: "unknown", note: "그림자 속 수목·잔디는 놓치거나 섞일 수 있음" },
-    { kind: "unknown", note: "촬영시기 미확인" },
+    { kind: "unknown", note: canopy.year ? `영상: 국토지리정보원 영상지도 ${canopy.year}년 촬영(국토정보플랫폼 오픈API)` : "영상 촬영연도 미확인" },
   ] : [];
-  if (!canopy) limitations.push({ kind: "not_provided", note: "수관 검출을 하지 않았습니다. VWorld 영상은 이용조건상 분석(가공)에 쓸 수 없어 수관 면적률·수관 면을 계산하지 않고 OSM 녹지·수계만 표시합니다." });
-  if (canopy && canopy.missingTiles > 0) limitations.push({ kind: "partial", note: `VWorld 항공영상 ${canopy.missingTiles}/${canopy.totalTiles}개 타일을 받지 못해 유효 영역만 표시했습니다.` });
+  if (!canopy) limitations.push({ kind: "not_provided", note: "영상지도를 받지 못해 수관 면적률·수관 면을 계산하지 않고 OSM 녹지·수계만 표시합니다." });
+  if (canopy && canopy.missingTiles > 0) limitations.push({ kind: "partial", note: `영상지도 ${canopy.missingTiles}/${canopy.totalTiles}개 타일을 받지 못해 유효 영역만 표시했습니다.` });
   if (greenSources.length === 0) limitations.push({ kind: "not_provided", note: "OSM 녹지 면 자료를 확인하지 못해 수관과 별도인 보조층을 표시하지 않았습니다." });
   if (!waterAvailable) limitations.push({ kind: "not_provided", note: "OSM 수계 면 자료를 확인하지 못해 수관과 별도인 보조층을 표시하지 않았습니다." });
   limitations.push({ kind: "unknown", note: "수관·OSM 녹지·OSM 수계는 독립 레이어라 서로 겹칠 수 있어 구성비 합이 100%가 아닐 수 있습니다. 수관 구성비의 분모는 π·반경²이며 항공영상 결측 영역은 분자에서 제외합니다." });

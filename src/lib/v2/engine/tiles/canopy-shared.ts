@@ -1,10 +1,13 @@
 /** D10 수관 래스터·벡터를 S04가 재사용하는 공통 계산. */
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { spawnSync } from "node:child_process";
 import { deflateSync, inflateSync } from "node:zlib";
 import type { Mosaic } from "../imagery";
 import type { EngineContext } from "../context";
+import type { SourceRef } from "../context";
+import { toUtmk } from "../../crs";
 import { areaInCircle, polygonArea, simplifyRing } from "./geo";
 import { canopyToGrid, detectCanopy } from "../../sim/canopy";
 import type { LocalGrid } from "./raster-grid";
@@ -21,11 +24,18 @@ export interface CanopyResult {
   coveragePct: number;
   missingTiles: number;
   totalTiles: number;
+  year?: number;
+}
+
+export function canopySource(year?: number): SourceRef {
+  return { sourceId: "ngii_air", releaseId: `ngii_air@${year ?? "unknown"}`, sourceAsOf: year ? String(year) : null, fetchedAt: "runtime" };
 }
 
 export interface CanopyForOptions {
   /** 테스트·재현용으로 이미 디코드한 모자이크를 주입한다. 작업자는 기본 경로를 사용한다. */
   mosaic?: Mosaic;
+  /** 실데이터 QA에서 동일 요청의 영상을 관찰한다. */
+  onMosaic?: (mosaic: Mosaic) => void;
   /** 검출 결과(격자·벡터)를 분석 간에 재사용하는 디렉터리. 명시적으로 지정할 때만 사용한다. 'off'면 끈다. */
   resultCacheDir?: string;
 }
@@ -188,9 +198,25 @@ export function canopyCellStats(grid: LocalGrid, radiusM: number): { valid: numb
   return { valid, canopy };
 }
 
-// shortcut: 허가된 영상 원천이 없어 주입된 모자이크만 쓴다. 대체 원천(토지피복지도·정사영상 등)을 정하면 여기에 연결.
-function loadMosaic(options: CanopyForOptions): Mosaic | null {
-  return options.mosaic ?? null;
+let yearCache: { year: number; fetchedAt: number } | null = null;
+function loadMosaic(ctx: EngineContext, options: CanopyForOptions): Mosaic | null {
+  if (options.mosaic) return options.mosaic;
+  if (!process.env.NGII_API_KEY) return null;
+  const cacheRoot = process.env.V2_NGII_AIR_CACHE_DIR ?? join(dirname(process.env.V2_DATA_DIR ?? resolve(process.cwd(), ".cache/v2/data")), "raw", "ngii-air");
+  const worker = resolve(process.cwd(), "src/lib/v2/engine/ngii-air-worker.cjs");
+  const cachedYear = yearCache && Date.now() - yearCache.fetchedAt < 86400000 ? yearCache.year : null;
+  const result = spawnSync(process.execPath, [worker, JSON.stringify({ center: toUtmk(ctx.input.center), radiusM: ctx.input.radiusM, cacheRoot, cachedYear })], {
+    encoding: "buffer", maxBuffer: 512 * 1024 * 1024, timeout: 300000, windowsHide: true,
+  });
+  if (result.status !== 0 || !result.stdout || result.stdout.length < 4) return null;
+  try {
+    const length = result.stdout.readUInt32LE(0);
+    const header = JSON.parse(result.stdout.subarray(4, 4 + length).toString("utf8"));
+    const start = 4 + length, end = start + header.rgbBytes;
+    if (end + header.width * header.height !== result.stdout.length) return null;
+    if (header.yearFetched) yearCache = { year: header.year, fetchedAt: Date.now() };
+    return { ...header, rgb: new Uint8Array(result.stdout.subarray(start, end)), valid: new Uint8Array(result.stdout.subarray(end)) };
+  } catch { return null; }
 }
 
 const CANOPY_RESULT_VERSION = "canopy-result-1";
@@ -200,7 +226,7 @@ function resultCachePath(ctx: EngineContext, mosaic: Mosaic, options: CanopyForO
   const dir = options.resultCacheDir ?? process.env.V2_CANOPY_RESULT_DIR;
   if (!dir || dir === "off") return null;
   const hash = createHash("sha1");
-  hash.update(JSON.stringify([CANOPY_RESULT_VERSION, ctx.input.center, ctx.input.radiusM, mosaic.z, mosaic.x0Px, mosaic.y0Px, mosaic.width, mosaic.height, mosaic.mPerPx, mosaic.missingTiles, mosaic.totalTiles]));
+  hash.update(JSON.stringify([CANOPY_RESULT_VERSION, ctx.input.center, ctx.input.radiusM, mosaic.z, mosaic.x0Px, mosaic.y0Px, mosaic.utmkOrigin, mosaic.year, mosaic.width, mosaic.height, mosaic.mPerPx, mosaic.missingTiles, mosaic.totalTiles]));
   hash.update(mosaic.rgb);
   if (mosaic.valid) hash.update(mosaic.valid);
   return join(dir, `${hash.digest("hex")}.bin`);
@@ -239,8 +265,9 @@ function writeResultCache(file: string, result: CanopyResult): void {
 /** 한 분석의 모든 무거운 수관 소비자가 같은 모자이크·벡터를 재사용한다. */
 export function canopyFor(ctx: EngineContext, options: CanopyForOptions = {}): CanopyResult | null {
   return ctx.memo("canopy:polygons", () => {
-    const mosaic = loadMosaic(options);
+    const mosaic = loadMosaic(ctx, options);
     if (!mosaic || mosaic.totalTiles <= 0 || mosaic.missingTiles >= mosaic.totalTiles) return null;
+    options.onMosaic?.(mosaic);
     const cacheFile = resultCachePath(ctx, mosaic, options);
     const cached = cacheFile ? readResultCache(cacheFile) : null;
     if (cached) return cached;
@@ -254,6 +281,7 @@ export function canopyFor(ctx: EngineContext, options: CanopyForOptions = {}): C
       coveragePct: stats.valid === 0 ? 0 : (stats.canopy / stats.valid) * 100,
       missingTiles: mosaic.missingTiles,
       totalTiles: mosaic.totalTiles,
+      ...(mosaic.year ? { year: mosaic.year } : {}),
     };
     if (cacheFile) writeResultCache(cacheFile, result);
     return result;

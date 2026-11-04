@@ -40,7 +40,7 @@ const EXPECTED_CACHE_VERSIONS = {
   D03: "v2-p4-ext-1+w2b-r1+w4-names-r1+clip-r1+chart-count-r1+chart-cap-r1",
   D04: "v2-p4-ext-1+w2b-r1+w4-names-r1+clip-r1+chart-value-r1+chart-cap-r1",
   D05: "v2-p4-ext-1+height3-r1+w3-merge-r1+w2b-r1+w4-names-r1+d05-nearest-cap-r1+clip-r1+chart-value-r1+chart-cap-r1",
-  D10: "v2-p4-ext-1+w2b-r1+clip-r1+composition-r1+novworld-r1",
+  D10: "v2-p4-ext-1+w2b-r1+clip-r1+composition-r1+novworld-r1+ngii-air-r1",
   D11: "v2-p4-ext-1+w2b-r1+clip-r1",
   D12: "v2-p4-ext-1+w2b-r1+clip-r1+chart-count-r2+chart-cap-r1",
   D13: "v2-p4-ext-1+w2b-r1",
@@ -55,7 +55,7 @@ const EXPECTED_CACHE_VERSIONS = {
   S01: "v2-p4-ext-1+height3-r1+w3-r1+composition-r1",
   S02: "v2-p4-ext-1+height3-r1+w3-merge-r1+w3-r1+provenance-r1",
   S03: "v2-p4-ext-1+height3-r1+w2b-r1",
-  S04: "v2-p4-ext-1+s04-r2+height3-r1+w2b-r1+clip-r1+provenance-r1+novworld-r1",
+  S04: "v2-p4-ext-1+s04-r2+height3-r1+w2b-r1+clip-r1+provenance-r1+novworld-r1+ngii-air-r1",
 };
 const EXPECTED_ABSORBS = {
   A02: ["D26"],

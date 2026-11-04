@@ -144,6 +144,16 @@ export const SOURCE_DETAIL_DEFINITIONS: Readonly<Record<string, SourceDefinition
     collect: "수동 파일",
     cycle: "갱신 없음",
   },
+  ngii_air: {
+    provider: "국토지리정보원 국토정보플랫폼 오픈API(영상지도)",
+    name: "국토지리정보원 국토정보플랫폼 오픈API 영상지도",
+    sourceUrl: "https://map.ngii.go.kr/mi/openKey/openKeyInfo.do",
+    license: "공공누리 제1유형(출처표시) · 국토정보플랫폼 오픈API 결과물",
+    notices: ["국토포털(국토정보플랫폼) 오픈API의 결과물"],
+    usedFor: "D10 수관 검출·S04 수목 그늘",
+    collect: "실시간",
+    cycle: "연 1회 촬영",
+  },
   ngii_topo: {
     provider: "국토지리정보원",
     name: "연속수치지형도",

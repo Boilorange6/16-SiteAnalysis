@@ -55,7 +55,7 @@ export const TILE_CATALOG = {
   D03: { title: "건축물 용도", kind: "diagram", description: "건축물 용도를 건물 단위 구성으로 봅니다.", sources: BUILDING_SOURCES, forms: ["vector"], color: "#B05A3C", mapZoom: { maxDelta: 3, maxAbsZoom: 19 } },
   D04: { title: "준공 연대", kind: "diagram", description: "사용승인 연대별 건물 분포를 봅니다.", sources: BUILDING_SOURCES, forms: ["vector"], color: "#A0522D", mapZoom: { maxDelta: 3, maxAbsZoom: 19 } },
   D05: { title: "건축물 높이", kind: "diagram", description: "층수 기본 보기에서 35 m·12 m 기준과 확인·추정·미상을 레이어로 전환합니다.", calculation: "층수 분포를 기본으로 35 m 이상·12 m 이하 높이 모드를 별도 레이어로 계산하며 층수×3 m 추정은 [추정]으로 분리", sources: BUILDING_SOURCES, forms: ["vector"], color: "#A5673F", mapZoom: { maxDelta: 3, maxAbsZoom: 19 } },
-  D10: { title: "수관·녹지", kind: "diagram", description: "항공사진 기반 수관과 OSM 녹지·수계를 함께 봅니다.", sources: ["vworld_wmts", "osm_landuse", "osm_water", "ngii_topo"], forms: ["aerial", "raster", "vector"], color: "#3F7D4E", mapZoom: { maxDelta: 3, maxAbsZoom: 19 } },
+  D10: { title: "수관·녹지", kind: "diagram", description: "항공사진 기반 수관과 OSM 녹지·수계를 함께 봅니다.", sources: ["ngii_air", "osm_landuse", "osm_water", "ngii_topo"], forms: ["aerial", "raster", "vector"], color: "#3F7D4E", mapZoom: { maxDelta: 3, maxAbsZoom: 19 } },
   D11: { title: "구역·지구", kind: "diagram", description: "용도지구·구역 경계를 계층별로 확인합니다.", sources: DISTRICT_SOURCES, forms: ["vector"], color: "#537A8F", mapZoom: { maxDelta: 2 } },
   D12: { title: "도시계획시설", kind: "diagram", description: "도시계획시설의 선·면·점을 유형별로 확인합니다.", sources: FACILITY_SOURCES, forms: ["vector"], color: "#4E7599", mapZoom: { maxDelta: 2 } },
   D13: { title: "도로", kind: "diagram", description: "OSM 도로 중심선 길이와 위계를 확인합니다.", sources: ["osm_roads", "ngii_topo"], forms: ["vector"], color: "#657B8D", mapZoom: { maxDelta: 2 } },
@@ -70,7 +70,7 @@ export const TILE_CATALOG = {
   S01: { title: "3D 매스", kind: "simulation", description: "공개 도형과 확보·추정 높이로 주변 매스를 확인합니다.", calculation: "건물 도형에 원천 높이와 층수 추정 높이를 적용해 주변 매스를 구성", sources: BUILDING_SOURCES, forms: ["3d"], color: "#3E6FB0", mapZoom: { maxDelta: 0, card: false } },
   S02: { title: "일조·그림자", kind: "simulation", description: "동지 법정 기준을 기본으로 대표 날짜의 건물·지형 그림자를 계절 레이어별로 비교하며, 헤드라인과 요약 문장도 동지 기준으로 맞춥니다.", calculation: "춘·하·추·동지와 분석일에 건물·지형 그림자를 10분 간격으로 계산(반경 밖 400 m 장애물 포함; 동지 기본)", sources: [...BUILDING_SOURCES, "terrain_tiles", "parcel_polygon"], forms: ["raster"], color: "#F08A24", mapZoom: {} },
   S03: { title: "바람 흐름 탐색", kind: "simulation", description: "입력 풍향을 기준으로 바람 흐름을 설계 초기에 탐색합니다.", calculation: "ASOS 대표 풍향과 건물·지형 장애물을 4 m 격자로 구성해 보행층(6 m) 상대풍속을 LBM으로 계산", sources: ["asos", "browser_lbm", "fallback_d2q9", ...BUILDING_SOURCES, "terrain_tiles"], forms: ["raster"], color: "#2B9CBF", mapZoom: {} },
-  S04: { title: "열쾌적(UTCI)", kind: "simulation", description: "대표 기상과 매스 조건에서 장소 간 열쾌적을 비교합니다.", calculation: "계절별 10·14·18시 대표 기상과 보행층 상대풍속을 2 m 격자에 결합해 일사·그늘·수관·UTCI를 계산", sources: ["asos", ...BUILDING_SOURCES, "terrain_tiles", "vworld_wmts"], forms: ["raster"], color: "#D9534F", mapZoom: { maxDelta: 3, maxAbsZoom: 19 } },
+  S04: { title: "열쾌적(UTCI)", kind: "simulation", description: "대표 기상과 매스 조건에서 장소 간 열쾌적을 비교합니다.", calculation: "계절별 10·14·18시 대표 기상과 보행층 상대풍속을 2 m 격자에 결합해 일사·그늘·수관·UTCI를 계산", sources: ["asos", ...BUILDING_SOURCES, "terrain_tiles", "ngii_air"], forms: ["raster"], color: "#D9534F", mapZoom: { maxDelta: 3, maxAbsZoom: 19 } },
 } as const satisfies Record<string, TileCatalogEntry>;
 
 export type TileCode = keyof typeof TILE_CATALOG;
@@ -148,6 +148,7 @@ export const SOURCE_NAMES: Record<string, string> = {
   osm_landuse: "OSM 토지이용·자연 면(Geofabrik)",
   osm_water: "OSM 수계 면(Geofabrik)",
   vworld_wmts: "VWorld 항공영상(WMTS)",
+  ngii_air: "국토지리정보원 국토정보플랫폼 오픈API 영상지도",
   browser_lbm: "브라우저 계산(WebGPU LBM)",
   terrain_tiles: "Copernicus DEM GLO-30 지표고",
   ngii_topo: "국토지리정보원 연속수치지형도",

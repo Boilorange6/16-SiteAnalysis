@@ -14,8 +14,8 @@ const nextConfig: NextConfig = {
   // standalone output because nft cannot infer a dynamic worker URL, and use
   // the runtime chunk directory as the base instead of /site/_next/.
   outputFileTracingIncludes: {
-    "/api/v2/analyses": ["./.next/server/chunks/**/*.js"],
-    "/api/v2/analyses/[id]": ["./.next/server/chunks/**/*.js"],
+    "/api/v2/analyses": ["./.next/server/chunks/**/*.js", "./src/lib/v2/engine/ngii-air-worker.cjs"],
+    "/api/v2/analyses/[id]": ["./.next/server/chunks/**/*.js", "./src/lib/v2/engine/ngii-air-worker.cjs"],
   },
   webpack(config, { isServer }) {
     if (isServer && config.output?.path) {

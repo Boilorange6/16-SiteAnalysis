@@ -64,6 +64,7 @@ function syntheticMosaic(center = CENTER, radiusM = 80, missingFraction = 0) {
   }
   return {
     z,
+    year: 2025,
     x0Px,
     y0Px,
     width,
@@ -100,7 +101,7 @@ try {
   const noMosaicContext = new EngineContext(dataDir, manifest, "d10-no-mosaic", input(), {}, {});
   const noMosaicTile = d10(noMosaicContext);
   assert.equal(canopyFor(noMosaicContext), null);
-  assert.ok(noMosaicTile.limitations.some(({ note }) => note === "수관 검출을 하지 않았습니다. VWorld 영상은 이용조건상 분석(가공)에 쓸 수 없어 수관 면적률·수관 면을 계산하지 않고 OSM 녹지·수계만 표시합니다."));
+  assert.ok(noMosaicTile.limitations.some(({ note }) => note === "영상지도를 받지 못해 수관 면적률·수관 면을 계산하지 않고 OSM 녹지·수계만 표시합니다."));
   assert.ok(!noMosaicTile.limitations.some(({ note }) => /ExG|수관 높이|촬영시기/.test(note)));
   noMosaicContext.close();
 
@@ -108,6 +109,8 @@ try {
   const firstContext = new EngineContext(dataDir, manifest, "d10-complete", input(), {}, {});
   const firstStarted = performance.now();
   const firstTile = d10(firstContext, { mosaic });
+  assert.ok(firstTile.provenance.sources.some((s) => s.sourceId === "ngii_air" && s.releaseId === "ngii_air@2025" && s.sourceAsOf === "2025"));
+  assert.ok(firstTile.limitations.some((l) => l.note === "영상: 국토지리정보원 영상지도 2025년 촬영(국토정보플랫폼 오픈API)"));
   const firstElapsedMs = performance.now() - firstStarted;
   const firstRasters = firstContext.takeRasters("D10");
   const canopyGrid = canopyFor(firstContext)?.grid;
@@ -172,6 +175,7 @@ try {
 
   const partialContext = new EngineContext(dataDir, manifest, "d10-partial", input(), {}, {});
   const partialTile = d10(partialContext, { mosaic: syntheticMosaic(CENTER, 800, 0.5) });
+  assert.ok(partialTile.limitations.some((l) => l.note === "영상지도 1/2개 타일을 받지 못해 유효 영역만 표시했습니다."));
   const partialParsed = attachRasters(partialTile, partialContext.takeRasters("D10"));
   assert.equal(partialParsed.status, "partial");
   assert.equal(partialParsed.metrics.find((metric) => metric.id === "fill_imagery_pct")?.value, 50);
@@ -194,7 +198,7 @@ try {
     const missingContext = new EngineContext(missingDataDir, missingManifest, "d10-missing", input(), {}, {});
     const missingTile = d10(missingContext, { mosaic: { ...mosaic, missingTiles: 1, totalTiles: 1, valid: new Uint8Array(mosaic.width * mosaic.height) } });
     assert.equal(missingTile.status, "not_provided");
-    assert.match(missingTile.limitations[0].note, /VWorld/);
+    assert.match(missingTile.limitations[0].note, /영상지도/);
     assert.equal(missingContext.takeRasters("D10").length, 0);
     missingContext.close();
   } finally {

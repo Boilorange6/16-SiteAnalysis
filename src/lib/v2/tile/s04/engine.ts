@@ -20,14 +20,13 @@ import { kst, sunPosition } from "../../sim/sun";
 import { UTCI_BREAKS, UTCI_WIND_RANGE, utciEvaluator } from "../../sim/utci";
 import type { RasterData } from "../../raster-store";
 import type { EngineContext, SourceRef } from "../../engine/context";
-import { CANOPY_ASSUMED_HEIGHT_M, canopyFor } from "../../engine/tiles/canopy-shared";
+import { CANOPY_ASSUMED_HEIGHT_M, canopyFor, canopySource } from "../../engine/tiles/canopy-shared";
 import { est, makeTile, missing, obs } from "../../engine/tiles/common";
 import { BUILDING_SOURCES, assumedOneFloorLimitation, buildingRetirementLimitations, buildingRows } from "../../engine/tiles/buildings-shared";
 import { notProvided } from "../../engine/tiles/not-provided";
 import { SEASON_SUN_DATES, sunDateValue, sunGridFor, sunHourlyShadeFor, sunObstaclesFor } from "../../engine/tiles/sun-shared";
 import { SVF_CELL_M, SVF_MAX_DIST_M, svfFor } from "../../engine/tiles/svf-shared";
 import { demSources } from "../../engine/tiles/terrain-shared";
-import { VWORLD_WMTS_SOURCE } from "../d01/engine";
 
 /** UTCI representative hours are KST wall-clock hours. */
 export const UTCI_HOURS = [10, 14, 18] as const;
@@ -631,13 +630,19 @@ export function s04(ctx: EngineContext): TileResult {
     weather.sources,
     ctx.sources("buildings", BUILDING_SOURCES),
     shared?.terrainAvailable ? demSources(ctx) : [],
-    canopy ? [VWORLD_WMTS_SOURCE] : [],
+    canopy ? [canopySource(canopy.year)] : [],
   );
   const analysisRows = buildingRows(ctx, Math.min(5000, ctx.input.radiusM + SVF_MAX_DIST_M + SVF_CELL_M)) ?? [];
   const assumedLimitation = assumedOneFloorLimitation(analysisRows);
   const limitations = [...fixedLimitations(), ...(assumedLimitation ? [assumedLimitation] : []), ...buildingRetirementLimitations(ctx, Math.min(5000, ctx.input.radiusM + SVF_MAX_DIST_M + SVF_CELL_M))];
-  if (canopy) limitations.push({ kind: "estimated", note: "수목 높이 8 m 가정(항공사진 수관)" });
-  if (calcReady && !canopy) limitations.push({ kind: "not_provided", note: "수관 검출을 하지 않아(VWorld 영상 이용조건) 수관 그림자를 반영하지 않았습니다." });
+  if (canopy) {
+    limitations.push({ kind: "estimated", note: "항공사진 색 지수(ExG) 기반 수관 검출 · 재현율 미검증" });
+    limitations.push({ kind: "estimated", note: "수목 높이 8 m 가정(항공사진 수관)" });
+    limitations.push({ kind: "unknown", note: "그림자 속 수목·잔디는 놓치거나 섞일 수 있음" });
+    limitations.push({ kind: "unknown", note: canopy.year ? `영상: 국토지리정보원 영상지도 ${canopy.year}년 촬영(국토정보플랫폼 오픈API)` : "영상 촬영연도 미확인" });
+    if (canopy.missingTiles > 0) limitations.push({ kind: "partial", note: `영상지도 ${canopy.missingTiles}/${canopy.totalTiles}개 타일을 받지 못해 유효 영역만 표시했습니다.` });
+  }
+  if (calcReady && !canopy) limitations.push({ kind: "not_provided", note: "영상지도를 받지 못해 수관 그림자를 반영하지 않았습니다." });
 
   const allObstacles = shared ? sunObstaclesFor(ctx, canopy?.polygons ?? null) : [];
   const buildingMask = new Uint8Array(shared ? shared.grid.cols * shared.grid.rows : 0);

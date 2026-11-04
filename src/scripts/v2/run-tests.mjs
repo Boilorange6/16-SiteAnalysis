@@ -6,8 +6,10 @@ import { fileURLToPath } from "node:url";
 
 const dir = dirname(fileURLToPath(import.meta.url));
 const files = readdirSync(dir).filter((f) => /^test-v2-.*\.mjs$/.test(f)).sort();
+const env = { ...process.env };
+delete env.NGII_API_KEY; // Unit tests must never use the developer's live imagery key.
 for (const f of files) {
-  const r = spawnSync("npx", ["tsx", join(dir, f)], { stdio: "inherit", shell: true });
+  const r = spawnSync("npx", ["tsx", join(dir, f)], { stdio: "inherit", shell: true, env });
   if (r.status !== 0) {
     console.error(`FAILED: ${f}`);
     process.exit(r.status ?? 1);

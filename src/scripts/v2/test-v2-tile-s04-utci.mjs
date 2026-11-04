@@ -45,6 +45,7 @@ function makeCanopy(radiusM = RADIUS_M) {
     coveragePct: 100,
     missingTiles: 0,
     totalTiles: 1,
+    year: 2025,
   };
 }
 
@@ -193,7 +194,7 @@ async function main() {
     assert.ok(normal.limitations.some(({ note }) => note.includes("수목 높이 8 m 가정")));
     const noCanopyContext = makeContext(dataDir, makeWindReader(), false, 100);
     const noCanopy = s04(noCanopyContext);
-    assert.ok(noCanopy.limitations.some(({ note }) => note === "수관 검출을 하지 않아(VWorld 영상 이용조건) 수관 그림자를 반영하지 않았습니다."));
+    assert.ok(noCanopy.limitations.some(({ note }) => note === "영상지도를 받지 못해 수관 그림자를 반영하지 않았습니다."));
     assert.ok(!noCanopy.limitations.some(({ note }) => note.includes("수목 높이 8 m 가정")));
     assert.equal(noCanopy.metrics.find((metric) => metric.id === "tree_shade_pct_summer_h14")?.status, "missing", "S04 without canopy reports tree shade as unknown, not 0%");
     noCanopyContext.close();
@@ -350,7 +351,9 @@ async function main() {
       const provenance = s04(provenanceContext);
       provenanceContext.close();
       assert.ok(provenance.provenance.sources.some((source) => source.sourceId === "terrain_tiles"), "지형 DEM 원천 provenance");
-      assert.ok(provenance.provenance.sources.some((source) => source.sourceId === "vworld_wmts"), "항공영상 원천 provenance");
+      assert.ok(provenance.provenance.sources.some((source) => source.sourceId === "ngii_air"), "항공영상 원천 provenance");
+      assert.ok(provenance.provenance.sources.some((source) => source.releaseId === "ngii_air@2025"));
+      assert.ok(provenance.limitations.some((item) => item.note === "영상: 국토지리정보원 영상지도 2025년 촬영(국토정보플랫폼 오픈API)"));
     } finally {
       rmSync(provenanceDir, { recursive: true, force: true });
     }

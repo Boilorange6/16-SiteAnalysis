@@ -4,6 +4,9 @@ export interface Mosaic {
   /** Global Web Mercator pixel coordinate of the upper-left output pixel. */
   x0Px: number;
   y0Px: number;
+  /** EPSG:5179 upper-left pixel edge; absent for legacy Web Mercator mosaics. */
+  utmkOrigin?: [number, number];
+  year?: number;
   width: number;
   height: number;
   /** Row-major RGB bytes, three bytes per pixel. */

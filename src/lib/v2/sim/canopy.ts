@@ -251,7 +251,9 @@ export function canopyToGrid(m: Mosaic, mask: Uint8Array, center: LngLat, radius
   const y0 = cy - span;
   const values = new Float64Array(cols * rows);
   values.fill(Number.NaN);
-  const [centerPxX, centerPxY] = globalPixel(center, m.z);
+  const [centerPxX, centerPxY] = m.utmkOrigin
+    ? [(cx - m.utmkOrigin[0]) / m.mPerPx + m.x0Px, (m.utmkOrigin[1] - cy) / m.mPerPx + m.y0Px]
+    : globalPixel(center, m.z);
   const halfPixelSpan = cellM / (2 * m.mPerPx);
   for (let row = 0; row < rows; row++) {
     const y = y0 + row * cellM;
@@ -265,6 +267,7 @@ export function canopyToGrid(m: Mosaic, mask: Uint8Array, center: LngLat, radius
       let maxX = Math.min(m.width - 1, Math.floor(pixelX + halfPixelSpan - m.x0Px - 0.5));
       let sampleMinY = minY;
       let sampleMaxY = maxY;
+      if (pixelX - m.x0Px < 0 || pixelX - m.x0Px >= m.width || pixelY - m.y0Px < 0 || pixelY - m.y0Px >= m.height) continue;
       if (minX > maxX || sampleMinY > sampleMaxY) {
         const nearestX = Math.max(0, Math.min(m.width - 1, Math.floor(pixelX - m.x0Px)));
         const nearestY = Math.max(0, Math.min(m.height - 1, Math.floor(pixelY - m.y0Px)));
