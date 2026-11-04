@@ -16,7 +16,7 @@ const { putTopoUpload } = await import("../../lib/v2/topo/upload.ts");
 
 const BASELINE_KEYS = {
   A01: "19d22a4b472ac8899ed12032e6475c4ea622c50f7b99718418cb23afbc3eeba1",
-  A02: "36f1adf31400e50b096993154091da74645ef8c9e948dcf6a86361eaa65a63ca",
+  A02: "90de8533f8f60ce2cfd258a088531258437b84a2648cc267a40f86063d713fcf", // 2026-11-04 A02 리비전 +koies-r1(학구도 원천 교체)
   A03: "13cb2d824cd17487aeb15b072bb9af0cb3a8e15d469a90a518d6664649fc0153",
   A04: "88a9102e9741b316ade54b9e05d0aac71b964740fd3a8914cdb68052ff777eff",
   A05: "d958fa00b1976ca516cb85d056a4cfd86f15f8d016b846498a4e7ee4535c47fc",
