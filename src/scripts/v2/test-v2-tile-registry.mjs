@@ -24,7 +24,7 @@ const EXPECTED_DETAIL_KEYS = [
 ];
 const EXPECTED_CACHE_VERSIONS = {
   A01: "v2-p4-ext-1+w3-merge-r1+w2b-r1+w3-r1+entrance-color-r1+transit-presentation-r1+rail-data-r3+chart-count-r1",
-  A02: "v2-p4-ext-1+w3-merge-r1+w2b-r1+clip-r1+chart-count-r1+chart-cap-r1",
+  A02: "v2-p4-ext-1+w3-merge-r1+w2b-r1+clip-r1+chart-count-r1+chart-cap-r1+koies-r1",
   A03: "v2-p4-ext-1+w2b-r1+composition-r1",
   A04: "v2-p4-ext-1+w3-merge-r1+w2b-r1+clip-r1",
   A05: "v2-p4-ext-1+w2b-r1+composition-r1+chart-count-r1+chart-cap-r1",
