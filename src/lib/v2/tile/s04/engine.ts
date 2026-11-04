@@ -407,7 +407,7 @@ function categoryLegend(): Array<{ label: string; min: number | null; max: numbe
   ];
 }
 
-function caseMetrics(result: SeasonHourResult): TileResult["metrics"] {
+function caseMetrics(result: SeasonHourResult, hasCanopy: boolean): TileResult["metrics"] {
   const suffix = `_${result.season}_h${result.hour}`;
   const denominator = result.consideredCells;
   const inRangeMedian = quantile(result.inRangeValues, 0.5);
@@ -433,7 +433,10 @@ function caseMetrics(result: SeasonHourResult): TileResult["metrics"] {
     optionalMetric(`utci_shade_median${suffix}`, `그늘 UTCI 중앙값 · ${SEASON_KO[result.season]} ${result.hour}시`, shadeMedian, "°C", "s04-utci-shade@1:in-range shaded cells", null, result.shadeValues.n),
     optionalMetric(`sun_shade_diff_c${suffix}`, `양지−그늘 UTCI 차이 · ${SEASON_KO[result.season]} ${result.hour}시`, sunMedian !== null && shadeMedian !== null ? sunMedian - shadeMedian : null, "°C", "s04-sun-shade@1:양지 중앙값−그늘 중앙값"),
     est(`shade_pct${suffix}`, `그늘 면적률 · ${SEASON_KO[result.season]} ${result.hour}시`, percentage(result.shadeCells, denominator), "%", "s04-shade-share@1:그늘 셀 면적÷계산 대상 셀 면적", result.shadeCells, denominator),
-    est(`tree_shade_pct${suffix}`, `수관 그늘 면적률 · ${SEASON_KO[result.season]} ${result.hour}시`, percentage(result.treeShadeCells, denominator), "%", "s04-tree-shade@1:수관 그림자 셀 면적÷계산 대상 셀 면적", result.treeShadeCells, denominator),
+    // 수관 자료가 없으면 0 %가 아니라 미확인이다(나무 그늘이 없다는 뜻이 아님).
+    hasCanopy
+      ? est(`tree_shade_pct${suffix}`, `수관 그늘 면적률 · ${SEASON_KO[result.season]} ${result.hour}시`, percentage(result.treeShadeCells, denominator), "%", "s04-tree-shade@1:수관 그림자 셀 면적÷계산 대상 셀 면적", result.treeShadeCells, denominator)
+      : missing(`tree_shade_pct${suffix}`, `수관 그늘 면적률 · ${SEASON_KO[result.season]} ${result.hour}시`, "%", "s04-tree-shade@1:수관 자료 없음"),
     est(`share_out_of_range_pct_${result.season}_h${result.hour}`, `바람 입력 없음 면적률 · ${SEASON_KO[result.season]} ${result.hour}시`, outPct, "%", "s04-out-of-range@2:S03 바람 값이 없는 셀 면적÷계산 대상 셀 면적", result.outOfRangeCells, denominator),
     est(`share_wind_clamped_low_pct${suffix}`, `바람 0.5 m/s 미만(0.5 m/s로 계산) 면적률 · ${SEASON_KO[result.season]} ${result.hour}시`, percentage(result.clampedLowCells, denominator), "%", "s04-wind-clamp-low@1:국지 10 m 풍속 < 0.5 m/s 셀 면적÷계산 대상 셀 면적", result.clampedLowCells, denominator),
     est(`share_wind_clamped_high_pct${suffix}`, `바람 17 m/s 초과(17 m/s로 계산) 면적률 · ${SEASON_KO[result.season]} ${result.hour}시`, percentage(result.clampedHighCells, denominator), "%", "s04-wind-clamp-high@1:국지 10 m 풍속 > 17 m/s 셀 면적÷계산 대상 셀 면적", result.clampedHighCells, denominator),
@@ -665,7 +668,7 @@ export function s04(ctx: EngineContext): TileResult {
     for (let index = 0; index < UTCI_HOURS.length; index += 1) calculated.push(calculateCase(ctx, shared!, allObstacles, hourlyShadeBySeason, buildingMask, inside, ratioGrid, ready.rows[index]!, ready.season, UTCI_HOURS[index]));
   }
 
-  const metrics = calculated.reduce<TileResult["metrics"]>((all, result) => [...all, ...caseMetrics(result)], []);
+  const metrics = calculated.reduce<TileResult["metrics"]>((all, result) => [...all, ...caseMetrics(result, canopy !== null)], []);
   const representative = calculated.find((result) => result.season === "summer" && result.hour === 14);
   const withAliases = representative ? representativeAliases(metrics, representative) : metrics;
   const allOutOfRange = calculated.some((result) => result.consideredCells > 0 && result.outOfRangeCells === result.consideredCells);
