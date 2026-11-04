@@ -9,7 +9,7 @@ import { metersPerPixel, slideViewport, zoomViewAt, type MapView } from "@/lib/v
 import { frameBasemap } from "@/lib/v2/ui/basemap";
 import { mapFrameScaleOptions, scaleOptionsForFrame, zoomForScale } from "@/lib/v2/ui/report-scale";
 import { SLIDE_LEGEND, calloutLegendEntries, layoutRects, slideCalloutAvoidance, slideCalloutLegendLayout, slideGeometry, slideLayout, slideLegend, slideLegendGeometry, slidePanelRects, slidePanelScale, slideReserved, slideSize, slideSiteX, terrainSectionLayout, type Rect, type SlideFormat, type TerrainSectionLayout } from "@/lib/v2/ui/overlay-layout";
-import { coverLayout, fitBlock, fitFooterText, fontSizeForStyle, footerBasemaps, footerCredit, shrinkPt, sourceLayout, sourceNotices, titlePlateRect, type Slide } from "@/lib/v2/report/pptx-kit";
+import { coverLayout, fitBlock, fitFooterText, fontSizeForStyle, footerBasemaps, footerCredit, shrinkPt, SOURCE_TABLE_MIN_FIT, sourceLayout, sourceNotices, titlePlateRect, type Slide } from "@/lib/v2/report/pptx-kit";
 import { SLIDE_OVERVIEW_FILL, calloutHoverText, calloutKeyFromTag, calloutKeyTag, calloutPageTitleTail, slideCalloutFrame } from "@/lib/v2/ui/callout-layout";
 import { a05ReportModule } from "@/lib/v2/tile/a05/report";
 import { layerStyle, legendItemsOf, legendLabelOf, modelWithHiddenLayers, rasterSwatchBackground, type MapModel } from "@/lib/v2/ui/map-layers";
@@ -1937,8 +1937,7 @@ function CoverSurface({ slide, unit, basemap, interactive, thumbnail = false, on
   );
 }
 
-/** 출처 표가 카드 높이를 넘으면 글자를 줄여 모든 행이 보이게 한다(PPT 표의 `fit: shrink`와 같은 뜻). 이 아래로는 줄이지 않는다. */
-const SOURCE_TABLE_MIN_FIT = 0.6;
+// 출처 표가 카드 높이를 넘으면 글자를 줄여 모든 행이 보이게 한다. 하한 SOURCE_TABLE_MIN_FIT은 PPT(sourceTableFit)와 같다.
 
 function SourcesSurface({ slide, unit, basemap, thumbnail = false, fontHighlight, onFontContextMenu }: { slide: Extract<PlannedSlide, { kind: "sources" }>; unit: number; basemap: BasemapChoice; thumbnail?: boolean; fontHighlight?: FontTargetKey | null; onFontContextMenu?: SurfaceContextMenuHandler }) {
   const format = (slide.format ?? "wide") as SlideFormat;

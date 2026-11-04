@@ -180,6 +180,34 @@ export function sourceLayout(rowCount: number, style: PageStyle = {}, format: Sl
   };
 }
 
+/** 출처 표 열 폭 비율(제공처·기준일·이용조건·원문·타일). 미리보기 colgroup과 PPT 표가 같은 값을 쓴다. */
+export const SOURCE_COLUMN_SHARES = [0.24, 0.14, 0.16, 0.25, 0.21] as const;
+/** 표가 넘칠 때 글자를 줄이는 하한. 미리보기(slide-surface)의 DOM 맞춤과 같은 값이다. */
+export const SOURCE_TABLE_MIN_FIT = 0.6;
+
+type SourceTableRow = { provider?: string | null; source: string; asOf: string; license?: string | null; url?: string | null; tiles: string };
+
+/**
+ * PPT 출처 표가 tableContent 높이 안에 들도록 글자·행 높이 배율을 정한다. PowerPoint 표는 줄이 늘면 행이 자라
+ * 아래 고지문과 겹치므로, 미리보기가 DOM으로 하는 맞춤을 같은 하한으로 미리 계산한다.
+ */
+export function sourceTableFit(rows: readonly SourceTableRow[], pt: number, content: Rect, dense: boolean): number {
+  const widths = SOURCE_COLUMN_SHARES.map((share) => content.w * share - (dense ? 0.06 : 0.1));
+  const lines = (value: string, size: number, width: number) => value.split("\n").reduce((sum, line) => sum + linesOf(line, size, width), 0);
+  const heightAt = (fit: number) => {
+    const size = pt * fit;
+    const lineH = (size / 72) * 1.2;
+    const minRow = (dense ? 0.28 : 0.32) * fit;
+    return rows.reduce((sum, row) => {
+      const cells = [`${row.provider || "제공처 미기록"}\n${row.source}`, row.asOf, row.license || "미기록", row.url ? "원문 확인" : "원문 링크 미기록", row.tiles];
+      return sum + Math.max(minRow, Math.max(...cells.map((cell, index) => lines(cell, size, widths[index]))) * lineH);
+    }, Math.max(minRow, lineH));
+  };
+  let fit = 1;
+  while (fit > SOURCE_TABLE_MIN_FIT && heightAt(fit) > content.h) fit = Math.max(SOURCE_TABLE_MIN_FIT, fit - 0.05);
+  return fit;
+}
+
 /**
  * 쪽 지도에 실제로 그려지는 바탕들(출처 띠 표기를 정한다). 화면 미리보기(SlideFooter)와 PPT 출처 띠가 같은 값을 쓴다.
  * 조판은 칸마다, 타일은 보고서 프레임 선택까지 반영한 결과다.

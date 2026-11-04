@@ -24,7 +24,8 @@ assert.ok(TILE_CATALOG.S03.sources.includes("terrain_tiles"));
 assert.ok(TILE_CATALOG.S02.sources.includes("terrain_tiles"));
 assert.ok(!TILE_CATALOG.D10.sources.includes("parcel_polygon"));
 assert.ok(TILE_CATALOG.S04.sources.includes("terrain_tiles"));
-assert.ok(TILE_CATALOG.S04.sources.includes("vworld_wmts"));
+assert.ok(TILE_CATALOG.S04.sources.includes("ngii_air"));
+assert.ok(!TILE_CATALOG.S04.sources.includes("vworld_wmts"));
 assert.ok(TILE_CATALOG.A12.sources.includes("parcel_polygon"));
 assert.deepEqual(TILE_CATALOG.A09.sources, [
   "mzone_zone",

@@ -13,7 +13,7 @@ import type { RoseModel } from "../ui/wind-rose";
 import { sheetCells, type SheetGrid } from "../ui/sheet";
 import { reportSummaryNotes } from "../ui/terrain-section";
 import { COVER_MAP_KEY, mapKeyOf, type PlannedSlide } from "./report-plan";
-import { CHIP, E, FONT, INK, L, LINE, MUTED, coverLayout, fitBlock, fitFooterText, fitPt, footerBasemaps, footerCredit, fontSizeForStyle, hex, linesOf, plate, sourceLayout, sourceNotices, textIn, titlePlateRect, type Border, type ReportItem, type Slide } from "./pptx-kit";
+import { CHIP, E, FONT, INK, L, LINE, MUTED, coverLayout, fitBlock, fitFooterText, fitPt, footerBasemaps, footerCredit, fontSizeForStyle, hex, linesOf, plate, SOURCE_COLUMN_SHARES, sourceLayout, sourceNotices, sourceTableFit, textIn, titlePlateRect, type Border, type ReportItem, type Slide } from "./pptx-kit";
 import { tileReportModuleFor } from "../tile/report";
 import { addEditableMap, mapDrawPlan, nativeMapFallbackNote, nativeMapStatus } from "./map-pptx";
 import { exportBasemap } from "../ui/basemap";
@@ -777,7 +777,9 @@ function sources(pptx: PptxGenJS, p: PlannedSlide & { kind: "sources" }, images:
   const notices = sourceNotices(p.rows);
   const source = sourceLayout(p.rows.length, p.style ?? {}, format, notices);
   const dense = source.dense;
-  const sourcePt = fontSizeForStyle(p.style ?? {}, "source");
+  const fullPt = fontSizeForStyle(p.style ?? {}, "source");
+  const fit = sourceTableFit(p.rows, fullPt, source.tableContent, dense);
+  const sourcePt = fullPt * fit;
   const r = source.table;
   plate(s, r, 0.16);
   const cell = (t: string, opts: { bold?: boolean; fontSize?: number; color?: string } = {}) => ({
@@ -796,7 +798,7 @@ function sources(pptx: PptxGenJS, p: PlannedSlide & { kind: "sources" }, images:
     ]),
   ];
   const W = source.tableContent.w;
-  s.addTable(rows, { x: source.tableContent.x, y: source.tableContent.y, w: W, colW: [W * 0.24, W * 0.14, W * 0.16, W * 0.25, W * 0.21], rowH: dense ? 0.28 : 0.32, margin: 0 });
+  s.addTable(rows, { x: source.tableContent.x, y: source.tableContent.y, w: W, colW: SOURCE_COLUMN_SHARES.map((share) => W * share), rowH: (dense ? 0.28 : 0.32) * fit, margin: 0 });
   if (notices.length > 0) s.addText(notices.join("\n"), { x: source.notice.x, y: source.notice.y, w: source.notice.w, h: source.notice.h, fontFace: FONT, fontSize: source.noticePt, color: MUTED, margin: 0, valign: "top", fit: "shrink" });
   s.addText(`분석 생성일 ${p.analysisDate} · 기준일은 원천 자료 날짜${p.rows.length > 12 ? ` · 원천 ${p.rows.length}건` : ""}`, { x: source.footer.x, y: source.footer.y, w: source.footer.w, h: source.footer.h, fontFace: FONT, fontSize: sourcePt, color: MUTED, margin: 0, fit: "shrink" });
   pageTextBoxes(s, p, format);

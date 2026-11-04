@@ -397,4 +397,16 @@ assert.ok(missingPlan.every((slide) => slide.kind === "tile" && slide.body.kind 
   }
 }
 
+// PPT 출처 표 맞춤(2026-11-04): 줄바꿈이 많은 14행은 고지문 아래로 넘치지 않게 글자를 줄이고, 짧은 행은 그대로 둔다. 하한은 미리보기와 같다.
+{
+  const { sourceLayout, sourceTableFit, SOURCE_TABLE_MIN_FIT } = await import("../../lib/v2/report/pptx-kit.ts");
+  const short = Array.from({ length: 5 }, (_, i) => ({ provider: "기관", source: `자료 ${i}`, asOf: "2026-01-01", license: "제한 없음", url: "https://x", tiles: "도로" }));
+  const long = Array.from({ length: 14 }, (_, i) => ({ provider: "국토교통부(VWorld GIS건물통합정보) 긴 제공처 이름", source: `행정안전부 도로명주소 건물(CC BY-NC-ND) ${i}`, asOf: "2026-09-09", license: "공공누리 제4유형(출처표시·상업적 이용금지·변경금지) · ODbL 1.0(선형)", url: "https://x", tiles: "건축물 용도, 준공 연대, 건축물 높이, 수관·녹지, 건물 밀도, 개방감(하늘열림), 3D 매스, 일조·그림자" }));
+  const shortLayout = sourceLayout(short.length, {}, "wide");
+  assert.equal(sourceTableFit(short, 9, shortLayout.tableContent, shortLayout.dense), 1, "짧은 표는 줄이지 않는다");
+  const longLayout = sourceLayout(long.length, {}, "wide", ["국토포털(국토정보플랫폼) 오픈API의 결과물"]);
+  const fit = sourceTableFit(long, 9, longLayout.tableContent, longLayout.dense);
+  assert.ok(fit < 1 && fit >= SOURCE_TABLE_MIN_FIT, `줄바꿈이 많은 표는 하한 안에서 줄인다(${fit})`);
+}
+
 console.log("v2 report doc plan tests passed");
