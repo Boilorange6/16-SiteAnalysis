@@ -4,7 +4,8 @@ const path = require("node:path");
 const TILE = 256;
 const resolution = (level) => 66846.72 / 2 ** level;
 const tileAt = (x, y, level) => ({ col: Math.floor((x + 200000) / (resolution(level) * TILE)), row: Math.floor((4000000 - y) / (resolution(level) * TILE)) });
-const levelFor = (radius) => radius <= 1000 ? 18 : radius <= 2000 ? 17 : 16;
+// A 3 km L16 run exceeded 1 GiB parent RSS; limit the larger mosaics to L15.
+const levelFor = (radius) => radius <= 1000 ? 18 : radius <= 2000 ? 17 : radius <= 3000 ? 16 : 15;
 
 async function mosaic(input, deps = {}) {
   const fetcher = deps.fetch || fetch;

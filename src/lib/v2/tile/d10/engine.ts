@@ -7,6 +7,7 @@ import { areaInCircle, polygonArea } from "../../engine/tiles/geo";
 import { canopyCellStats, canopyFor, canopySource, CANOPY_ASSUMED_HEIGHT_M, type CanopyForOptions } from "../../engine/tiles/canopy-shared";
 import { est, makeTile, missing, obs, polygonCandidate, type PolygonCandidate } from "../../engine/tiles/common";
 import { notProvided } from "../../engine/tiles/not-provided";
+import { SUN_INFLUENCE_M, sunBuildingSources } from "../../engine/tiles/sun-shared";
 
 const circleArea = (radiusM: number) => Math.PI * radiusM ** 2;
 const percent = (part: number, whole: number) => whole > 0 ? Math.round((part / whole) * 1000) / 10 : 0;
@@ -194,9 +195,13 @@ export function d10(ctx: EngineContext, options: CanopyForOptions = {}): TileRes
   ];
 
   const status: TileResult["status"] = canopy && canopy.missingTiles === 0 ? "complete" : "partial";
-  const sources = [...imagerySources, ...greenSources, ...waterSources, ...(topoWater.applied ? [ctx.topo!.source] : [])];
+  const topoBuildingsApplied = canopy?.buildingMaskApplied && ctx.topoBuildingSupplementByRadius.get(ctx.input.radiusM + SUN_INFLUENCE_M);
+  const sources = [...imagerySources, ...greenSources, ...waterSources, ...(canopy?.buildingMaskApplied ? sunBuildingSources(ctx) : []), ...((topoWater.applied || topoBuildingsApplied) ? [ctx.topo!.source] : [])];
   const limitations: TileResult["limitations"] = canopy ? [
     { kind: "estimated", note: "항공사진 색 지수(ExG) 기반 수관 검출 · 재현율 미검증(sitedia 공개 재현율 약 70% 수준 예상)" },
+    canopy.buildingMaskApplied
+      ? { kind: "unknown", note: "건물 바닥 면 안쪽은 수관에서 제외(옥상 녹화 포함)" }
+      : { kind: "partial", note: "건물 자료가 없어 건물 바닥 면을 수관에서 제외하지 못했습니다." },
     { kind: "estimated", note: `수관 높이 ${CANOPY_ASSUMED_HEIGHT_M}m 가정(그림자·SVF 연결용)` },
     { kind: "unknown", note: "그림자 속 수목·잔디는 놓치거나 섞일 수 있음" },
     { kind: "unknown", note: canopy.year ? `영상: 국토지리정보원 영상지도 ${canopy.year}년 촬영(국토정보플랫폼 오픈API)` : "영상 촬영연도 미확인" },

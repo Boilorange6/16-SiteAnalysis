@@ -35,7 +35,7 @@ const TILE_CACHE_REVISION: Readonly<Record<string, string>> = {
   D03: "w2b-r1+w4-names-r1+clip-r1+chart-count-r1+chart-cap-r1",
   D04: "w2b-r1+w4-names-r1+clip-r1+chart-value-r1+chart-cap-r1",
   D05: "height3-r1+w3-merge-r1+w2b-r1+w4-names-r1+d05-nearest-cap-r1+clip-r1+chart-value-r1+chart-cap-r1",
-  D10: "w2b-r1+clip-r1+composition-r1+novworld-r1+ngii-air-r1",
+  D10: "w2b-r1+clip-r1+composition-r1+novworld-r1+ngii-air-r1+bldgmask-r1",
   D11: "w2b-r1+clip-r1",
   D12: "w2b-r1+clip-r1+chart-count-r2+chart-cap-r1",
   D13: "w2b-r1",
@@ -49,7 +49,7 @@ const TILE_CACHE_REVISION: Readonly<Record<string, string>> = {
   S01: "height3-r1+w3-r1+composition-r1",
   S02: "height3-r1+w3-merge-r1+w3-r1+provenance-r1",
   S03: "height3-r1+w2b-r1",
-  S04: "s04-r2+height3-r1+w2b-r1+clip-r1+provenance-r1+novworld-r1+ngii-air-r1",
+  S04: "s04-r2+height3-r1+w2b-r1+clip-r1+provenance-r1+novworld-r1+ngii-air-r1+bldgmask-r1",
 };
 // A topo-free analysis must retain its historical cache key byte-for-byte. D17
 // has a second representation only when the analysis carries topo data, so the

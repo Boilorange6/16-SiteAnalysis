@@ -11,6 +11,9 @@ import { toUtmk } from "../../crs";
 import { areaInCircle, polygonArea, simplifyRing } from "./geo";
 import { canopyToGrid, detectCanopy } from "../../sim/canopy";
 import type { LocalGrid } from "./raster-grid";
+import { fillRing, type Obstacle } from "../../sim/sun-field";
+import { sunObstaclesFor } from "./sun-shared";
+import { buildingsReady } from "./buildings-shared";
 
 /** 수관은 항공사진에서 높이를 관측하지 않으므로 Sitedia와 같은 고정 가정이다. */
 export const CANOPY_ASSUMED_HEIGHT_M = 8;
@@ -24,6 +27,7 @@ export interface CanopyResult {
   coveragePct: number;
   missingTiles: number;
   totalTiles: number;
+  buildingMaskApplied: boolean;
   year?: number;
 }
 
@@ -219,16 +223,17 @@ function loadMosaic(ctx: EngineContext, options: CanopyForOptions): Mosaic | nul
   } catch { return null; }
 }
 
-const CANOPY_RESULT_VERSION = "canopy-result-1";
+const CANOPY_RESULT_VERSION = "canopy-result-2-bldgmask";
 
-/** 같은 영상 픽셀·중심·반경이면 검출·격자·벡터 결과가 같으므로, 영상 내용 해시를 키로 디스크에 보관한다. */
-function resultCachePath(ctx: EngineContext, mosaic: Mosaic, options: CanopyForOptions): string | null {
+/** 영상과 실제 건물 링이 같을 때만 검출·격자·벡터 결과를 재사용한다. */
+function resultCachePath(ctx: EngineContext, mosaic: Mosaic, options: CanopyForOptions, buildings: readonly Obstacle[], buildingMaskApplied: boolean): string | null {
   const dir = options.resultCacheDir ?? process.env.V2_CANOPY_RESULT_DIR;
   if (!dir || dir === "off") return null;
   const hash = createHash("sha1");
   hash.update(JSON.stringify([CANOPY_RESULT_VERSION, ctx.input.center, ctx.input.radiusM, mosaic.z, mosaic.x0Px, mosaic.y0Px, mosaic.utmkOrigin, mosaic.year, mosaic.width, mosaic.height, mosaic.mPerPx, mosaic.missingTiles, mosaic.totalTiles]));
   hash.update(mosaic.rgb);
   if (mosaic.valid) hash.update(mosaic.valid);
+  hash.update(JSON.stringify([buildingMaskApplied, buildings.map((building) => building.ring)]));
   return join(dir, `${hash.digest("hex")}.bin`);
 }
 
@@ -268,11 +273,19 @@ export function canopyFor(ctx: EngineContext, options: CanopyForOptions = {}): C
     const mosaic = loadMosaic(ctx, options);
     if (!mosaic || mosaic.totalTiles <= 0 || mosaic.missingTiles >= mosaic.totalTiles) return null;
     options.onMosaic?.(mosaic);
-    const cacheFile = resultCachePath(ctx, mosaic, options);
+    const buildingMaskApplied = buildingsReady(ctx);
+    const buildings = buildingMaskApplied ? sunObstaclesFor(ctx, null) : [];
+    const cacheFile = resultCachePath(ctx, mosaic, options, buildings, buildingMaskApplied);
     const cached = cacheFile ? readResultCache(cacheFile) : null;
     if (cached) return cached;
     const detected = detectCanopy(mosaic);
     const grid = canopyToGrid(mosaic, detected.mask, ctx.input.center, ctx.input.radiusM, 1);
+    const buildingMask = new Uint8Array(grid.values.length);
+    const rasterGrid = { ...grid, x0: grid.x0 - grid.cellM / 2, y0: grid.y0 - grid.cellM / 2 };
+    for (const building of buildings) fillRing(buildingMask, rasterGrid, building.ring);
+    for (let i = 0; i < buildingMask.length; i++) {
+      if (buildingMask[i] && Number.isFinite(grid.values[i])) grid.values[i] = 0;
+    }
     const stats = canopyCellStats(grid, ctx.input.radiusM);
     const result: CanopyResult = {
       grid,
@@ -281,6 +294,7 @@ export function canopyFor(ctx: EngineContext, options: CanopyForOptions = {}): C
       coveragePct: stats.valid === 0 ? 0 : (stats.canopy / stats.valid) * 100,
       missingTiles: mosaic.missingTiles,
       totalTiles: mosaic.totalTiles,
+      buildingMaskApplied,
       ...(mosaic.year ? { year: mosaic.year } : {}),
     };
     if (cacheFile) writeResultCache(cacheFile, result);

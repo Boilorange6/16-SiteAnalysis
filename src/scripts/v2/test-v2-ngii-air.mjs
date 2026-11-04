@@ -14,7 +14,7 @@ const { sourceLineOf } = await import("../../lib/v2/ui/tile-view.ts");
 const { sourceNotices } = await import("../../lib/v2/report/pptx-kit.ts");
 assert.deepEqual(tileAt(953900, 1952000, 18), { col: 17676, row: 31372 });
 assert.deepEqual(tileAt(953900, 1952000, 16), { col: 4419, row: 7843 });
-assert.deepEqual([levelFor(1000), levelFor(1001), levelFor(2000), levelFor(2001)], [18, 17, 17, 16]);
+assert.deepEqual([levelFor(1000), levelFor(1001), levelFor(2000), levelFor(2001), levelFor(3000), levelFor(3001), levelFor(5000)], [18, 17, 17, 16, 16, 15, 15]);
 const root = mkdtempSync(join(tmpdir(), "ngii-air-test-"));
 try {
   let calls = [];
@@ -64,7 +64,7 @@ try {
     rgb.set(green ? [30, 150, 30] : [140, 120, 110], i);
   }
   const injected = { z: 18, x0Px: 0, y0Px: 0, utmkOrigin: [cx - 40, cy + 40], year: 2025, width, height, rgb, mPerPx: 1, missingTiles: 0, totalTiles: 1 };
-  const ctx = { input: { center, radiusM: 30 }, memo: (_key, fn) => fn() };
+  const ctx = { input: { center, radiusM: 30 }, memo: (_key, fn) => fn(), db: () => null };
   const result = canopyFor(ctx, { mosaic: injected });
   assert.ok(result.polygons.length > 0);
   const pts = result.polygons.flat(3);
