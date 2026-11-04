@@ -63,7 +63,7 @@ export const SCHOOL_SPEC: PointSourceSpec = {
 
 export const SCHOOL_ZONE_COVERAGE = {
   polygons: false,
-  note: "CSV 학구 속성에는 도형이 없어 학구ID↔학교ID(serves_zone)·학구ID↔공간객체ID(zone_geometry) 관계를 적재합니다. VWorld 도형이 있으면 school_zone:<학구ID> feature로 연결합니다.",
+  note: "CSV 학구 속성에는 도형이 없어 학구ID↔학교ID(serves_zone)·학구ID↔공간객체ID(zone_geometry) 관계를 적재합니다. 학구도 도형이 있으면 school_zone:<학구ID> feature로 연결합니다.",
 };
 
 function insertLink(db: Db, from: string, to: string, relation: string, method: string, releaseId: string): boolean {

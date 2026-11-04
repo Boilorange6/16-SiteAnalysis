@@ -521,7 +521,7 @@ if (builders.market) {
 
 // 학교·학구 연계(reference)와 K-APT 단지(core): 기존 builder 뒤에 이어 붙인다.
 const { buildKapt, buildSchoolZoneLinks, SCHOOL_SPEC, SCHOOL_ZONE_COVERAGE } = await import("../../lib/v2/ingest/sources/school-kapt.ts");
-const { buildSchoolZones, readSchoolZoneGeoJson, SCHOOL_ZONE_LAYERS, SCHOOL_ZONE_RIGHTS, SCHOOL_ZONE_SOURCE_ID } = await import("../../lib/v2/ingest/sources/school-zones.ts");
+const { buildSchoolZones, readSchoolZoneShp, schoolZoneBaseDate, SCHOOL_ZONE_LAYERS, SCHOOL_ZONE_RIGHTS, SCHOOL_ZONE_SOURCE_ID } = await import("../../lib/v2/ingest/sources/school-zones.ts");
 // 용도지역(VWorld dsId 24, 레이어별 전국 SHP): 필지 점과 갱신 주기가 달라 core가 아니라 reference에 둔다.
 const { buildLandPrice, latestLandPricePerSido, LAND_PRICE_RIGHTS } = await import("../../lib/v2/ingest/sources/land-price.ts");
 const { buildZoning, seedZoningSeen, zoningLayerFiles, ZONING_LAYERS, ZONING_RIGHTS } = await import("../../lib/v2/ingest/sources/zoning.ts");
@@ -570,54 +570,57 @@ if (only.has("reference")) {
   const SLOT = { store: 0, bus_stop: 1, park: 2, subway: 3, planned: 4, roads: 5, landuse: 6, water: 7, school: 8, zones: 9, links: 10, zoning: 11, land_price: 20, mzone: 21, sgis: 22, districts: 23, seoul_plan: 24 };
   const provider = "한국교육시설안전원";
 
-  // 학교·학구: 점(CSV) → 학구 폴리곤(VWorld GeoJSON) → 학교-학구 연계(CSV, 폴리곤 id로 걸러냄)
+  // 학교 점 → 같은 판의 학구 SHP와 학교-학구 연계 CSV.
   const schoolFile = newest("school", /^school-location.*\.csv$/i);
-  const linkFile = newest("school_zone", /^school-zone-link.*\.csv$/i);
   const elemFile = newest("school_zone", /^school-zone-elem.*\.csv$/i);
-  const vworldDir = join(raw, "school_zone", "vworld");
-  const vworldFiles = SCHOOL_ZONE_LAYERS.map((layer) => ({ layer, file: join(vworldDir, `${layer.apiLayer}.geojson`) }));
-  const haveVworld = vworldFiles.every(({ file }) => existsSync(file));
-  const zoneReleaseOf = () => {
-    const done = vworldFiles.map(({ file }) => {
-      try { return JSON.parse(readFileSync(`${file}.done.json`, "utf8")); } catch { return {}; }
-    });
-    const baseDates = done.flatMap((d) => Array.isArray(d.base_dates) ? d.base_dates : typeof d.base_dt === "string" ? [d.base_dt] : []).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
-    const sts = vworldFiles.map(({ file }) => statSync(file));
-    return insertRelease(db_, {
-      sourceId: SCHOOL_ZONE_SOURCE_ID,
-      provider: "한국교육시설안전원(VWorld 2D 데이터 API 제공)",
-      sourceUrl: "https://api.vworld.kr/req/data",
-      sourceAsOf: baseDates.at(-1) ?? null,
-      fetchedAt: new Date(Math.max(...sts.map((st) => st.mtimeMs))).toISOString(),
-      checksum: vworldFiles.map(({ file }, i) => `${basename(file)}:${sts[i].size}-${Math.round(sts[i].mtimeMs)}`).join("|"),
-      licenseCode: "UNRESTRICTED",
-      rights: SCHOOL_ZONE_RIGHTS,
-    });
-  };
+  const zoneDir = join(raw, "school_zone");
+  const koiesNames = existsSync(zoneDir) ? readdirSync(zoneDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && /^koies-20\d{6}$/i.test(entry.name))
+    .map((entry) => entry.name).sort().reverse() : [];
+  const koiesDir = koiesNames.length ? join(zoneDir, koiesNames[0]) : null;
+  const koiesFiles = koiesDir ? SCHOOL_ZONE_LAYERS.map((layer) => ({ layer, file: join(koiesDir, layer.fileKey, `${layer.fileKey}.shp`) })) : [];
+  const haveKoies = koiesFiles.length === SCHOOL_ZONE_LAYERS.length && koiesFiles.every(({ file }) => existsSync(file));
+  const pairedLink = koiesDir && join(koiesDir, "link", "link.csv");
+  const usePairedLink = pairedLink && existsSync(pairedLink);
+  if (haveKoies && !usePairedLink) throw new Error(`학구도 SHP와 같은 판의 link/link.csv가 없습니다: ${koiesDir}`);
+  const linkFile = usePairedLink ? pairedLink : newest("school_zone", /^school-zone-link.*\.csv$/i);
   step(`school/${basename(schoolFile)}`, [schoolFile], 0, SLOT.school, async () => [
     await buildPointSource(db_, SCHOOL_SPEC, (await csvRecords(schoolFile)).records, release(db_, "school", schoolFile, provider, "https://www.data.go.kr/data/15021148/standard.do", "UNRESTRICTED", await csvDataAsOf(schoolFile))),
   ]);
-  if (haveVworld) {
-    step("school_zone/vworld", vworldFiles.map(({ file }) => file), 0, SLOT.zones, async () => {
-      const zoneRelease = zoneReleaseOf();
-      const zoneStats = await buildSchoolZones(db_, vworldFiles.map(({ layer, file }) => ({ layer: layer.key, releaseId: zoneRelease, records: readSchoolZoneGeoJson(file) })));
+  if (haveKoies) {
+    const inputs = koiesFiles.flatMap(({ file }) => [file, ...[".dbf", ".prj", ".cpg"].map((ext) => file.replace(/\.shp$/i, ext))]);
+    step("school_zone/koies", inputs, 0, SLOT.zones, async () => {
+      const dates = await Promise.all(koiesFiles.map(({ file }) => schoolZoneBaseDate(readSchoolZoneShp(file))));
+      const sourceAsOf = dates.filter(Boolean).sort().at(-1) ?? normalizeDataAsOf(koiesNames[0].slice(6));
+      const sts = koiesFiles.map(({ file }) => statSync(file));
+      const zoneRelease = insertRelease(db_, {
+        sourceId: SCHOOL_ZONE_SOURCE_ID,
+        provider: "한국교육시설안전원",
+        sourceUrl: SCHOOL_ZONE_RIGHTS.sourceUrl,
+        sourceAsOf,
+        fetchedAt: new Date(Math.max(...sts.map((st) => st.mtimeMs))).toISOString(),
+        checksum: koiesFiles.map(({ file }, i) => `${basename(file)}:${sts[i].size}-${Math.round(sts[i].mtimeMs)}`).join("|"),
+        licenseCode: "UNRESTRICTED",
+        rights: SCHOOL_ZONE_RIGHTS,
+      });
+      const zoneStats = await buildSchoolZones(db_, koiesFiles.map(({ layer, file }) => ({ layer: layer.key, releaseId: zoneRelease, records: readSchoolZoneShp(file) })));
       const totalRows = zoneStats.reduce((n, s) => n + s.received, 0);
-      const totalFeatures = zoneStats.reduce((n, s) => n + s.accepted, 0);
+      const totalFeatures = db_.prepare("SELECT COUNT(*) FROM feature WHERE release_id = ?").pluck().get(zoneRelease);
       db_.prepare("UPDATE source_release SET rights_json = ?, coverage_json = ? WHERE release_id = ?").run(
         JSON.stringify(SCHOOL_ZONE_RIGHTS),
-        JSON.stringify({ polygons: true, layers: vworldFiles.map(({ layer }) => layer.apiLayer), features: totalFeatures, rows: totalRows }),
+        JSON.stringify({ polygons: true, layers: koiesFiles.map(({ layer }) => layer.fileKey), features: totalFeatures, rows: totalRows }),
         zoneRelease,
       );
-      console.log(`school_zone: VWorld polygons ${totalFeatures.toLocaleString()} features / ${totalRows.toLocaleString()} rows`);
+      console.log(`school_zone: KOIES SHP ${totalFeatures.toLocaleString()} features / ${totalRows.toLocaleString()} rows`);
       return zoneStats;
     });
   } else {
-    console.log("school_zone: VWorld GeoJSON 3종이 모두 없어 폴리곤 적재를 건너뜁니다");
+    console.log("school_zone: KOIES SHP 3종이 모두 없어 폴리곤 적재를 건너뜁니다");
   }
   step("school_zone/link", [linkFile, elemFile], 0, SLOT.links, async () => {
-    const linkRel = release(db_, "school_zone_link", linkFile, provider, "https://www.data.go.kr/data/15021158/standard.do", "UNRESTRICTED", await csvDataAsOf(linkFile));
+    const linkRel = release(db_, "school_zone_link", linkFile, provider, usePairedLink ? "https://www.data.go.kr/data/15159266/fileData.do" : "https://www.data.go.kr/data/15021158/standard.do", "UNRESTRICTED", await csvDataAsOf(linkFile));
     const elemRel = release(db_, "school_zone_elem", elemFile, provider, "https://www.data.go.kr/data/15021149/standard.do", "UNRESTRICTED", await csvDataAsOf(elemFile));
-    const zoneIds = haveVworld ? new Set(db_.prepare("SELECT stable_id FROM feature WHERE kind IN ('school_zone_elem', 'school_zone_middle', 'school_zone_high')").pluck().all()) : null;
+    const zoneIds = haveKoies ? new Set(db_.prepare("SELECT stable_id FROM feature WHERE kind IN ('school_zone_elem', 'school_zone_middle', 'school_zone_high')").pluck().all()) : null;
     const csvCoverage = { ...SCHOOL_ZONE_COVERAGE, polygons: zoneIds !== null, polygonSource: zoneIds !== null ? "school_zone" : null };
     for (const rel of [linkRel, elemRel]) db_.prepare("UPDATE source_release SET coverage_json = ? WHERE release_id = ?").run(JSON.stringify(csvCoverage), rel);
     return buildSchoolZoneLinks(db_, { link: (await csvRecords(linkFile)).records, elem: (await csvRecords(elemFile)).records, linkReleaseId: linkRel, elemReleaseId: elemRel, zoneIds });

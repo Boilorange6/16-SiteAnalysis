@@ -1,4 +1,4 @@
-/** VWorld 학교 학구도 GeoJSON 적재·학교 링크 계약. */
+/** SHP 레코드 학구도 적재·학교 링크 계약. */
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
@@ -7,7 +7,8 @@ const { initDataFileSchema } = await import("../../lib/v2/data/schema.ts");
 const { insertRelease } = await import("../../lib/v2/ingest/build.ts");
 const { buildPointSource } = await import("../../lib/v2/ingest/sources/points.ts");
 const { buildSchoolZoneLinks, SCHOOL_SPEC } = await import("../../lib/v2/ingest/sources/school-kapt.ts");
-const { buildSchoolZones, readSchoolZoneGeoJson, SCHOOL_ZONE_RIGHTS } = await import("../../lib/v2/ingest/sources/school-zones.ts");
+const { buildSchoolZones, schoolZoneBaseDate, SCHOOL_ZONE_RIGHTS } = await import("../../lib/v2/ingest/sources/school-zones.ts");
+const { sampleSchoolZones } = await import("./fixtures/school-zone-sample.mjs");
 const { csvRecords } = await import("../../lib/v2/a0/measure.ts");
 
 const fx = (name) => fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url));
@@ -24,12 +25,14 @@ const rel = (sourceId, rights = {}) => insertRelease(db, {
   rights,
 });
 
-const all = readSchoolZoneGeoJson(fx("school-zone-vworld-sample.json"));
+const all = sampleSchoolZones();
+async function* dates() { yield* all; yield { properties: { BASE_DT: "20260920" }, geometry: null }; }
+assert.equal(await schoolZoneBaseDate(dates()), "2026-09-20");
 const zoneRelease = rel("school_zone", SCHOOL_ZONE_RIGHTS);
 const zoneStats = await buildSchoolZones(db, [
-  { layer: "elem", releaseId: zoneRelease, records: all.filter((f) => String(f.properties?.hakgudo_id).startsWith("Z0001")) },
-  { layer: "middle", releaseId: zoneRelease, records: all.filter((f) => String(f.properties?.hakgudo_id).startsWith("Z0002")) },
-  { layer: "high", releaseId: zoneRelease, records: all.filter((f) => String(f.properties?.hakgudo_id).startsWith("Z0003")) },
+  { layer: "elem", releaseId: zoneRelease, records: all.filter((f) => String(f.properties?.HAKGUDO_ID).startsWith("Z0001")) },
+  { layer: "middle", releaseId: zoneRelease, records: all.filter((f) => String(f.properties?.HAKGUDO_ID).startsWith("Z0002")) },
+  { layer: "high", releaseId: zoneRelease, records: all.filter((f) => String(f.properties?.HAKGUDO_ID).startsWith("Z0003")) },
 ]);
 assert.deepEqual(zoneStats.map((s) => [s.received, s.accepted, s.rejected]), [[2, 2, 0], [1, 1, 0], [1, 1, 0]]);
 assert.equal(db.prepare("SELECT COUNT(*) FROM feature").pluck().get(), 3, "동일 학구의 두 objectid는 하나의 stable feature");
@@ -62,7 +65,7 @@ assert.deepEqual([attr.received, attr.accepted, attr.unlocated, attr.rejected], 
 assert.ok(db.prepare("SELECT 1 FROM feature_link WHERE from_stable_id = 'school:B000002843' AND to_stable_id = 'school_zone:Z000100973' AND relation_type = 'serves_zone'").get());
 assert.ok(db.prepare("SELECT 1 FROM feature_link WHERE from_stable_id = 'school:B000009527' AND to_stable_id = 'school_zone:Z000200001' AND relation_type = 'serves_zone'").get());
 assert.equal(db.prepare("SELECT COUNT(*) FROM feature_link WHERE relation_type = 'serves_zone'").pluck().get(), 2);
-assert.equal(JSON.parse(db.prepare("SELECT rights_json FROM source_release WHERE release_id = ?").pluck().get(zoneRelease)).provider, "국토교통부 VWorld");
+assert.equal(JSON.parse(db.prepare("SELECT rights_json FROM source_release WHERE release_id = ?").pluck().get(zoneRelease)).provider, "한국교육시설안전원");
 
 db.close();
 console.log("✓ v2 school-zone ingest");

@@ -1,4 +1,4 @@
-/** D26 통학구역 도판 — VWorld 학교 학구도·학교군 폴리곤과 대지 포함 구역. */
+/** D26 통학구역 도판 — 학교 학구도·학교군 폴리곤과 대지 포함 구역. */
 import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../../engine/context";
 import type { FeatureHit } from "../../data/features";
@@ -61,18 +61,18 @@ export function d26(ctx: EngineContext): TileResult {
   const high = site.get("school_zone_high") ?? [];
   const baseDate = sources.map((source) => source.sourceAsOf).filter((date): date is string => date !== null).sort().at(-1) ?? zoneBaseDate(hits[0]) ?? "미확인";
   const metrics: TileDraft["metrics"] = [
-    obs("back_elem_count", "반경 내 초등 통학구역", counts.get("school_zone_elem") ?? 0, "구역", "d26-count@1:반경과 교차하는 고유 VWorld 초등 학구도 수"),
-    obs("back_middle_count", "반경 내 중학교 학교군", counts.get("school_zone_middle") ?? 0, "군", "d26-count@1:반경과 교차하는 고유 VWorld 중학교 학교군 수"),
-    obs("back_high_count", "반경 내 고등학교 학교군", counts.get("school_zone_high") ?? 0, "군", "d26-count@1:반경과 교차하는 고유 VWorld 고등학교 학교군 수"),
+    obs("back_elem_count", "반경 내 초등 통학구역", counts.get("school_zone_elem") ?? 0, "구역", "d26-count@1:반경과 교차하는 고유 초등 학구도 수"),
+    obs("back_middle_count", "반경 내 중학교 학교군", counts.get("school_zone_middle") ?? 0, "군", "d26-count@1:반경과 교차하는 고유 중학교 학교군 수"),
+    obs("back_high_count", "반경 내 고등학교 학교군", counts.get("school_zone_high") ?? 0, "군", "d26-count@1:반경과 교차하는 고유 고등학교 학교군 수"),
     obs("site_elem_zone", "대지의 초등 통학구역", elem.length > 0 ? 1 : 0, "개", "d26-site@1:대지 중심점이 초등 학구도에 포함되는지"),
     obs("site_middle_group", "대지의 중학교 학교군", middle.length, "군", "d26-site@1:대지 중심점이 중학교 학교군에 포함되는 고유 구역 수"),
     obs("site_high_group", "대지의 고등학교 학교군", high.length, "군", "d26-site@1:대지 중심점이 고등학교 학교군에 포함되는 고유 구역 수"),
   ];
   const coverage = ctx.coverage("reference", ["school_zone"]);
   const status: TileResult["status"] = clipFailed > 0 || coverage.some((limitation) => limitation.kind === "partial" || limitation.kind === "incomplete") ? "partial" : "complete";
-  const sentence = `VWorld 학구도 기준일 ${baseDate}, 반경 ${formatDistanceM(radiusM)} 안 초등 통학구역 ${fmt(counts.get("school_zone_elem") ?? 0)}곳·중학교 학교군 ${fmt(counts.get("school_zone_middle") ?? 0)}곳·고등학교 학교군 ${fmt(counts.get("school_zone_high") ?? 0)}곳 → 대지 초등 ${siteText(elem, "미포함")}, 중학교 ${siteText(middle, "미포함")}, 고등학교 ${siteText(high, "미포함")} → 실제 배정은 교육청 확인 필요`;
+  const sentence = `학구도 기준일 ${baseDate}, 반경 ${formatDistanceM(radiusM)} 안 초등 통학구역 ${fmt(counts.get("school_zone_elem") ?? 0)}곳·중학교 학교군 ${fmt(counts.get("school_zone_middle") ?? 0)}곳·고등학교 학교군 ${fmt(counts.get("school_zone_high") ?? 0)}곳 → 대지 초등 ${siteText(elem, "미포함")}, 중학교 ${siteText(middle, "미포함")}, 고등학교 ${siteText(high, "미포함")} → 실제 배정은 교육청 확인 필요`;
   const limitations: TileDraft["limitations"] = [
-    { kind: "unknown", note: "VWorld 학구도·학교군 경계의 대지 포함 여부를 표시한 참조 도판입니다. 학구도에 연결된 학교와 실제 전입·배정 결과는 교육청 확인이 필요합니다." },
+    { kind: "unknown", note: "학구도·학교군 경계의 대지 포함 여부를 표시한 참조 도판입니다. 학구도에 연결된 학교와 실제 전입·배정 결과는 교육청 확인이 필요합니다." },
     ...(clipFailed > 0 ? [{ kind: "partial" as const, note: `도형 오류로 반경 교차를 계산하지 못한 학구도 ${clipFailed}건은 지도에서 제외했습니다.` }] : []),
     ...coverage,
   ];

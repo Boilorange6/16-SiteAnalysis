@@ -1,7 +1,8 @@
-/** VWorld Data API 학교 학구도·학교군 GeoJSON → reference school_zone_* feature. */
+/** 한국교육시설안전원 학구도 SHP → reference school_zone_* feature. */
 import { readFileSync } from "node:fs";
 import type BetterSqlite3 from "better-sqlite3";
-import type { Feature, FeatureCollection, Geometry, MultiPolygon, Polygon } from "geojson";
+import type { Geometry, MultiPolygon, Polygon } from "geojson";
+import { crsFromPrj, readShp, type ShpRecord } from "../shp";
 import { insertFeature } from "../../data/features";
 import { batched, SourceStats } from "../build";
 
@@ -11,27 +12,26 @@ type Props = Record<string, unknown>;
 export const SCHOOL_ZONE_SOURCE_ID = "school_zone";
 
 export const SCHOOL_ZONE_LAYERS = [
-  { key: "elem", apiLayer: "LT_C_DESCH", kind: "school_zone_elem", title: "초등학교 학구도" },
-  { key: "middle", apiLayer: "LT_C_DMSCH", kind: "school_zone_middle", title: "중학교 학교군" },
-  { key: "high", apiLayer: "LT_C_DHSCH", kind: "school_zone_high", title: "고등학교 학교군" },
+  { key: "elem", fileKey: "elem", kind: "school_zone_elem", title: "초등학교 학구도" },
+  { key: "middle", fileKey: "middle", kind: "school_zone_middle", title: "중학교 학교군" },
+  { key: "high", fileKey: "high", kind: "school_zone_high", title: "고등학교 학교군" },
 ] as const;
 
 export type SchoolZoneLayerKey = (typeof SCHOOL_ZONE_LAYERS)[number]["key"];
 
-/** VWorld 레이어와 같은 내부 사용 권한으로 원천 릴리스에 남긴다. */
+/** 원 제공기관의 공공데이터 이용조건을 릴리스에 기록한다. */
 export const SCHOOL_ZONE_RIGHTS = {
-  provider: "국토교통부 VWorld",
-  service: "VWorld Data API",
-  layers: SCHOOL_ZONE_LAYERS.map((layer) => ({ id: layer.apiLayer, title: layer.title })),
-  permission: "기존 VWorld 공간정보 레이어와 동일한 내부 업무용 이용 근거",
-  attribution: "VWorld(국토교통부)",
-  sourceUrl: "https://api.vworld.kr/req/data",
+  provider: "한국교육시설안전원",
+  service: "학구도안내서비스 공공데이터(SHP)",
+  license: "이용허락범위 제한 없음(공공데이터포털 15159265·15159264·15159263)",
+  attribution: "한국교육시설안전원 학구도안내서비스",
+  sourceUrl: "https://schoolzone.emac.kr/publicData/publicDataList.do",
 } as const;
 
 export interface SchoolZoneLayerInput {
   layer: SchoolZoneLayerKey;
   releaseId: string;
-  records: Iterable<Feature> | AsyncIterable<Feature>;
+  records: Iterable<ShpRecord> | AsyncIterable<ShpRecord>;
 }
 
 const str = (value: unknown): string | null => {
@@ -102,11 +102,25 @@ function normalizedProps(layer: SchoolZoneLayerKey, props: Props, objectIds: str
   };
 }
 
-/** GeoJSON 파일을 읽되, API 응답 외의 구조는 조용히 삼키지 않는다. */
-export function readSchoolZoneGeoJson(file: string): Feature[] {
-  const json = JSON.parse(readFileSync(file, "utf8")) as FeatureCollection;
-  if (json?.type !== "FeatureCollection" || !Array.isArray(json.features)) throw new Error(`invalid school-zone GeoJSON: ${file}`);
-  return json.features;
+/** SHP 원천의 EPSG:5186을 WGS84로 변환한다. insertFeature가 이를 EPSG:5179로 저장한다. */
+export function readSchoolZoneShp(file: string): AsyncGenerator<ShpRecord> {
+  const crs = crsFromPrj(readFileSync(file.replace(/\.shp$/i, ".prj"), "utf8"));
+  return readShp(file, { crs, encoding: "euc-kr" });
+}
+
+/** DBF 대문자와 기존 소문자 속성을 같은 계약으로 정규화한다. */
+function lowerProps(props: Props): Props {
+  return Object.fromEntries(Object.entries(props).map(([key, value]) => [key.toLowerCase(), value]));
+}
+
+/** 릴리스 ID와 source_as_of에 쓰는 전체 레이어의 가장 늦은 기준일. */
+export async function schoolZoneBaseDate(records: AsyncIterable<ShpRecord>): Promise<string | null> {
+  let latest: string | null = null;
+  for await (const record of records) {
+    const date = isoDate(lowerProps(record.properties).base_dt);
+    if (date && (!latest || date > latest)) latest = date;
+  }
+  return latest;
 }
 
 /** 동일 hakgudo_id에 여러 objectid 도형이 있으면 하나의 MultiPolygon으로 합친다. */
@@ -120,7 +134,7 @@ export async function buildSchoolZones(db: Db, layers: readonly SchoolZoneLayerI
     const groups = new Map<string, { geometry: Polygon | MultiPolygon; props: Props; objectIds: string[] }>();
     await batched(db, input.records, (record) => {
       stats.read();
-      const props = (record.properties ?? {}) as Props;
+      const props = lowerProps(record.properties ?? {});
       const id = str(props.hakgudo_id);
       const objectId = str(props.objectid);
       if (!id || !objectId || !isPolygonGeometry(record.geometry)) return stats.reject();

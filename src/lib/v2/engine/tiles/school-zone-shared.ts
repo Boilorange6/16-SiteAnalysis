@@ -1,4 +1,4 @@
-/** A02·D26 공통: 대지 중심에 포함되는 VWorld 학교 학구도·학교군과 학교 링크. */
+/** A02·D26 공통: 대지 중심에 포함되는 학교 학구도·학교군과 학교 링크. */
 import { booleanPointInPolygon } from "@turf/turf";
 import { toUtmk } from "../../crs";
 import type { FeatureHit } from "../../data/features";

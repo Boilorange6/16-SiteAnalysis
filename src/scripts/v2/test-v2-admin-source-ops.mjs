@@ -12,7 +12,7 @@ const rows = [
   ["school", "수동 파일", "반기", "학교·학구도 4종"],
   ["school_zone_link", "수동 파일", "반기", "학교·학구도 4종"],
   ["school_zone_elem", "수동 파일", "반기", "학교·학구도 4종"],
-  ["school_zone", "수동 API 배치", "반기", "학교·학구도 4종"],
+  ["school_zone", "수동 파일", "반기", "학교·학구도 4종"],
   ["osm_subway", "수동 API 배치", "수시"],
   ["planned_rail", "수동 정리", "수시"],
   ["store", "수동 파일", "분기"],

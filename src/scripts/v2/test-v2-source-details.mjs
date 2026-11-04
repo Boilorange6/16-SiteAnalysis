@@ -139,7 +139,7 @@ const meta = (sourceId, extra = {}) => new Map([[sourceId, {
   assert.equal(one("asos", { provider: "기상청 ASOS 시간자료", licenseCode: "KOGL-1" }).provider, "기상청");
   assert.equal(one("osm_subway", { provider: "OpenStreetMap contributors(Overpass API, 기존 앱 스냅샷)", sourceUrl: "https://overpass-api.de/", licenseCode: "ODbL-1.0" }).provider, "OpenStreetMap contributors(Overpass API)");
   assert.equal(one("applyhome", { provider: "한국부동산원 청약홈(기존 앱 적재본)", licenseCode: "UNRESTRICTED" }).provider, "한국부동산원");
-  assert.match(one("school_zone", { provider: "국토교통부(VWorld Data API 학교 학구도·학교군)", licenseCode: "UNRESTRICTED" }).provider, /^한국교육시설안전원/);
+  assert.equal(one("school_zone", { provider: "한국교육시설안전원", licenseCode: "UNRESTRICTED" }).provider, "한국교육시설안전원 학구도안내서비스");
   assert.equal(one("rtms_apt_rent", { provider: "국토교통부(실거래가 공개시스템)", sourceUrl: "https://www.data.go.kr/dataset/3050988/openapi.do", licenseCode: "UNRESTRICTED" }).url, "https://www.data.go.kr/data/15126474/openapi.do");
   assert.equal(one("parcel", { provider: "국토교통부", licenseCode: "CC-BY" }).license, "CC BY 2.0 KR(저작자표시)");
 

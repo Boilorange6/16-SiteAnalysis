@@ -88,7 +88,7 @@ export const SOURCE_DETAIL_DEFINITIONS: Readonly<Record<string, SourceDefinition
   school: { usedFor: null, collect: "수동 파일", cycle: "반기", group: "학교·학구도 4종" },
   school_zone_link: { usedFor: null, collect: "수동 파일", cycle: "반기", group: "학교·학구도 4종" },
   school_zone_elem: { usedFor: null, collect: "수동 파일", cycle: "반기", group: "학교·학구도 4종" },
-  school_zone: { provider: "한국교육시설안전원(VWorld 2D 데이터 API 제공)", usedFor: null, collect: "수동 API 배치", cycle: "반기", group: "학교·학구도 4종" },
+  school_zone: { provider: "한국교육시설안전원 학구도안내서비스", usedFor: null, collect: "수동 파일", cycle: "반기", group: "학교·학구도 4종" },
   osm_subway: { provider: "OpenStreetMap contributors(Overpass API)", sourceUrl: "https://www.openstreetmap.org/copyright", usedFor: "OSM 철도역·노선", collect: "수동 API 배치", cycle: "수시" },
   planned_rail: { provider: "서울특별시(공식 상태)·OpenStreetMap contributors(선형)", license: `${KOGL4_LABEL} · ODbL 1.0(선형)`, usedFor: null, collect: "수동 정리", cycle: "수시" },
   store: { usedFor: null, collect: "수동 파일", cycle: "분기" },

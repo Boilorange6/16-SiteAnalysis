@@ -12,7 +12,8 @@ const { insertFeature } = await import("../../lib/v2/data/features.ts");
 const { insertRelease, buildAndPublish } = await import("../../lib/v2/ingest/build.ts");
 const { buildPointSource } = await import("../../lib/v2/ingest/sources/points.ts");
 const { buildSchoolZoneLinks, SCHOOL_SPEC } = await import("../../lib/v2/ingest/sources/school-kapt.ts");
-const { buildSchoolZones, readSchoolZoneGeoJson, SCHOOL_ZONE_RIGHTS } = await import("../../lib/v2/ingest/sources/school-zones.ts");
+const { buildSchoolZones, SCHOOL_ZONE_RIGHTS } = await import("../../lib/v2/ingest/sources/school-zones.ts");
+const { sampleSchoolZones } = await import("./fixtures/school-zone-sample.mjs");
 const { csvRecords } = await import("../../lib/v2/a0/measure.ts");
 const M = await import("../../lib/v2/data/manifest.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
@@ -44,9 +45,9 @@ const db = new Database(referencePath);
 initDataFileSchema(db, "reference");
 const rel = (sourceId, rights = {}) => insertRelease(db, { sourceId, provider: "test", sourceUrl: "https://example.invalid", sourceAsOf: "2026-03-20", fetchedAt: "2026-10-01T00:00:00Z", checksum: sourceId, licenseCode: "TEST", rights });
 const zoneRelease = rel("school_zone", SCHOOL_ZONE_RIGHTS);
-const sourceFeatures = readSchoolZoneGeoJson(fx("school-zone-vworld-sample.json"));
+const sourceFeatures = sampleSchoolZones();
 await buildSchoolZones(db, [
-  { layer: "elem", releaseId: zoneRelease, records: [...sourceFeatures.filter((f) => String(f.properties?.hakgudo_id).startsWith("Z0001")), around("Z000100999", "비대상초등학구", "대구광역시교육청", 600, 0, "1002")] },
+  { layer: "elem", releaseId: zoneRelease, records: [...sourceFeatures.filter((f) => String(f.properties?.HAKGUDO_ID).startsWith("Z0001")), around("Z000100999", "비대상초등학구", "대구광역시교육청", 600, 0, "1002")] },
   { layer: "middle", releaseId: zoneRelease, records: [around("Z000200001", "테스트중학교군", "대구광역시교육청", 0, 0, "2001")] },
   { layer: "high", releaseId: zoneRelease, records: [around("Z000300001", "테스트고등학교군", "대구광역시교육청", 0, 0, "3001")] },
 ]);
