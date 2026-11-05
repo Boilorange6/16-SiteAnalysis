@@ -1,7 +1,8 @@
 /** D03 건축물 용도 — 반경 안 건물의 주용도코드 분포. */
 import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../../engine/context";
-import { buildingRetirementLimitations, buildingRows, BUILDING_SOURCES, isCounted, type BuildingRow } from "../../engine/tiles/buildings-shared";
+import { buildingLabelName, buildingRetirementLimitations, buildingRows, BUILDING_SOURCES, isCounted, nearestBuildingPerGroup, pnuNameLimitation, straightDistanceLabel, type BuildingRow } from "../../engine/tiles/buildings-shared";
+import { layerStyle } from "../../ui/map-layers";
 import { fallbackCandidate, makeTile, missing, obs, polygonCandidate, type MapCandidate, type PolygonCandidate, type TileDraft } from "../../engine/tiles/common";
 import { areaInCircle, polygonArea, polygonParts } from "../../engine/tiles/geo";
 import { notProvided } from "../../engine/tiles/not-provided";
@@ -72,6 +73,18 @@ function emptyClassCounts(): Map<UseClass, number> {
   return new Map(USE_CLASSES.map((useClass) => [useClass, 0] as const));
 }
 
+/** 호버·고정 라벨의 기본 문구. 이름은 잡음을 뺀 값, 이름이 없으면 용도 이름이 보통 굵기 제목이다. 우선순위 2는 아래에서 대상에만 준다. */
+function labelExtra(row: BuildingRow) {
+  const name = buildingLabelName(row);
+  const useLabel = useLabelOf(row.useCode);
+  return {
+    name,
+    sublabel: name === null ? null : useLabel,
+    labelPriority: 0 as 0 | 1 | 2,
+    ...(name === null && useLabel ? { unnamedTitle: useLabel } : {}),
+  };
+}
+
 function fullGeometryArea(row: BuildingRow): number {
   return polygonParts(row.hit.geometry).reduce((sum, rings) => sum + polygonArea(rings), 0);
 }
@@ -88,6 +101,7 @@ export function d03(ctx: EngineContext): TileResult {
   let confirmed = 0;
   let areaDenominator = 0;
   let invalidGeometry = 0;
+  const labelRows: Array<{ row: BuildingRow; useClass: UseClass; polygons: PolygonCandidate[] }> = [];
 
   for (const row of rows) {
     const useClass = useClassOf(row.useCode);
@@ -98,8 +112,7 @@ export function d03(ctx: EngineContext): TileResult {
     const clipped = areaInCircle(ctx.input.center, ctx.input.radiusM, row.hit.geometry);
     // 동수에 든 건물인데 그릴 면이 없으면(도형 오류·교차 실패) 대표점 하나를 counted로 싣는다 — 그래프가 동수를 그대로 센다.
     const fallback = () => {
-      const name = row.hit.name ?? null;
-      const point = counted ? fallbackCandidate(row.hit, `use:${useClass}`, { name, sublabel: useLabelOf(row.useCode), labelPriority: name === null ? 0 : 1, counted: true }) : null;
+      const point = counted ? fallbackCandidate(row.hit, `use:${useClass}`, { ...labelExtra(row), counted: true }) : null;
       if (point) points.push(point);
     };
     if (clipped === null) {
@@ -109,20 +122,20 @@ export function d03(ctx: EngineContext): TileResult {
     }
 
     let drawn = false;
+    const rowPolygons: PolygonCandidate[] = [];
     for (const rings of clipped.parts) {
-      const name = row.hit.name ?? null;
       const polygon = polygonCandidate(row.hit.featureId, `use:${useClass}`, rings, polygonArea(rings), null, {
-        name,
-        sublabel: useLabelOf(row.useCode),
-        labelPriority: name === null ? 0 : 1,
+        ...labelExtra(row),
         counted, // 그래프 동수가 엔진 동수(중심점이 반경 안)를 따른다
       });
       if (polygon) {
         polygons.push(polygon);
+        rowPolygons.push(polygon);
         drawn = true;
       }
     }
     if (!drawn) fallback();
+    else if (counted && useClass !== "미상") labelRows.push({ row, useClass, polygons: rowPolygons });
 
     if (row.footprintM2 !== null && clipped.areaM2 > 0) {
       const geometryArea = fullGeometryArea(row);
@@ -136,8 +149,19 @@ export function d03(ctx: EngineContext): TileResult {
     }
   }
 
+  // 라벨: 용도 분류(미상 제외)마다 대지에서 가장 가까운 1동의 가장 큰 조각만 우선순위 2.
+  for (const [group, { item, distanceM }] of nearestBuildingPerGroup(ctx, labelRows, (entry) => entry.useClass)) {
+    const largest = item.polygons.reduce((best, polygon) => (polygon.areaM2 > best.areaM2 ? polygon : best));
+    const name = buildingLabelName(item.row);
+    const useLabel = useLabelOf(item.row.useCode);
+    largest.p.labelPriority = 2;
+    largest.p.sublabel = name !== null && useLabel ? `${useLabel} · ${straightDistanceLabel(distanceM)}` : straightDistanceLabel(distanceM);
+    if (name === null) largest.p.unnamedTitle = useLabel ?? layerStyle(`use:${group}`).label;
+  }
+
   const coverage = ctx.coverage("buildings", BUILDING_SOURCES);
   const retirementLimitations = buildingRetirementLimitations(ctx);
+  const nameLimitation = pnuNameLimitation(rows.filter((row) => isCounted(ctx, row)));
   const status: TileResult["status"] = invalidGeometry > 0 || retirementLimitations.length > 0 || coverage.some((limitation) => limitation.kind === "partial" || limitation.kind === "incomplete") ? "partial" : "complete";
   const areaFormula = "d03-area-share@1:반경 교차 발자국 면적÷유효 발자국 면적(footprintM2 확인 동)";
   const metrics: TileDraft["metrics"] = [
@@ -158,7 +182,7 @@ export function d03(ctx: EngineContext): TileResult {
     }),
   ];
 
-  const limitations = [...retirementLimitations, ...coverage];
+  const limitations = [...retirementLimitations, ...coverage, ...(nameLimitation ? [nameLimitation] : [])];
   if (areaDenominator <= 0 && total > 0) {
     limitations.push({ kind: "unknown", note: "footprintM2가 확인된 건물이 없어 발자국 면적 구성비를 산출하지 못했습니다." });
   } else if (areaDenominator > 0 && rows.some((row) => row.footprintM2 === null)) {

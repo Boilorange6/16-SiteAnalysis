@@ -26,10 +26,10 @@ const { TOPO_AFFECTED_TILES } = await import("../../lib/v2/topo/context.ts");
 
 const BASELINE_HASHES = {
   D02: "11f4bb0f56fa4da13f8e0b6a09162fca9f273f6c0f753fc882c6104dc1cec2c3",
-  D03: "a20a3880c368b84e653f96d6a235102cbf5ffdf7c637128f60c59fc736440096", // 2026-10-28 분석 장 Task 6Q: 건물 면 counted 추가로 갱신(counted를 떼면 옛 53e3271b…와 같다)
-  D04: "e0f644a1a96d175c7cd568955cf67d4dc9d98fe9678b3ab5dfd5713dfa41a2e7", // 2026-10-28 분석 장: 지물 value·valueAxis(Task 1), 건물 면 counted(Task 4)로 갱신
-  D05: "2b5965a4dcabda48dacc1055e803aaee2be20e6ac14c9959f555dbc527797414", // 2026-10-28 분석 장: 지물 value·valueAxis(Task 1), 건물 면 counted(Task 4)로 갱신
-  D06: "4ff7a0359142e9280230ee697f72415683fffef3e7ff80d2b545a83f2c338276", // 2026-10-28 분석 장 Task 4: 건물 면 counted 추가로 갱신
+  D03: "4b15267764bf143e9090da90a6f79ce69ade108e9c782f3202149d49a073b411", // 2026-11-05 P1 Task 6 라벨 규칙으로 갱신(라벨 필드를 지우면 옛 a20a3880 시점 출력과 같다). 이전: 2026-10-28 분석 장 Task 6Q: 건물 면 counted 추가로 갱신(counted를 떼면 옛 53e3271b…와 같다)
+  D04: "779275a3b0f732ed772e5891bd77887d556b56b3936b348ce5ae43e15b29544c", // 2026-11-05 P1 Task 6 라벨 규칙으로 갱신(라벨 필드를 지우면 옛 e0f644a1 시점 출력과 같다). 이전: 2026-10-28 분석 장: 지물 value·valueAxis(Task 1), 건물 면 counted(Task 4)로 갱신
+  D05: "09b627058eb17c23806d9f208d0537aa9402fc5a13f1293e70cbc72f5219d39d", // 2026-11-05 P1 Task 6 라벨 규칙으로 갱신(라벨 필드를 지우면 옛 2b5965a4 시점 출력과 같다). 이전: 2026-10-28 분석 장: 지물 value·valueAxis(Task 1), 건물 면 counted(Task 4)로 갱신
+  D06: "efa56b69f290a581bc64f3f1d3d84a55f593d797f2825bf61072344b02081e0b", // 2026-11-05 P1 Task 6 이름 규칙으로 갱신(라벨 필드를 지우면 옛 4ff7a035 시점 출력과 같다). 이전: 2026-10-28 분석 장 Task 4: 건물 면 counted 추가로 갱신
   D07: "c81a0694f5ad126d6aa4a0433ad5ec04846865aac35da89a18205c444f085985", // 2026-10-28 분석 장 Task 4: 건물 면 counted 추가로 갱신
   D10: "008d37d46e3c8496220220b18b5e7c49e5e22cc349431c26b94ec65ae2620329", // 수계 지표·범례 이름 변경; 아래 역변환 검증
   D16: "61edc5ebc98a921c31de55b381f14f2a954f00e9e6bcab48188b543ebfae8317",
@@ -37,6 +37,14 @@ const BASELINE_HASHES = {
   scene: "12e75a01c3f44974f33d7c12aa146616a16b6f17fe122ceacc3892a324ec39c1", // 2026-10-27 벡터 바탕지도 Task 1: 장면 맥락층 optional 필드 추가로 갱신
 };
 
+const LABEL_FIELDS = new Set(["name", "sublabel", "labelPriority", "unnamedTitle", "limitations"]);
+const LABEL_STRIPPED_HASHES = {
+  D03: "925d5438188b6ca5021e2d4f597eee29fa067561e11617f5275fc1d5f908699b",
+  D04: "f3e106d52988244dcb7d4e4fc2d4cabdbcd28f9f54978ad2c722babb089eb0ed",
+  D05: "9b3568df8475149dc6b381f2c12378bb1666fcab37509e4d52c2ca424bd2d0dc",
+  D06: "6644027955b86e2367e7bda28f56fa0b73595d2ee67689437329573c5866da57",
+  D07: "c35d620425f031352265b0ac3c6e7c844231540f06d4c5dd2224353fc72ef241",
+};
 const TILE_FACTORIES = { D02: d02, D03: d03, D04: d04, D05: d05, D06: d06, D07: d07, D10: d10, D16: d16, S01: s01 };
 const BUILDING_DEPENDENT_TILES = ["D02", "D03", "D04", "D05", "D06", "D07", "D16", "D29", "S01", "S02", "S03", "S04"];
 const RELEASE_ID = "ngii_topo@0123456789ab";
@@ -212,6 +220,12 @@ try {
           return v;
         }));
         assert.equal(sha(earlierOutput), "7ac6f15bc1316f5be5de3cb03fdc4717629321de8a0f20b0db0ab7276a0bdac4", "D10 변경 문구만 되돌리면 이전 핀과 같다");
+      }
+      if (code in LABEL_STRIPPED_HASHES) {
+        // 2026-11-05 P1 Task 6: 라벨 필드(name·sublabel·labelPriority·unnamedTitle·limitations)와 `+labels-r1` 접미만 지우면 직전 핀 시점의 출력과 같다.
+        const stripped = JSON.parse(JSON.stringify(value, (key, v) => (LABEL_FIELDS.has(key) ? undefined : typeof v === "string" && v.endsWith("+labels-r1") ? v.slice(0, -"+labels-r1".length) : v)));
+
+        assert.equal(sha(stripped), LABEL_STRIPPED_HASHES[code], `${code}: 라벨 필드를 지우면 옛 출력과 같아야 한다`);
       }
       assert.equal(sha(value), BASELINE_HASHES[code], `no-topo ${code} must remain byte-identical to HEAD 01e8932`);
     } finally {

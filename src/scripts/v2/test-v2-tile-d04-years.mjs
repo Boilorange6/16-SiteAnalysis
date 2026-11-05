@@ -35,8 +35,8 @@ try {
   assert.ok(tile.presentation.polygons.every((polygon) => polygon.label === null), "레거시 label에 이름을 복사하지 않는다");
   const datedBuilding = tile.presentation.polygons.find((polygon) => polygon.name === "b_apt");
   assert.ok(datedBuilding, "D04 polygon은 원천 건물 이름을 사용한다");
-  assert.equal(datedBuilding.sublabel, "1979년");
-  assert.equal(datedBuilding.labelPriority, 1);
+  assert.equal(datedBuilding.sublabel, "1979년 · 직선 0m");
+  assert.equal(datedBuilding.labelPriority, 2);
   const unknownYearBuilding = tile.presentation.polygons.find((polygon) => polygon.name === "b_noledger");
   assert.ok(unknownYearBuilding);
   assert.equal(unknownYearBuilding.sublabel, null, "승인연도 미상 건물에는 sublabel을 붙이지 않는다");

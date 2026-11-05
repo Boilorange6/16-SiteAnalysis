@@ -120,6 +120,8 @@ export interface TileClientModule {
   code: string;
   /** 「top」: 우선순위 2만 자동 라벨 후보로 삼는다(우선순위 0·1은 사용자가 고정할 때만 보인다). */
   autoLabels?: "top";
+  /** 「top」 모드에서 자동 후보를 이 접두의 레이어로 좁힌다(D05: 옛 저장 결과의 `tall_ge35*` 우선순위 2가 지도를 덮지 않게 `floors_`). */
+  autoLabelLayerPrefix?: string;
   /** 카드 헤드라인으로 우선 선택할 결과 지표 정책이다. */
   headline?: TileHeadlinePolicy;
   /** 지도 아래에 표시할 타일 고유 설명이다. */

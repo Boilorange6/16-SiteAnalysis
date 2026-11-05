@@ -54,15 +54,15 @@ try {
   assert.ok(d05Tile.presentation.polygons.every((polygon) => polygon.label === null), "D05는 legacy label 대신 새 계약 필드를 쓴다");
   const towerBase = d05Tile.presentation.polygons.find((polygon) => polygon.layer === "floors_26p" && polygon.name === "b_tower");
   assert.ok(towerBase);
-  assert.equal(towerBase.sublabel, "30층");
-  assert.equal(towerBase.labelPriority, 1);
+  assert.equal(towerBase.sublabel, "30층 · 직선 62m");
+  assert.equal(towerBase.labelPriority, 2);
   const towerTall = d05Tile.presentation.polygons.find((polygon) => polygon.layer === "tall_ge35_est" && polygon.name === "b_tower");
   assert.ok(towerTall);
   assert.equal(towerTall.sublabel, "30층");
-  assert.equal(towerTall.labelPriority, 2, "고층 보기의 주요 건물은 priority 2");
+  assert.equal(towerTall.labelPriority, 1, "tall_ge35 우선순위 2 규칙은 없어졌다(이름 있으면 1)");
   const missingHeight = d05Tile.presentation.polygons.find((polygon) => polygon.name === "b_unknown");
   assert.ok(missingHeight);
-  assert.equal(missingHeight.sublabel, null, "1층 가정은 실제 층수 라벨로 오인하지 않는다");
+  assert.equal(missingHeight.sublabel, "1층 가정(추정) · 직선 65m", "1층 가정은 추정 표시를 붙이고 높이 수치로 쓰지 않는다");
   assert.equal(buildingSublabel({ floorsAbove: null, heightM: 48, heightMethod: "source" }), "48m", "층수 없고 확인 높이만 있으면 미터를 쓴다");
   assert.deepEqual(
     buildingMapExtra({ hit: { name: null }, floorsAbove: 18, heightM: 54, heightMethod: "source" }, "tall_ge35"),

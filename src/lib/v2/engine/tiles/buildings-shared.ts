@@ -4,7 +4,10 @@ import { normalizeBuildingName, overlapArea, planarArea, RETIRED_GIS_MAX_APPROVA
 import { FLOOR_HEIGHT_M } from "../../ingest/sources/buildings";
 import { isLabelNoiseName } from "../../ingest/sources/building-names";
 import { toUtmk } from "../../crs";
+import { formatDistanceM } from "../../ui/tile-view";
 import { queryFeaturesInBboxes, type FeatureHit } from "../../data/features";
+import { nearestPerGroup } from "./common";
+import { distanceToGeometryM } from "./geo";
 import type { EngineContext } from "../context";
 
 export const BUILDING_SOURCES = ["building", "building_juso", "gis_bldg"] as const;
@@ -57,6 +60,22 @@ export type PnuSupplement = {
 /** 라벨 제목: 잡음이 아닌 원천 이름, 없으면 같은 PNU 단지명, 없으면 null. */
 export function buildingLabelName(row: BuildingRow): string | null {
   return !isLabelNoiseName(row.hit.name) ? row.hit.name : row.pnuSupplement?.name ?? null;
+}
+
+/** 범주마다 대지에서 가장 가까운 건물(원래 도형 기준, 면 안이면 0, 같으면 featureId 작은 쪽). 라벨 우선순위 2 대상이다. */
+export function nearestBuildingPerGroup<T extends { row: BuildingRow }>(ctx: EngineContext, items: readonly T[], groupOf: (item: T) => string | null): Map<string, { item: T; distanceM: number }> {
+  const distanceOf = (item: T) => distanceToGeometryM(ctx.input.center, item.row.hit.geometry);
+  const best = nearestPerGroup(items, groupOf, distanceOf, (item) => item.row.hit.featureId);
+  return new Map([...best].map(([group, item]) => [group, { item, distanceM: distanceOf(item)! }]));
+}
+
+/** `직선 412m` 형식의 거리 줄(문자열을 따로 조립하지 않는다). */
+export const straightDistanceLabel = (distanceM: number): string => `직선 ${formatDistanceM(distanceM)}`;
+
+/** 센 건물 중 같은 필지 단지명으로 라벨을 단 건물이 있으면 그 한계 문구(estimated). 없으면 null. */
+export function pnuNameLimitation(rows: readonly BuildingRow[]): { kind: "estimated"; note: string } | null {
+  const count = rows.filter((row) => isLabelNoiseName(row.hit.name) && row.pnuSupplement?.name).length;
+  return count > 0 ? { kind: "estimated", note: `이름이 없는 건물 ${count}동은 같은 필지의 공동주택 단지명(건축물대장·공동주택 단지 목록)으로 라벨을 달았습니다.` } : null;
 }
 
 type SupplementStateContext = EngineContext & { topoBuildingSupplementByRadius?: Map<number, boolean>; topoBuildingSupplementApplied?: boolean };

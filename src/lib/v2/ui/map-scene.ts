@@ -1726,9 +1726,11 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     const pinnedSet = new Set(pinnedLabels.map((entry) => entry.key));
     const hoverLabel = hoverKey && !pinned.has(hoverKey) && !hidden.has(hoverKey) ? labelByKey.get(hoverKey) : undefined;
     // 「top」 모드: 우선순위 2만 자동 후보(옛 결과의 0·1은 자동 라벨 없음).
-    const topOnly = model.tileCode ? tileClientModuleFor(model.tileCode)?.autoLabels === "top" : false;
+    const tileModule = model.tileCode ? tileClientModuleFor(model.tileCode) : undefined;
+    const topOnly = tileModule?.autoLabels === "top";
+    const topLayerPrefix = tileModule?.autoLabelLayerPrefix;
     const automatic = showAutomaticLabels
-      ? selectAutomaticLabels(labels).filter((entry) => (!topOnly || entry.labelPriority === 2) && !hidden.has(entry.key) && !pinnedSet.has(entry.key) && entry.key !== hoverLabel?.key && !["rail_station", "rail_nearest", "rail_entrance", "rail_line", "rail_station_axis"].includes(entry.layer))
+      ? selectAutomaticLabels(labels).filter((entry) => (!topOnly || (entry.labelPriority === 2 && (!topLayerPrefix || entry.layer.startsWith(topLayerPrefix)))) &&!hidden.has(entry.key) && !pinnedSet.has(entry.key) && entry.key !== hoverLabel?.key && !["rail_station", "rail_nearest", "rail_entrance", "rail_line", "rail_station_axis"].includes(entry.layer))
       : [];
     placementCandidates.push(...pinnedLabels.map((entry) => ({ entry, variant: "fixed" as const, rank: -2 })), ...(hoverLabel ? [{ entry: hoverLabel, variant: "hover" as const, rank: -1 }] : []), ...automatic.map((entry) => ({ entry, variant: "auto" as const, rank: 2 - (entry.labelPriority ?? 0) + Math.min(0.999, entry.siteDistance / (W + H)) })));
   }

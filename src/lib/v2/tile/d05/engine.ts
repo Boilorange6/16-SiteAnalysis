@@ -3,7 +3,9 @@ import type { Geometry } from "geojson";
 import { MAX_MAP_POLYGONS, type TileResult } from "../../tile-result";
 import type { EngineContext } from "../../engine/context";
 import { areaInCircle, polygonArea } from "../../engine/tiles/geo";
-import { BUILDING_SOURCES, assumedOneFloorLimitation, buildingRetirementLimitations, buildingRows, isConfirmedHeightMethod, isCounted, isAssumedOneFloor, type BuildingRow } from "../../engine/tiles/buildings-shared";
+import { BUILDING_SOURCES, assumedOneFloorLimitation, buildingRetirementLimitations, buildingRows, isConfirmedHeightMethod, isCounted, isAssumedOneFloor, nearestBuildingPerGroup, pnuNameLimitation, straightDistanceLabel, type BuildingRow } from "../../engine/tiles/buildings-shared";
+import { layerStyle } from "../../ui/map-layers";
+import { useLabelOf } from "../d03/engine";
 import { capD05BuildingCandidates, d05CountedCapped, est, fallbackCandidate, makeTile, missing, obs, polygonCandidate, type TileDraft } from "../../engine/tiles/common";
 import { notProvided } from "../../engine/tiles/not-provided";
 import { buildingMapExtra, sortBuildingRows } from "./presentation";
@@ -46,12 +48,18 @@ function heightBucket(row: BuildingRow): (typeof HEIGHT_BUCKETS)[number]["id"] |
 // 그래프 값: 확인된 지상 층수만. 층수 미상·1층 가정(추정)은 null.
 const graphValue = (row: BuildingRow, layer: string) => (layer === "floors_unknown" || layer === "floors_assumed_1f_est" ? null : row.floorsAbove);
 
+/** 이름 없는 층수 면의 보통 굵기 제목: 주용도 이름, 없으면 범례 이름. */
+const labelExtraFor = (row: BuildingRow, layer: string) => {
+  const extra = buildingMapExtra(row, layer);
+  return extra.name === null ? { ...extra, unnamedTitle: useLabelOf(row.useCode) ?? layerStyle(layer).label } : extra;
+};
+
 function polygonsFor(ctx: EngineContext, row: BuildingRow, layer: string) {
   const clipped = areaInCircle(ctx.input.center, ctx.input.radiusM, row.hit.geometry as Geometry);
   if (!clipped) return [];
   const value = graphValue(row, layer);
   return clipped.parts.flatMap((rings, index) => {
-    const polygon = polygonCandidate(row.hit.featureId * 1000 + index, layer, rings, polygonArea(rings), null, { ...buildingMapExtra(row, layer), value, counted: isCounted(ctx, row) });
+    const polygon = polygonCandidate(row.hit.featureId * 1000 + index, layer, rings, polygonArea(rings), null, { ...labelExtraFor(row, layer), value, counted: isCounted(ctx, row) });
     return polygon ? [polygon] : [];
   });
 }
@@ -70,6 +78,7 @@ export function d05(ctx: EngineContext): TileResult {
   let sourceHeights = 0;
   let assumedFloors = 0;
   let geometryFailures = 0;
+  const labelRows: Array<{ row: BuildingRow; floorLayer: string; polygons: ReturnType<typeof polygonsFor> }> = [];
 
   for (const row of rows) {
     const floorLayer = isAssumedOneFloor(row) ? "floors_assumed_1f_est" : bucket(row.floorsAbove);
@@ -85,13 +94,24 @@ export function d05(ctx: EngineContext): TileResult {
     }
 
     const rowPolygons = polygonsFor(ctx, row, floorLayer);
-    if (rowPolygons.length > 0) polygons.push(...rowPolygons);
-    else {
+    if (rowPolygons.length > 0) {
+      polygons.push(...rowPolygons);
+      if (counted && floorLayer !== "floors_unknown") labelRows.push({ row, floorLayer, polygons: rowPolygons });
+    } else {
       geometryFailures += 1;
       // 동수에 든 건물인데 그릴 면이 없으면 대표점 하나를 counted로 싣는다 — 그래프가 동수를 그대로 센다.
-      const point = counted ? fallbackCandidate(row.hit, floorLayer, { ...buildingMapExtra(row, floorLayer), value: graphValue(row, floorLayer), counted: true }) : null;
+      const point = counted ? fallbackCandidate(row.hit, floorLayer, { ...labelExtraFor(row, floorLayer), value: graphValue(row, floorLayer), counted: true }) : null;
       if (point) points.push(point);
     }
+  }
+  // 라벨: 층수대(미상 제외, 1층 가정 포함)마다 대지에서 가장 가까운 1동만 우선순위 2.
+  // capD05BuildingCandidates가 건물마다 첫 조각 하나만 남기므로 라벨도 그 첫 조각에 붙인다.
+  for (const { item, distanceM } of nearestBuildingPerGroup(ctx, labelRows, (entry) => entry.floorLayer).values()) {
+    const target = item.polygons[0]!;
+    const floors = isAssumedOneFloor(item.row) ? "1층 가정(추정)" : `${Math.round(item.row.floorsAbove ?? 0)}층`;
+    target.p.labelPriority = 2;
+    // 대체 제목이 범례 이름 「1층 가정(추정)」이면 같은 말을 상세 줄에서 되풀이하지 않는다.
+    target.p.sublabel = target.p.unnamedTitle === floors ? straightDistanceLabel(distanceM) : `${floors} · ${straightDistanceLabel(distanceM)}`;
   }
 
   const metrics: TileDraft["metrics"] = [
@@ -119,9 +139,11 @@ export function d05(ctx: EngineContext): TileResult {
   ];
 
   const assumedLimitation = assumedOneFloorLimitation(rows.filter((row) => isCounted(ctx, row)));
+  const nameLimitation = pnuNameLimitation(rows.filter((row) => isCounted(ctx, row)));
   const limitations = [
     ...buildingRetirementLimitations(ctx),
     ...ctx.coverage("buildings", BUILDING_SOURCES),
+    ...(nameLimitation ? [nameLimitation] : []),
     ...(assumedLimitation ? [assumedLimitation] : []),
     ...(geometryFailures > 0 ? [{ kind: "unknown" as const, note: `건물 ${geometryFailures}동의 도형을 지도 면으로 변환하지 못했습니다.` }] : []),
   ];

@@ -141,8 +141,11 @@ globalThis.React = React;
   const sceneOf = (tileCode, polygons) => buildMapScene({ model: { center: CENTER, radiusM: 1000, features: [], total: polygons.length, notes: [], polygons, polygonsTotal: polygons.length, tileCode }, width: W, height: 519, activeLayer: "white", scale: true, north: 30 });
   const old = [item({ name: null, labelPriority: 0 }), item({ name: "이름만 있음", labelPriority: 1, rings: ring(127.0006, 37.5003) })];
   assert.equal(sceneOf("D03", old).labelPlacements.length, 0, "D03 옛 결과는 top 모드에서 자동 라벨 0");
-  const d05 = sceneOf("D05", [item({ layer: "tall_ge35", name: "고덕 센트럴", sublabel: "36층" }), item({ layer: "tall_ge35", name: "이름만 1순위", labelPriority: 1, rings: ring(127.0006, 37.5003) })]);
+  // D05 top 모드는 floors_* 레이어의 우선순위 2만 자동 후보다(옛 저장 결과의 tall_ge35* 우선순위 2는 35m 보기에서 지도를 덮지 않는다).
+  const d05 = sceneOf("D05", [item({ layer: "floors_15_25", name: "고덕 센트럴", sublabel: "20층 · 직선 25m" }), item({ layer: "floors_15_25", name: "이름만 1순위", labelPriority: 1, rings: ring(127.0006, 37.5003) }), item({ layer: "tall_ge35", name: "옛 35m 면", sublabel: "36층", rings: ring(127.0009, 37.5003) })]);
   assert.deepEqual(d05.labelPlacements.map((p) => p.entry.title), ["고덕 센트럴"]);
+  const oldD05 = sceneOf("D05", [item({ layer: "tall_ge35", name: "옛 35m 면", sublabel: "36층" }), item({ layer: "tall_ge35_est", name: "옛 추정 면", sublabel: "36층", rings: ring(127.0006, 37.5003) })]);
+  assert.equal(oldD05.labelPlacements.length, 0, "옛 모양 결과의 35m 보기 자동 라벨 0");
   // ⑦ 모드 값
   for (const code of ["D03", "D04", "D05", "D12"]) assert.equal(tileClientModuleFor(code)?.autoLabels, "top");
 

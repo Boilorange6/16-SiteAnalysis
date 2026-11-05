@@ -1,4 +1,4 @@
-import { isConfirmedHeightMethod, isAssumedOneFloor, type BuildingRow } from "../../engine/tiles/buildings-shared";
+import { buildingLabelName, isConfirmedHeightMethod, isAssumedOneFloor, type BuildingRow } from "../../engine/tiles/buildings-shared";
 
 /** D05/D06/D07가 같은 건물의 라벨 값과 출력 순서를 공유한다. */
 export function buildingSublabel(row: Pick<BuildingRow, "floorsAbove" | "heightM" | "heightMethod">): string | null {
@@ -11,14 +11,14 @@ export function buildingSublabel(row: Pick<BuildingRow, "floorsAbove" | "heightM
   }
   return null;
 }
-export function buildingMapExtra(row: BuildingRow, layer: string): {
+export function buildingMapExtra(row: BuildingRow, _layer?: string): {
   name: string | null;
   sublabel: string | null;
   labelPriority: 0 | 1 | 2;
 } {
-  const name = row.hit.name ?? null;
-  const priority = name === null ? 0 : layer === "tall_ge35" || layer === "tall_ge35_est" ? 2 : 1;
-  return { name, sublabel: buildingSublabel(row), labelPriority: priority };
+  const name = buildingLabelName(row);
+  // 우선순위 2(층수대별 최근접)는 D05 엔진이 대상에만 준다. 이름이 있으면 1, 없으면 0.
+  return { name, sublabel: buildingSublabel(row), labelPriority: name === null ? 0 : 1 };
 }
 
 /** 지도 자동 라벨의 같은 등급 순서는 층수·높이가 큰 건물부터 결정한다. */

@@ -22,6 +22,15 @@ for (const name of ["은마아파트", "개포1차우성아파트6동", "동하�
   assert.equal(isLabelNoiseName(name), false, `이름이어야 함: ${name}`);
 }
 
+// 용도 이름 집합(`USE_NAME_NOISE`)은 d03 `useLabelOf` 값의 사본이다. 둘이 어긋나면(새 용도 이름이 빠지면) 실패한다.
+{
+  const { useLabelOf } = await import("../../lib/v2/tile/d03/engine.ts");
+  const labels = Array.from({ length: 29 }, (_, index) => useLabelOf(String(index + 1).padStart(2, "0") + "000"));
+  assert.ok(labels.every((label) => typeof label === "string" && label.length > 0), "01~29 모두 용도 이름이 있다");
+  for (const label of labels) assert.equal(isLabelNoiseName(label), true, `용도 이름이 잡음 집합에 빠짐: ${label}`);
+  assert.equal(useLabelOf("30000"), null, "30번대 용도코드는 이름이 없다(집합을 늘렸다면 위 범위도 늘린다)");
+}
+
 const CENTER = [127.1506, 37.6245];
 const [CX, CY] = toUtmk(CENTER);
 const at = (x, y) => toLngLat([CX + x, CY + y]);

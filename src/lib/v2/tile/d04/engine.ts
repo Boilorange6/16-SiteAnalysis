@@ -4,7 +4,8 @@ import type { EngineContext } from "../../engine/context";
 import { DECADE_LAYERS, decadeLayer } from "../../ui/callout-layout";
 import { candidate, makeTile, missing, obs, polygonCandidate, type PolygonCandidate, type TileDraft } from "../../engine/tiles/common";
 import { areaInCircle, polygonArea } from "../../engine/tiles/geo";
-import { BUILDING_SOURCES, buildingRetirementLimitations, buildingRows, isCounted } from "../../engine/tiles/buildings-shared";
+import { BUILDING_SOURCES, buildingLabelName, buildingRetirementLimitations, buildingRows, isCounted, nearestBuildingPerGroup, pnuNameLimitation, straightDistanceLabel, type BuildingRow } from "../../engine/tiles/buildings-shared";
+import { useLabelOf } from "../d03/engine";
 import { notProvided } from "../../engine/tiles/not-provided";
 
 const DECADES = [
@@ -31,13 +32,19 @@ const buildingMapExtra = (name: string | null, year: number | null) => ({
   labelPriority: name === null ? 0 : 1,
   value: year, // 그래프 값: 사용승인 연도(미상 null)
 });
-const fallbackPoint = (hit: Parameters<typeof candidate>[0], layer: string, year: number | null, counted: boolean) => {
+const fallbackPoint = (hit: Parameters<typeof candidate>[0], layer: string, year: number | null, counted: boolean, name: string | null) => {
   try {
-    return candidate(hit, layer, { ...buildingMapExtra(hit.name ?? null, year), counted });
+    return candidate(hit, layer, { ...buildingMapExtra(name, year), counted });
   } catch {
     return null;
   }
 };
+
+/** 연도: 원천 승인일, 없으면 같은 필지 단일 단지의 승인일(라벨·연대용 보충). */
+const rowYear = (row: BuildingRow, analysisDate: string): number | null => approvalYear(row.approvalDate ?? row.pnuSupplement?.approvalDate, analysisDate);
+
+/** D04 라벨 대상: 공동주택(주용도 02) 또는 용도 없음 + 같은 필지에 단지가 있는 건물. */
+const isLabelTarget = (row: BuildingRow): boolean => (row.useCode?.startsWith("02") ?? false) || (row.useCode === null && row.pnuSupplement?.hasComplex === true);
 
 export function d04(ctx: EngineContext): TileResult {
   const sources = ctx.sources("buildings", BUILDING_SOURCES);
@@ -45,35 +52,47 @@ export function d04(ctx: EngineContext): TileResult {
 
   const rows = buildingRows(ctx);
   if (rows === null) return notProvided(ctx, "D04");
-  const allYears = new Map(rows.map((row) => [row.hit.featureId, approvalYear(row.approvalDate, ctx.input.analysisDate)]));
+  const allYears = new Map(rows.map((row) => [row.hit.featureId, rowYear(row, ctx.input.analysisDate)]));
   const years = new Map(rows.filter((row) => isCounted(ctx, row)).map((row) => [row.hit.featureId, allYears.get(row.hit.featureId) ?? null])); // 동수·구성비는 중심점이 반경 안인 건물만, 그림은 교차 전부
   const ledgerBackfilled = rows.filter((row) => isCounted(ctx, row) && row.approvalDateSource === "core_ledger_pnu").length;
   const points: Array<ReturnType<typeof candidate>> = [];
   const polygons: PolygonCandidate[] = [];
+  const labelRows: Array<{ row: BuildingRow; year: number; polygons: PolygonCandidate[] }> = [];
   let failedGeometry = 0;
   for (const row of rows) {
     const hit = row.hit;
     const year = allYears.get(hit.featureId) ?? null;
+    const counted = isCounted(ctx, row);
+    const name = buildingLabelName(row);
     const clipped = areaInCircle(ctx.input.center, ctx.input.radiusM, hit.geometry);
     if (clipped === null) {
       failedGeometry += 1;
-      const point = fallbackPoint(hit, decadeLayer(year), year, isCounted(ctx, row));
+      const point = fallbackPoint(hit, decadeLayer(year), year, counted, name);
       if (point) points.push(point);
       continue;
     }
     let hasPolygon = false;
+    const rowPolygons: PolygonCandidate[] = [];
     for (const rings of clipped.parts) {
-      const polygon = polygonCandidate(hit.featureId, decadeLayer(year), rings, polygonArea(rings), null, { ...buildingMapExtra(hit.name ?? null, year), counted: isCounted(ctx, row) });
+      const polygon = polygonCandidate(hit.featureId, decadeLayer(year), rings, polygonArea(rings), null, { ...buildingMapExtra(name, year), counted });
       if (polygon) {
         polygons.push(polygon);
+        rowPolygons.push(polygon);
         hasPolygon = true;
       }
     }
     if (!hasPolygon) {
       failedGeometry += 1;
-      const point = fallbackPoint(hit, decadeLayer(year), year, isCounted(ctx, row));
+      const point = fallbackPoint(hit, decadeLayer(year), year, counted, name);
       if (point) points.push(point);
-    }
+    } else if (counted && year !== null && isLabelTarget(row)) labelRows.push({ row, year, polygons: rowPolygons });
+  }
+  // 라벨: 연대마다 대지에서 가장 가까운 공동주택 1동의 가장 큰 조각만 우선순위 2(연대 미상은 대상이 아니다).
+  for (const { item, distanceM } of nearestBuildingPerGroup(ctx, labelRows, (entry) => decadeLayer(entry.year)).values()) {
+    const largest = item.polygons.reduce((best, polygon) => (polygon.areaM2 > best.areaM2 ? polygon : best));
+    largest.p.labelPriority = 2;
+    largest.p.sublabel = `${item.year}년 · ${straightDistanceLabel(distanceM)}`;
+    if (buildingLabelName(item.row) === null) largest.p.unnamedTitle = useLabelOf(item.row.useCode) ?? "공동주택";
   }
   const total = years.size;
   const confirmed = [...years.values()].filter((year): year is number => year !== null).length;
@@ -99,9 +118,13 @@ export function d04(ctx: EngineContext): TileResult {
     ? "반경 안 건물이 확인되지 않아 준공 연대를 산출하지 못함 → 건물 자료와 현장 확인 필요"
     : `반경 안 건물 ${total.toLocaleString("en-US")}동 중 사용승인일 확인 ${pct(confirmed, total)}% → 확인된 건물의 준공 연대를 집계하고 미상은 별도로 표시 → 개별 건축물대장 확인 필요`;
 
+  const supplementDated = rows.filter((row) => isCounted(ctx, row) && row.approvalDate === null && row.pnuSupplement?.approvalDate && approvalYear(row.pnuSupplement.approvalDate, ctx.input.analysisDate) !== null).length;
+  const nameLimitation = pnuNameLimitation(rows.filter((row) => isCounted(ctx, row)));
   const limitations = [
     ...retirementLimitations,
     ...(ledgerBackfilled > 0 ? [{ kind: "estimated" as const, note: "도로명주소 보충 건물 " + ledgerBackfilled + "동은 PNU로 core 건축물대장 표제부·집계 자료의 사용승인일을 연결했습니다. 한 PNU에 여러 동이 있으면 가장 이른 승인일을 사용합니다." }] : []),
+    ...(supplementDated > 0 ? [{ kind: "estimated" as const, note: `같은 필지(PNU)의 단지가 하나뿐인 건물 ${supplementDated}동은 그 단지의 사용승인일을 썼습니다.` }] : []),
+    ...(nameLimitation ? [nameLimitation] : []),
     ...coverage,
     ...(failedGeometry > 0 ? [{ kind: "partial" as const, note: `도형 오류로 지도에 표시하지 못한 ${failedGeometry}건은 발자국에서 빠졌습니다.` }] : []),
   ];
