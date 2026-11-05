@@ -181,11 +181,23 @@ function place(input: GeometryInput): { geometry: ReportPageGeometry; cardMoved:
  * 설명선 칸의 아래 끝(inch, 지도 틀 기준), 칸마다 따로(2026-11-05): 왼쪽은 지도 틀 아래 끝(안쪽 여백)까지, 오른쪽은 범례 판 위 − 간격에서 끝난다.
  * 범례 판이 있는 쪽 칸만 판 위에서 끝난다(기본 자리는 오른쪽이고, 사용자가 왼쪽 절반으로 옮겨 저장했으면 왼쪽 칸이 끊긴다).
  * `right`는 범례 판이 오른쪽에 있을 때만 값이 있다: 없으면 오른쪽 칸은 장면의 축척 판 규칙을 그대로 따른다.
+ * 범례 판의 세로 중심이 지도 틀 위쪽 절반이면(사용자가 위로 옮겨 저장) 아래 끝 장애물이 아니라 위 끝 장애물이다(`reportCalloutTops`).
  */
 export function reportCalloutBottoms(geometry: Pick<ReportPageGeometry, "map" | "legend">): { left: number; right?: number } {
-  const above = geometry.legend ? geometry.legend.y - EDGE * 0.5 : null;
-  const onRight = !!geometry.legend && geometry.legend.x + geometry.legend.w / 2 >= geometry.map.w / 2;
+  const legend = geometry.legend && legendInLowerHalf(geometry) ? geometry.legend : null;
+  const above = legend ? legend.y - EDGE * 0.5 : null;
+  const onRight = !!legend && legend.x + legend.w / 2 >= geometry.map.w / 2;
   return { left: above !== null && !onRight ? above : geometry.map.h - EDGE, ...(above !== null && onRight ? { right: above } : {}) };
+}
+
+const legendInLowerHalf = (geometry: Pick<ReportPageGeometry, "map" | "legend">) => !!geometry.legend && geometry.legend.y + geometry.legend.h / 2 >= geometry.map.h / 2;
+
+/** 범례 판이 지도 틀 위쪽 절반에 있을 때, 그 쪽 칸의 위 끝(inch) = 범례 아래 + 간격. 아래쪽 절반이거나 범례가 없으면 빈 객체. */
+export function reportCalloutTops(geometry: Pick<ReportPageGeometry, "map" | "legend">): { left?: number; right?: number } {
+  const { legend } = geometry;
+  if (!legend || legendInLowerHalf(geometry)) return {};
+  const below = legend.y + legend.h + EDGE * 0.5;
+  return legend.x + legend.w / 2 >= geometry.map.w / 2 ? { right: below } : { left: below };
 }
 
 /**

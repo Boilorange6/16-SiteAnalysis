@@ -1,7 +1,7 @@
 /** 보고서 장 기하(reportPageGeometry)와 핵심 숫자 카드 맞춤(keyFigureFit): 화면·PPT·그림·축척이 같은 값을 읽는 순수 함수. */
 import assert from "node:assert/strict";
 
-const { reportPageGeometry, frameChromeUnit, keyCardBox, reportCalloutBottoms } = await import("../../lib/v2/ui/report-page-layout.ts");
+const { reportPageGeometry, frameChromeUnit, keyCardBox, reportCalloutBottoms, reportCalloutTops } = await import("../../lib/v2/ui/report-page-layout.ts");
 const { keyFigureFit } = await import("../../lib/v2/report/key-figure-fit.ts");
 const { textIn } = await import("../../lib/v2/report/pptx-kit.ts");
 
@@ -221,6 +221,22 @@ for (const format of ["wide", "a3", "a4"]) {
   const sb = reportCalloutBottoms(saved);
   assert.equal(sb.right, undefined);
   near(sb.left, saved.legend.y - 0.125, "왼쪽에 저장한 범례는 왼쪽 칸을 끊는다");
+  // T14b-2: 위쪽 절반에 저장한 범례는 아래 끝 장애물이 아니라 위 끝 장애물이다(칸 높이 > 0)
+  const bottomsOf = (panels) => { const gg = geo({ layout: "map-key", panels }); return { gg, b: reportCalloutBottoms(gg), t: reportCalloutTops(gg) }; };
+  const upR = bottomsOf({ legend: { x: 10 / 13.333, y: 1.5 / 7.5, w: 0.05, h: 0.05 } });
+  assert.ok(upR.gg.legend.y < 2 && upR.gg.legend.x > 9, "전제: 오른쪽 위에 저장한 범례가 받아졌다");
+  assert.equal(upR.b.right, undefined, "오른쪽 위 범례는 오른쪽 칸 아래 끝을 끊지 않는다");
+  near(upR.b.left, g.map.h - 0.25, "왼쪽 칸 아래 끝은 틀 아래 − 여백");
+  near(upR.t.right, upR.gg.legend.y + upR.gg.legend.h + 0.125, "오른쪽 칸 위 끝 = 범례 아래 + 간격");
+  assert.equal(upR.t.left, undefined);
+  const upL = bottomsOf({ legend: { x: 5 / 13.333, y: 1.5 / 7.5, w: 0.05, h: 0.05 } });
+  assert.equal(upL.b.right, undefined);
+  near(upL.b.left, g.map.h - 0.25, "왼쪽 위 범례: 왼쪽 칸 아래 끝은 틀 아래 − 여백");
+  near(upL.t.left, upL.gg.legend.y + upL.gg.legend.h + 0.125, "왼쪽 칸 위 끝 = 범례 아래 + 간격");
+  for (const { gg, b, t } of [upR, upL]) assert.ok((b.right ?? gg.scaleBar.y) - (t.right ?? 0) > 1 && b.left - (t.left ?? 0) > 1, "칸 높이가 0 이하가 되지 않는다");
+  // 사용자가 옮기지 않은 기본 자리(오른쪽 아래)는 결과가 그대로다
+  assert.deepEqual(reportCalloutTops(g), {}, "기본 범례는 위 끝 장애물이 아니다");
+  near(reportCalloutBottoms(g).right, g.legend.y - 0.125, "기본 범례: 오른쪽 칸 아래 끝 그대로");
 }
 
 // ── T14b-3: 숫자 카드를 범례의 실제(저장) 자리와 견주어 받는다

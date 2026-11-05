@@ -12,7 +12,7 @@ import { wrapToLines } from "./analysis-column-fit";
 import { keyFigureFit, sentenceFit, type KeyFigureFit } from "./key-figure-fit";
 import { DEFAULT_REPORT_FONT_SIZES, type PagePanels } from "./report-doc";
 import { fitFooterText, footerBasemaps, fontSizeForStyle, textIn } from "./pptx-kit";
-import { PAGE_EDGE, keyCardBox, reportCalloutBottoms, reportPageGeometry, type PageLayoutKind, type ReportPageGeometry } from "../ui/report-page-layout";
+import { PAGE_EDGE, keyCardBox, reportCalloutBottoms, reportCalloutTops, reportPageGeometry, type PageLayoutKind, type ReportPageGeometry } from "../ui/report-page-layout";
 import { calloutLegendEntries, slideCalloutLegendLayout, slideGeometry, slideLegend, type Rect, type SlideFormat } from "../ui/overlay-layout";
 import { calloutPageTitleTail } from "../ui/callout-layout";
 import type { BasemapChoice } from "../ui/map-projection";
@@ -310,11 +310,12 @@ export function reportMapAvoid(geometry: ReportPageGeometry, unit: number): Pixe
 function overviewColumns(geometry: ReportPageGeometry): Pick<CalloutOverviewFrame, "calloutTop" | "calloutRightTop" | "calloutBottom" | "calloutLeftBottom"> {
   const gap = PAGE_EDGE * 0.5;
   const bottoms = reportCalloutBottoms(geometry);
+  const tops = reportCalloutTops(geometry);
   const titleBottom = geometry.title.y + geometry.title.h + gap;
   const keyBottom = geometry.keyCard && !geometry.column ? Math.max(geometry.keyCard.y + geometry.keyCard.h, geometry.keyNotesChip ? geometry.keyNotesChip.y + geometry.keyNotesChip.h : 0) + gap : 0;
   return {
-    calloutTop: Math.max(titleBottom, keyBottom),
-    calloutRightTop: Math.max(titleBottom, geometry.north.y + geometry.north.h + gap),
+    calloutTop: Math.max(titleBottom, keyBottom, tops.left ?? 0),
+    calloutRightTop: Math.max(titleBottom, geometry.north.y + geometry.north.h + gap, tops.right ?? 0),
     calloutBottom: bottoms.right ?? geometry.scaleBar.y - gap,
     calloutLeftBottom: bottoms.left,
   };

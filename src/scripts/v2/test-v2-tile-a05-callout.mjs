@@ -382,6 +382,18 @@ const spec = (o = {}) => ({ W: 1200, H: 800, m: C.PX, edge: 12, top: 96, bottom:
       for (const [name, r] of others) assert.ok(!hit(b, r), `${layout}: 카드 ${i}가 ${name}와 겹친다`);
       for (let j = i + 1; j < boxes.length; j++) assert.ok(!hit(b, boxes[j]), `${layout}: 카드 ${i}·${j} 겹침`);
     });
+    // T14b-2: 범례를 위쪽 절반에 저장한 장은 그 쪽 칸의 위 끝이 범례 아래로 내려가고, 칸 높이는 0이 아니다
+    for (const [side, px] of [["right", (f.geometry.map.w - f.geometry.legend.w - 0.3) / 13.333], ["left", (layout === "map-key" ? 3.6 : 1) / 13.333]]) { // ①은 왼쪽에 숫자 카드가 있어 그 오른쪽에 둔다
+      const moved = { ...overview, style: { ...overview.style, panels: { ...(overview.style.panels ?? {}), legend: { x: px, y: 1.5 / 7.5, w: 0.05, h: 0.05 } } } };
+      const mf = pageFrameFor(moved);
+      const lg = mf.geometry.legend;
+      assert.ok(lg && lg.y + lg.h / 2 < mf.geometry.map.h / 2, `${layout}: 전제: ${side} 위쪽에 저장한 범례가 받아졌다`);
+      const o = mf.calloutOverview;
+      const top = side === "right" ? o.calloutRightTop : o.calloutTop;
+      assert.ok(top >= lg.y + lg.h - 1e-6, `${layout}: ${side} 칸 위 끝은 범례 아래`);
+      const colBottom = side === "right" ? o.calloutBottom : o.calloutLeftBottom;
+      assert.ok(colBottom - top > 1, `${layout}: ${side} 칸 높이가 0이 아니다: ${colBottom - top}`);
+    }
     // 단지가 5곳이면 카드 5개, 0곳이면 「확인된 단지 0」 판만
     const five = draw(withCount(overview, 5), f.calloutOverview);
     const fiveCards = five.shapes.filter((s) => s.o.objectName?.endsWith("|card")).length;
