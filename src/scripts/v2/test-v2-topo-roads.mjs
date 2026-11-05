@@ -23,7 +23,7 @@ const { mergedRoadLines, topoFrontageWidthM, widthBand } = await import("../../l
 const { LAYER_STYLES } = await import("../../lib/v2/ui/map-layers.ts");
 
 const BASELINE_HASHES = {
-  D13: "849aa2e3c8ff423b31022383476b9c409c69db79f72b63d2ad1136214f73865a",
+  D13: "2ab762e72e3eb91caf28b11c3b659b855f4ceb3ef186d36f78854f54e6099064", // 2026-11-05 라벨 필드(name·sublabel·labelPriority)를 뺀 해시. 옛 엔진(731480fc)도 같은 값
   D15: "08ac09b17c184edbaa1f8ac9707d4e90b745c3b5fb0e4cca711d1b8e982131ee",
   scene: "0d7a34371e9744dfc0bf63c6054d3e8456a9d7f65723f3b7957ef2d53a658147", // 2026-10-27 벡터 바탕지도 Task 1: 장면 맥락층 optional 필드(name·greenKinds·places) 추가로 갱신
 };
@@ -138,11 +138,16 @@ function sha(value) {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
 
+// P1 라벨(Task 9): D13 라벨 필드(name·sublabel·labelPriority)만 지우고 해시한다. 라벨 규칙 밖의 출력은 옛 값(HEAD 731480fc)과 바이트 동일해야 한다.
+function shaWithoutLabels(value) {
+  return createHash("sha256").update(JSON.stringify(value, (key, v) => (key === "name" || key === "sublabel" || key === "labelPriority" ? undefined : v))).digest("hex");
+}
+
 function assertNoTopoBaseline(dataDir) {
   const ctx = openContext(dataDir, "t5-baseline");
   try {
     assert.equal(ctx.topo, null);
-    assert.equal(sha(d13(ctx)), BASELINE_HASHES.D13, "D13 no-topo output must remain byte-identical to HEAD 4f12d76");
+    assert.equal(shaWithoutLabels(d13(ctx)), BASELINE_HASHES.D13, "D13 no-topo output (라벨 필드 제외) must remain byte-identical to HEAD 731480fc");
     assert.equal(sha(d15(ctx)), BASELINE_HASHES.D15, "D15 no-topo output must remain byte-identical to HEAD 4f12d76");
     assert.equal(sha(buildScene(ctx)), BASELINE_HASHES.scene, "scene no-topo output must remain byte-identical to HEAD 4f12d76");
   } finally {

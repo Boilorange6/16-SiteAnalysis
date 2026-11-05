@@ -801,6 +801,29 @@ function segmentAnchor(a: readonly [number, number], b: readonly [number, number
   return [(first[0] + last[0]) / 2, (first[1] + last[1]) / 2];
 }
 
+/** 화면 안 꼭짓점과 화면 안에 떨어지는 선분 수선의 발 중 target에 가장 가까운 점. shortcut: 화면 밖으로 나가는 선분의 프레임 경계 교점은 후보로 삼지 않는다(없으면 null, 호출자가 가운데로). */
+function nearestVisiblePoint(points: readonly (readonly [number, number])[], target: readonly [number, number], width: number, height: number): [number, number] | null {
+  let best: [number, number] | null = null;
+  let bestD = Infinity;
+  const consider = (x: number, y: number) => {
+    if (!pointInFrame([x, y], width, height)) return;
+    const d = Math.hypot(x - target[0], y - target[1]);
+    if (d < bestD) { bestD = d; best = [x, y]; }
+  };
+  points.forEach(([x, y], i) => {
+    consider(x, y);
+    if (i === 0) return;
+    const [ax, ay] = points[i - 1]!;
+    const dx = x - ax;
+    const dy = y - ay;
+    const len2 = dx * dx + dy * dy;
+    if (len2 === 0) return;
+    const t = Math.max(0, Math.min(1, ((target[0] - ax) * dx + (target[1] - ay) * dy) / len2));
+    consider(ax + t * dx, ay + t * dy);
+  });
+  return best;
+}
+
 function visibleAnchor(points: readonly (readonly [number, number])[], fallback: readonly [number, number], width: number, height: number): [number, number] | null {
   const visible = points.filter((point) => pointInFrame(point, width, height));
   if (visible.length > 0) return visible[Math.floor(visible.length / 2)] as [number, number];
@@ -1611,6 +1634,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
   });
   const visiblePolygons = polygons.filter((entry) => !deleted.has(entry.key));
   const polygonDrawOrder = model.tileCode ? tileClientModuleFor(model.tileCode)?.polygonDrawOrder : undefined;
+  const lineAnchorNearest = (model.tileCode ? tileClientModuleFor(model.tileCode)?.lineLabelAnchor : undefined) === "nearest";
   if (polygonDrawOrder) visiblePolygons.sort((a, b) => polygonDrawOrder(a.polygon.layer) - polygonDrawOrder(b.polygon.layer) || a.index - b.index);
   const polygonCount = polygons.length;
   const siteParcelModels = model.siteParcel === undefined ? (model.polygons ?? []).filter((polygon) => isSiteParcelLayer(polygon.layer)) : (model.siteParcel ?? []);
@@ -1675,7 +1699,12 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
   ];
   const routePoints = path.map(([lng, lat]) => project(lng, lat));
   const inFrame = (point: readonly [number, number]) => pointInFrame(point, W, H);
-  const labelEntriesByKey = new Map(mapLabelEntries(model).map((entry) => [entry.key, entry]));
+  // 같은 지물의 조각은 키(레이어|fid)가 같다. 카드 글은 우선순위가 가장 높은 조각(같으면 뒤쪽)의 것을 쓴다 — 마지막 조각이 라벨 대상 조각의 글을 덮어쓰지 않게.
+  const labelEntriesByKey = new Map<string, ReturnType<typeof mapLabelEntries>[number]>();
+  for (const entry of mapLabelEntries(model)) {
+    const prev = labelEntriesByKey.get(entry.key);
+    if (!prev || (entry.labelPriority ?? 0) >= (prev.labelPriority ?? 0)) labelEntriesByKey.set(entry.key, entry);
+  }
   const labels: MapSceneLabel[] = [
     ...drawn.flatMap((entry) => {
       if (!inFrame(entry.p)) return [];
@@ -1697,7 +1726,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
       const sectionAnchor = entry.line.layer === "terrain_section_a" || entry.line.layer === "terrain_section_b"
         ? terrainSectionLabelAnchor(entry.points, [cx, cy], radiusPx)
         : null;
-      const center = sectionAnchor ?? visibleAnchor(entry.points, entry.points[Math.floor(entry.points.length / 2)] ?? [cx, cy], W, H);
+      const center = sectionAnchor ?? (lineAnchorNearest ? nearestVisiblePoint(entry.points, [cx, cy], W, H) : null) ?? visibleAnchor(entry.points, entry.points[Math.floor(entry.points.length / 2)] ?? [cx, cy], W, H);
       if (!center) return [];
       const [lng, lat] = centerOf(entry.line.points);
       const base = labelEntriesByKey.get(entry.key);

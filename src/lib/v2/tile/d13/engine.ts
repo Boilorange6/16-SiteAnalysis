@@ -3,7 +3,7 @@ import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../../engine/context";
 import { ROAD_HIERARCHIES, type RoadHierarchy } from "../../ingest/sources/osm-roads";
 import { clipLineToCircle, distanceToLineM, lineLengthInCircle, linePathLength } from "../../engine/tiles/geo";
-import { lineCandidate, makeTile, missing, obs, type LineCandidate, type TileDraft } from "../../engine/tiles/common";
+import { lineCandidate, makeTile, missing, nearestN, nearestPerGroup, obs, type LineCandidate, type TileDraft } from "../../engine/tiles/common";
 import { notProvided } from "../../engine/tiles/not-provided";
 import { mergedRoadLines, roadLineMeta, topoFrontageWidthM, widthBand, type MergedRoadLine } from "../../engine/tiles/topo-roads";
 import { formatDistanceM } from "../../ui/tile-view";
@@ -31,6 +31,25 @@ function text(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed === "" ? null : trimmed;
+}
+
+const LABELED_ROADS = 6;
+
+type RoadPiece = { fid: string; name: string | null; hierarchy: RoadHierarchy | null; widthM: number | null; path: number[][] };
+
+/** 이름 있는 도로(보행·자전거 제외)마다 대지에 가장 가까운 조각을 구하고, 가까운 순 6개의 상세 줄(`직선 Xm · 위계 · 폭 Nm`)을 fid로 돌려준다. */
+function nearestRoadSublabels(center: EngineContext["input"]["center"], pieces: readonly RoadPiece[]): Map<string, string> {
+  const items = pieces.map((piece, seq) => ({ piece, seq, distance: distanceToLineM(center, { type: "LineString", coordinates: piece.path }) }));
+  const nearestByName = nearestPerGroup(
+    items.filter((item) => item.piece.name !== null && item.piece.hierarchy !== "보행·자전거"),
+    (item) => item.piece.name,
+    (item) => item.distance,
+    (item) => item.seq,
+  );
+  return new Map(nearestN([...nearestByName.values()], (item) => item.distance, LABELED_ROADS, (item) => item.seq).map(({ piece, distance }) => [
+    piece.fid,
+    [`직선 ${formatDistanceM(Math.round(distance!))}`, piece.hierarchy, piece.widthM === null ? null : `폭 ${Math.round(piece.widthM * 10) / 10}m`].filter(Boolean).join(" · "),
+  ]));
 }
 
 function lineParts(geometry: MergedRoadLine["geometry"]): number[][][] {
@@ -90,31 +109,31 @@ function d13WithTopo(ctx: EngineContext, osmSources: ReturnType<EngineContext["s
     .join(" · ");
   const nearestName = nearestCandidate?.meta.name ?? null;
   const nearestText = nearest === null ? "확인되지 않음" : `${nearestName ? `${nearestName} ` : ""}${formatDistanceM(nearest)}`;
-  const longestByName = new Map<string, { lengthM: number; fid: string }>();
-  for (const item of linePartsWithMeta) {
+  const fidOf = (item: (typeof linePartsWithMeta)[number]) => {
     const meta = roadLineMeta(item.road);
-    if (!meta || !meta.name || item.road.source !== "osm_roads") continue;
-    const name = meta.name;
-    const key = `${item.hierarchy}|${name}`;
-    const fid = `${meta.featureId}:${meta.pathIndex}:${item.index}`;
-    const current = longestByName.get(key);
-    if (!current || item.lengthM > current.lengthM || (item.lengthM === current.lengthM && fid < current.fid)) longestByName.set(key, { lengthM: item.lengthM, fid });
-  }
+    return meta ? `${meta.featureId}:${meta.pathIndex}:${item.index}` : `${item.road.source}:${item.index}`;
+  };
+  // 수치지형도 중심선은 위계가 없어(null) 상세에 위계를 쓰지 않고, 폭이 있으면 폭을 붙인다.
+  const sublabels = nearestRoadSublabels(ctx.input.center, linePartsWithMeta.map((item) => ({
+    fid: fidOf(item),
+    name: roadLineMeta(item.road)?.name ?? null,
+    hierarchy: item.road.source === "ngii_topo" ? null : item.hierarchy,
+    widthM: item.road.widthM,
+    path: item.path,
+  })));
 
   const lines: LineCandidate[] = [];
   for (const item of linePartsWithMeta) {
     const meta = roadLineMeta(item.road);
     const name = meta?.name ?? null;
-    const fid = meta ? `${meta.featureId}:${meta.pathIndex}:${item.index}` : `${item.road.source}:${item.index}`;
-    const key = name ? `${item.hierarchy}|${name}` : null;
-    const isNearest = item.road.source === "osm_roads" && nearestCandidate?.meta.featureId === meta?.featureId;
-    const isLongest = key !== null && longestByName.get(key)?.fid === fid;
+    const fid = fidOf(item);
+    const sublabel = sublabels.get(fid) ?? null;
     const layer = item.road.source === "ngii_topo" ? `road:width:${widthBand(item.road.widthM)}` : `road:${item.hierarchy}`;
     const line = lineCandidate(meta?.featureId ?? item.index + 1, layer, item.path, item.lengthM, null, {
       fid,
       name,
-      sublabel: isNearest && nearest !== null ? `직선 ${formatDistanceM(nearest)}` : null,
-      labelPriority: isNearest ? 2 : isLongest && NAMED_ROADS.has(item.hierarchy) ? 1 : 0,
+      sublabel,
+      labelPriority: sublabel === null ? 0 : 2,
       emphasis: NAMED_ROADS.has(item.hierarchy) ? "major" : "minor",
     });
     if (line) lines.push(line);
@@ -209,27 +228,22 @@ export function d13(ctx: EngineContext): TileResult {
     ? null
     : text(nearestCandidate.hit.name) ?? text(nearestCandidate.hit.properties.name);
   const nearestText = nearest === null ? "확인되지 않음" : `${nearestName ? `${nearestName} ` : ""}${formatDistanceM(nearest)}`;
-  const longestByName = new Map<string, { lengthM: number; fid: string }>();
-  for (const part of lineParts) {
-    const name = text(part.road.name);
-    if (!name) continue;
-    const key = `${part.hierarchy}|${name}`;
-    const fid = `${part.road.featureId}:${part.index}`;
-    const current = longestByName.get(key);
-    if (!current || part.lengthM > current.lengthM || (part.lengthM === current.lengthM && fid < current.fid)) longestByName.set(key, { lengthM: part.lengthM, fid });
-  }
+  const sublabels = nearestRoadSublabels(ctx.input.center, lineParts.map((part) => ({
+    fid: `${part.road.featureId}:${part.index}`,
+    name: text(part.road.name),
+    hierarchy: part.hierarchy,
+    widthM: null,
+    path: part.path,
+  })));
   const lines: LineCandidate[] = [];
   for (const part of lineParts) {
-    const name = text(part.road.name);
-    const key = name ? `${part.hierarchy}|${name}` : null;
-    const isNearest = nearestCandidate?.hit.featureId === part.road.featureId;
     const fid = `${part.road.featureId}:${part.index}`;
-    const isLongest = key !== null && longestByName.get(key)?.fid === fid;
+    const sublabel = sublabels.get(fid) ?? null;
     const line = lineCandidate(part.road.featureId, `road:${part.hierarchy}`, part.path, part.lengthM, null, {
       fid,
-      name,
-      sublabel: isNearest && nearest !== null ? `직선 ${formatDistanceM(nearest)}` : null,
-      labelPriority: isNearest ? 2 : isLongest && NAMED_ROADS.has(part.hierarchy) ? 1 : 0,
+      name: text(part.road.name),
+      sublabel,
+      labelPriority: sublabel === null ? 0 : 2,
       emphasis: NAMED_ROADS.has(part.hierarchy) ? "major" : "minor",
     });
     if (line) lines.push(line);

@@ -118,6 +118,10 @@ const referencePath = join(versionDir, "reference.sqlite");
     line("residential", "residential", [-600, -600], [600, 600]),
     line("footway", "footway", [-700, 0], [700, 0]),
     line("unknown", "motorboat", [0, -700], [0, 700]),
+    // 국지 이름 있는 도로 셋 더(이름 있는 비보행 도로 8개): 가까운 여섯만 라벨 대상이다.
+    line("local-a", "residential", [-600, -400], [600, -400]),
+    line("local-b", "residential", [-600, 450], [600, 450]),
+    line("local-c", "residential", [-600, 600], [600, 600]),
   ];
   async function* stream() { yield* records; }
   const stats = await buildOsmRoads(db, stream(), release);
@@ -166,17 +170,67 @@ assert.ok(tile.presentation.lines.some((line) => line.layer === "road:보행·�
 assert.ok(tile.presentation.lines.some((line) => line.layer === "road:기타"));
 assert.ok(tile.presentation.lines.every((line) => line.points.length >= 2));
 const arterialLine = tile.presentation.lines.find((line) => line.layer === "road:간선" && line.name === "도로-primary");
-assert.equal(arterialLine?.sublabel, "직선 300m", "최근접 간선은 거리만 부라벨로 표시");
+assert.equal(arterialLine?.sublabel, "직선 300m · 간선", "상세는 직선 거리 · 위계");
 assert.equal(arterialLine?.labelPriority, 2);
 const secondaryLine = tile.presentation.lines.find((line) => line.layer === "road:보조간선" && line.name === "도로-secondary");
-assert.equal(secondaryLine?.labelPriority, 1, "보조간선 이름별 최장 조각은 자동 라벨 대상");
-assert.equal(secondaryLine?.sublabel, null);
+assert.equal(secondaryLine?.labelPriority, 2, "가까운 여섯 안이면 위계와 관계없이 2");
+assert.equal(secondaryLine?.sublabel, "직선 250m · 보조간선");
 assert.ok(tile.presentation.lines.filter((line) => line.name === "도로-primary").every((line) => line.labelPriority === 2 || line.labelPriority === 0));
 assert.ok(tile.presentation.lines.some((line) => line.layer === "road:보행·자전거" && line.labelPriority === 0), "보행·자전거는 별도 위계로 자동 라벨에서 제외");
+{
+  const top = tile.presentation.lines.filter((line) => line.labelPriority === 2);
+  assert.equal(top.length, 6, "이름 있는 비보행 도로 8개 중 가까운 여섯");
+  assert.deepEqual(top.map((line) => line.name).sort(), ["도로-local-a", "도로-primary", "도로-residential", "도로-secondary", "도로-tertiary", "도로-unknown"], "가까운 여섯(국지 포함)");
+  assert.ok(top.every((line) => /^직선 [\d,.]+m · [^·]+$/.test(line.sublabel)), "상세는 `직선 Xm · 위계`");
+  assert.equal(top.find((line) => line.name === "도로-local-a").sublabel, "직선 400m · 국지");
+  assert.ok(tile.presentation.lines.every((line) => line.labelPriority !== 1), "이름별 최장 1(우선순위 1)은 없앴다");
+  assert.ok(tile.presentation.lines.filter((line) => line.name === "도로-local-b" || line.name === "도로-local-c").every((line) => line.labelPriority === 0), "일곱째·여덟째 도로는 0");
+  assert.ok(tile.presentation.lines.filter((line) => line.name === "도로-footway").every((line) => line.labelPriority === 0), "보행 도로는 0");
+  assert.equal(metric("nearest_arterial_or_higher_m").value, 300, "지표는 그대로");
+}
   assert.match(toTileView(tile).sourceLine, /OSM 도로\(Geofabrik\)/);
   assert.match(tile.judgment.sentence, /구성비 상위 2:/, "D13 요약은 상위 두 위계를 보여 준다");
   assert.match(tile.judgment.sentence, /도로-primary .*300m/, "D13 요약은 최근접 간선 이름과 거리를 보여 준다");
 ctx.close();
+
+// ── 수치지형도 경로: 폭이 있으면 `· 폭 Nm`이 붙고, OSM 경로와 같은 가까운 순 규칙을 쓴다 ──
+{
+  const topoRoad = (featureId, name, y, widthM) => ({
+    featureId,
+    stableId: `topo_road:${featureId}`,
+    kind: "topo_road",
+    releaseId: "topo",
+    geometry: { type: "LineString", coordinates: [[cx - 300, cy + y], [cx + 300, cy + y]] },
+    name,
+    pnu: null,
+    legalCode: null,
+    properties: { widthM, lanes: 2 },
+    distanceM: null,
+  });
+  const topo = {
+    sha256: "0".repeat(64),
+    summary: { bboxUtmk: [cx + 9000, cy + 9000, cx + 9100, cy + 9100] }, // OSM 도로를 자르지 않게 멀리 둔다
+    source: { ...tile.provenance.sources[0], sourceId: "ngii_topo" },
+    hits: () => [topoRoad(901, "폭있는길", 120, 8), topoRoad(902, "폭없는길", 180, null)],
+    covers: () => false,
+    dem: null,
+  };
+  const topoCtx = new EngineContext(dataDir, published, "d13-topo-label", {
+    address: "테스트",
+    center: CENTER,
+    radiusM: 800,
+    analysisDate: "2026-09-30",
+    pnu: null,
+  }, {}, { topo });
+  const topoTile = d13(topoCtx);
+  const wide = topoTile.presentation.lines.find((line) => line.name === "폭있는길");
+  assert.equal(wide?.labelPriority, 2, "topo 경로도 가까운 순 여섯 안이면 2");
+  assert.equal(wide?.sublabel, "직선 120m · 폭 8m", "topo 중심선은 위계가 없어 직선 거리 · 폭");
+  assert.equal(topoTile.presentation.lines.find((line) => line.name === "폭없는길")?.sublabel, "직선 180m", "폭이 없으면 폭을 붙이지 않는다");
+  assert.equal(topoTile.presentation.lines.filter((line) => line.labelPriority === 2).length, 6);
+  assert.ok(topoTile.presentation.lines.every((line) => line.labelPriority !== 1));
+  topoCtx.close();
+}
 
 const absent = new EngineContext("", { version: "v1", createdAt: "2026-10-01T00:00:00Z", files: {} }, "d13-missing", {
   address: "테스트",

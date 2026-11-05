@@ -107,14 +107,13 @@ assert.equal(facility.presentation.features?.some((feature) => feature.fid === "
 assert.equal(facility.presentation.features?.some((feature) => feature.fid === "4"), true, "the real point facility remains in features");
 const polygonFacility = facility.presentation.polygons?.find((polygon) => polygon.fid === "3");
 assert.equal(polygonFacility?.name, "공간", "D12 polygon name is the source facility type");
-assert.equal(polygonFacility?.sublabel, "4ha", "D12 polygon sublabel is the formatted area");
-assert.equal(polygonFacility?.labelPriority, 1, "D12 named polygons are automatic-label candidates");
+assert.equal(polygonFacility?.sublabel, "공간 · 4ha · 직선 0m", "D12 polygon sublabel: 분류 · 면적 · 직선 거리(분류의 최근접 시설)");
+assert.equal(polygonFacility?.labelPriority, 2, "D12 분류별 최근접 시설은 우선순위 2");
 const lineFacility = facility.presentation.lines?.find((candidate) => candidate.fid === "1");
 assert.equal(lineFacility?.name, "교통", "D12 line name is the source facility type");
-assert.equal(lineFacility?.sublabel, "1,600m", "D12 line sublabel is the formatted length");
-assert.equal(lineFacility?.labelPriority, 1, "D12 named lines are automatic-label candidates");
-const pointFacility = facility.presentation.features?.find((feature) => feature.fid === "4");
-assert.equal(pointFacility?.name, "교통", "D12 point name is the source facility type");
+assert.equal(lineFacility?.sublabel, "교통 · 1,600m · 직선 0m", "D12 line sublabel: 분류 · 길이 · 직선 거리");
+assert.equal(lineFacility?.labelPriority, 2, "D12 분류별 최근접 시설은 우선순위 2");
+const pointFacility = facility.presentation.features?.find((feature) => feature.fid === "4");assert.equal(pointFacility?.name, "교통", "D12 point name is the source facility type");
 assert.equal(pointFacility?.sublabel, null, "D12 point has no value sublabel");
 assert.equal(pointFacility?.labelPriority, 1, "D12 named points are automatic-label candidates");
 assert.equal(new Set(facility.presentation.polygons?.map((polygon) => polygon.fid) ?? []).has("1"), false, "D12 line fid is not duplicated as a polygon");
@@ -131,6 +130,40 @@ const outsideContext = contextFor([hit(5, {
 const outside = d12(outsideContext);
 assert.equal(outside.presentation.lines, undefined, "a line wholly outside the radius has no zero-length MapLine");
 assert.equal(outside.metrics.some((item) => item.id === "back_length_교통"), false, "out-of-radius zero fill stays missing rather than observed 0");
+
+// ── P1 라벨: 분류마다 이름 있는 시설 중 대지에서 가장 가까운 한 곳의 가장 큰 조각만 우선순위 2 ──
+{
+  const box = (x0, x1, y0, y1) => ({ type: "Polygon", coordinates: [[[cx + x0, cy + y0], [cx + x1, cy + y0], [cx + x1, cy + y1], [cx + x0, cy + y1], [cx + x0, cy + y0]]] });
+  const unnamed = (featureId, geometry, shapeKind, cls) => ({ ...hit(featureId, geometry, shapeKind, cls), properties: { cls, shapeKind } });
+  const twoPieces = { type: "MultiPolygon", coordinates: [box(190, 200, -5, 5).coordinates, box(210, 260, -50, 50).coordinates] };
+  const nearCtx = contextFor([
+    unnamed(1, { type: "Point", coordinates: [cx + 50, cy] }, "point", "교통"), // 가장 가깝지만 이름 없음
+    hit(2, { type: "LineString", coordinates: [[cx - 300, cy + 150], [cx + 300, cy + 150]] }, "line", "교통"), // 150 m
+    hit(3, { type: "Point", coordinates: [cx + 400, cy] }, "point", "교통"),
+    unnamed(4, box(50, 90, -5, 5), "polygon", "공간"),
+    hit(5, twoPieces, "polygon", "공간"), // 190 m, 조각 둘
+    hit(6, box(300, 400, -10, 10), "polygon", "공간"),
+    hit(7, { type: "Point", coordinates: [cx, cy - 100] }, "point", "환경"), // 점 시설
+  ]);
+  const near = d12(nearCtx);
+  const everything = [...(near.presentation.polygons ?? []), ...(near.presentation.lines ?? []), ...(near.presentation.features ?? [])];
+  const top = everything.filter((item) => item.labelPriority === 2);
+  assert.deepEqual(top.map((item) => item.fid).sort(), ["2", "5", "7"].sort(), "우선순위 2는 분류당 하나(이름 없는 가장 가까운 시설은 뺀다)");
+  assert.equal(new Set(top.map((item) => item.layer)).size, 3, "분류마다 하나");
+  assert.ok(top.every((item) => item.name), "우선순위 2는 모두 이름이 있다(대체 제목 없음)");
+  assert.ok(!JSON.stringify(near.presentation).includes("unnamedTitle"), "D12는 unnamedTitle을 내지 않는다");
+  assert.equal(top.find((item) => item.fid === "2").sublabel, "교통 · 600m · 직선 150m");
+  assert.equal(top.find((item) => item.fid === "7").sublabel, "환경 · 직선 100m", "점은 면적·길이 없이 분류와 거리");
+  const pieces = near.presentation.polygons.filter((polygon) => polygon.fid === "5");
+  assert.equal(pieces.length, 2, "조각 둘");
+  assert.deepEqual(pieces.map((p) => p.labelPriority).sort(), [1, 2], "가장 큰 조각만 2");
+  assert.equal(pieces.find((p) => p.labelPriority === 2).sublabel, "공간 · 5,000㎡ · 직선 190m", "상세 끝은 직선 거리");
+  assert.equal(pieces.find((p) => p.labelPriority === 1).sublabel, "100㎡", "나머지 조각은 지금 그대로");
+  assert.equal(near.presentation.polygons.find((p) => p.fid === "6").labelPriority, 1, "더 먼 시설은 지금 그대로");
+  assert.equal(near.presentation.features.find((f) => f.fid === "3").labelPriority, 1);
+  assert.equal(near.presentation.polygons.find((p) => p.fid === "4").labelPriority, 0, "이름 없는 시설은 0");
+  // 닫지 않는다: 같은 db를 쓰는 아래 counted 블록과 마지막 close가 닫는다.
+}
 
 // ── counted: 그래프 시설 수 = 엔진이 센 시설 수(문장의 「N건」). 북쪽 반경 가장자리(799.7~800 m)에 0.3 m만 걸친 면은 엔진(UTM-K)에선 안이지만
 //    그래프(구 모양 웹 메르카토르)는 남북 거리를 0.3 % 길게 재 802.6 m로 밖에 둔다 — counted를 떼면 그래프 합이 줄어든다(아래 음성 대조 단언).

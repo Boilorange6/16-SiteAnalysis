@@ -1,8 +1,9 @@
 /** D12 도시계획시설 — VWorld dsId 24 시설 면·선·점 도형. */
 import type { TileResult } from "../../tile-result";
 import type { EngineContext, SourceRef } from "../../engine/context";
-import { candidate, fmt, lineCandidate, makeTile, obs, polygonCandidate, type LineCandidate, type MapCandidate, type PolygonCandidate } from "../../engine/tiles/common";
-import { clipLineToCircle, clipToCircle, linePathLength, polygonArea } from "../../engine/tiles/geo";
+import { candidate, fmt, lineCandidate, makeTile, nearestPerGroup, obs, polygonCandidate, type LineCandidate, type MapCandidate, type PolygonCandidate } from "../../engine/tiles/common";
+import { clipLineToCircle, clipToCircle, distanceToGeometryM, linePathLength, polygonArea } from "../../engine/tiles/geo";
+import { formatDistanceM } from "../../ui/tile-view";
 
 const SOURCE_PREFIX = "facility_";
 const FEATURE_KIND = "plan_facility";
@@ -87,6 +88,14 @@ export function d12(ctx: EngineContext): TileResult {
   // 반경에 닿기만 해 그릴 도형이 없는 시설(면적 0 면·길이 0 선·도형 오류)도 「N건」에는 든다 — 그래프가 N을 그대로 세도록 대표점 하나를 counted로 싣는다.
   const drawn = new Set<number>();
   let failed = 0;
+  // 라벨: 분류마다 이름 있는 시설 중 최근접 한 곳의 가장 큰 조각만 우선순위 2다. 조각을 시설별로 모아 두었다가 루프 뒤에 고른다.
+  type LabelPiece = { size: number; target: { labelPriority?: number; sublabel?: string | null }; detail: string | null };
+  const piecesByFeature = new Map<number, { cls: string; hit: FacilityHit; pieces: LabelPiece[] }>();
+  const addPiece = (h: FacilityHit, cls: string, piece: LabelPiece) => {
+    const entry = piecesByFeature.get(h.featureId) ?? { cls, hit: h, pieces: [] };
+    entry.pieces.push(piece);
+    piecesByFeature.set(h.featureId, entry);
+  };
   for (const h of hits) {
     const cls = classOf(h);
     const name = nameOf(h);
@@ -116,6 +125,7 @@ export function d12(ctx: EngineContext): TileResult {
         if (poly) {
           polygons.push(poly);
           drawn.add(h.featureId);
+          if (name !== null) addPiece(h, cls, { size: polygonArea(rings), target: poly.p, detail: formatAreaM2(polygonArea(rings)) });
         }
       }
     } else if (shape === "line") {
@@ -131,21 +141,31 @@ export function d12(ctx: EngineContext): TileResult {
         if (!line) continue;
         length += line.lengthM;
         lines.push(line);
+        if (name !== null) addPiece(h, cls, { size: line.lengthM, target: line.l, detail: formatLengthM(lengthM) });
         drawn.add(h.featureId);
       }
       if (length <= 0) continue;
       lengths.set(cls, (lengths.get(cls) ?? 0) + length);
     } else {
       counts.set(cls, (counts.get(cls) ?? 0) + 1);
-      map.push(candidate(h, layer, {
+      const dot = candidate(h, layer, {
         label: legacyLabel,
         name,
         sublabel: null,
         labelPriority: name === null ? 0 : 1,
         counted: true,
-      }));
+      });
+      map.push(dot);
       drawn.add(h.featureId);
+      if (name !== null) addPiece(h, cls, { size: 0, target: dot.f, detail: null });
     }
+  }
+  const nearestFacilities = nearestPerGroup([...piecesByFeature.values()], (f) => f.cls, (f) => distanceToGeometryM(ctx.input.center, f.hit.geometry), (f) => f.hit.featureId);
+  for (const [cls, facility] of nearestFacilities) {
+    const biggest = facility.pieces.reduce((best, piece) => (piece.size > best.size ? piece : best));
+    const distanceM = distanceToGeometryM(ctx.input.center, facility.hit.geometry)!;
+    biggest.target.labelPriority = 2;
+    biggest.target.sublabel = [cls, biggest.detail, `직선 ${formatDistanceM(Math.round(distanceM))}`].filter(Boolean).join(" · ");
   }
   // 같은 featureId가 다른 형상으로 또 오면(DB에선 나올 수 없는 방어 분기) 같은 시설이라 한 번만 센다.
   const facilities = new Set(hits.map((h) => h.featureId)).size;

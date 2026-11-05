@@ -199,3 +199,38 @@ globalThis.React = React;
   assert.deepEqual(nine.overflow, ["R6"]);
   assert.equal(nine.placed.length, 8);
 }
+
+// ── Task 9: 선 라벨 기준점 — lineLabelAnchor "nearest"인 타일(D13)은 보이는 선 위에서 대지 중심에 가장 가까운 점 ──
+{
+  const { buildMapScene } = await import("../../lib/v2/ui/map-scene.ts");
+  const { tileClientModuleFor } = await import("../../lib/v2/tile/client.ts");
+  assert.equal(tileClientModuleFor("D13")?.lineLabelAnchor, "nearest");
+  assert.equal(tileClientModuleFor("D12")?.lineLabelAnchor, undefined, "다른 타일은 지금 그대로(가운데)");
+  const mx = (m) => CENTER[0] + m / 88317;
+  const my = (m) => CENTER[1] + m / 111320;
+  // 대지 북쪽 200 m를 지나는 가로선: 꼭짓점 -400·-100·400 m → 가운데 꼭짓점(-100 m)은 대지 위가 아니라 서쪽으로 치우친다.
+  const road = { layer: "road:국지", points: [[mx(-400), my(200)], [mx(-100), my(200)], [mx(400), my(200)]], label: null, fid: "L1", name: "가까운길", sublabel: "직선 200m · 국지", labelPriority: 2 };
+  const siteMark = { layer: "bldg_point", lng: CENTER[0], lat: CENTER[1], name: "대지", fid: "S", labelPriority: 0 };
+  const sceneOf = (tileCode) => buildMapScene({ model: { center: CENTER, radiusM: 1000, features: [siteMark], total: 1, notes: [], polygons: [], polygonsTotal: 0, lines: [road], ...(tileCode ? { tileCode } : {}) }, width: 960, height: 519, activeLayer: "white", scale: true });
+  const pOf = (scene, fid) => scene.labels.find((l) => l.pick?.fid === fid).p;
+  const nearest = sceneOf("D13");
+  const plain = sceneOf(undefined);
+  const siteP = pOf(nearest, "S");
+  const [nx, ny] = pOf(nearest, "L1");
+  const [px] = pOf(plain, "L1");
+  assert.ok(Math.abs(nx - siteP[0]) <= 2, `최근접점: 라벨 x ${nx} ≈ 대지 x ${siteP[0]}`);
+  assert.ok(ny < siteP[1], "대지 북쪽 선 위");
+  assert.ok(Math.abs(px - siteP[0]) > 10, `tileCode 없이는 가운데 꼭짓점(x ${px})`);
+}
+
+// ── Task 9: 같은 지물(fid)의 조각이 키를 공유해도 카드 글은 우선순위 2 조각의 것이다(뒤 조각이 덮어쓰지 않는다) ──
+{
+  const { buildMapScene } = await import("../../lib/v2/ui/map-scene.ts");
+  const box = (dx, dy, w) => [[[CENTER[0] + dx, CENTER[1] + dy], [CENTER[0] + dx + w, CENTER[1] + dy], [CENTER[0] + dx + w, CENTER[1] + dy + w], [CENTER[0] + dx, CENTER[1] + dy + w], [CENTER[0] + dx, CENTER[1] + dy]]];
+  const piece = (rings, sublabel, labelPriority) => ({ layer: "facility:교통", rings, label: "도로", fid: "9", name: "도로", sublabel, labelPriority });
+  const model = { center: CENTER, radiusM: 1000, features: [], total: 0, notes: [], polygons: [piece(box(0.001, 0.001, 0.002), "교통 · 5,000㎡ · 직선 74m", 2), piece(box(-0.003, -0.002, 0.0005), "100㎡", 1)], polygonsTotal: 2, tileCode: "D12" };
+  const scene = buildMapScene({ model, width: 960, height: 519, activeLayer: "white", scale: true });
+  assert.equal(scene.labelPlacements.length, 1, "우선순위 2 조각 하나만 놓인다");
+  const text = JSON.stringify(scene.labelPlacements[0].text);
+  assert.ok(text.includes("5,000㎡") && !text.includes("100㎡"), `카드 글이 우선순위 2 조각의 것: ${text}`);
+}

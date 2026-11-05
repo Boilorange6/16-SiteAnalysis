@@ -131,6 +131,8 @@ export interface TileClientModule {
   autoLabels?: "top";
   /** 「top」 모드에서 자동 후보를 이 접두의 레이어로 좁힌다(D05: 옛 저장 결과의 `tall_ge35*` 우선순위 2가 지도를 덮지 않게 `floors_`). */
   autoLabelLayerPrefix?: string;
+  /** "nearest": 선 라벨의 기준점을 선 가운데가 아니라 보이는 선 위에서 대지 중심에 가장 가까운 점으로 한다(D13: 지시선이 가까운 도로를 가리키게). */
+  lineLabelAnchor?: "nearest";
   /** 타일이 같은 내용을 주제 레이어로 직접 그리는 경우 벡터 바탕에서 뺄 층. */
   baseSuppress?: readonly BaseLayerKind[];
   /** 카드 헤드라인으로 우선 선택할 결과 지표 정책이다. */
