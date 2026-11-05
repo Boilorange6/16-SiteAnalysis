@@ -7,7 +7,7 @@ import { toUtmk, type LngLat } from "../../crs";
 import { lookupParcelPoints } from "../../data/parcels";
 import type { TileResult } from "../../tile-result";
 import type { EngineContext, Limitation, SourceRef } from "../../engine/context";
-import { lookupComplexNames } from "./complex-name";
+import { jibunLabel, lookupComplexNames } from "./complex-name";
 import { districtPolygons, formatTradeRecent, legalEmdAreas, legalEmdCode, mean, type DistrictArea, type DistrictMetric } from "./district";
 import { fmt, makeTile, missing, nearestN, obs, type MapCandidate, type TileDraft } from "../../engine/tiles/common";
 import { notProvided } from "../../engine/tiles/not-provided";
@@ -241,6 +241,10 @@ export function a07(ctx: EngineContext): TileResult {
     "법정동 평균 ㎡당",
     (value) => `${fmt(Math.round(value))}만원/㎡`,
   );
+  // 라벨로 놓이는 단지 중 이름이 같은 것이 둘 이상이면 각 상세 첫 줄에 지번(대치동 1027)을 더해 구분한다.
+  const labelNames = points.filter((p) => labeled.has(p.pnu)).map((p) => names.get(p.pnu));
+  const sameName = (p: TradePoint) => labeled.has(p.pnu) && labelNames.filter((n) => n === names.get(p.pnu)).length > 1;
+  const emdNames = new Map(districtAreas.map((a) => [a.code, a.name]));
   const map: MapCandidate[] = points.map((p) => ({
     id: p.i,
     f: {
@@ -251,6 +255,7 @@ export function a07(ctx: EngineContext): TileResult {
       value: Math.round(p.m), // 그래프 값: weight와 같은 수
       name: names.get(p.pnu) ?? null,
       sublabel: [
+        ...(sameName(p) ? [jibunLabel(p.pnu, emdNames.get(p.pnu.slice(0, 8)))].filter((j): j is string => j !== null) : []),
         `㎡당 중앙값 ${fmt(Math.round(p.m))}만원`,
         `최근 ${p.recent.map(formatTradeRecent).join(" / ")}`,
       ].join(" · "),

@@ -56,7 +56,7 @@ const make = async (options) => {
     for (let i = 0; i < 10; i += 1) {
       const pnu = `4136011800200${String(i).padStart(2, "0")}0000`;
       core.prepare("INSERT INTO parcel_point VALUES (?, ?, ?, ?, ?)").run(pnu, ...at(i === 9 ? 50 : 100 + i * 20, 0), "대", parcelRelease);
-      if (i < 9) insertFeature(core, { stableId: `housing:many-${i}`, kind: "housing_complex", sourceKey: `many-${i}`, releaseId: nameRelease, geometry: { type: "Point", coordinates: CENTER }, pnu, name: `단지${i}` });
+      if (i < 9) insertFeature(core, { stableId: `housing:many-${i}`, kind: "housing_complex", sourceKey: `many-${i}`, releaseId: nameRelease, geometry: { type: "Point", coordinates: CENTER }, pnu, name: options.sameName && i === 1 ? "단지0" : `단지${i}` });
       for (let k = 0; k <= (i === 9 ? 0 : i); k += 1) ins.run(`many${i}-${k}`, `many-k${i}-${k}`, "2026-08-20", 1000 * 100 * 10_000, pnu, tradeRelease);
     }
     market.close();
@@ -166,6 +166,17 @@ const clean = (tile) => {
     assert.equal(labeled.length, 6, "이름 있는 단지 가까운 6곳만 우선순위 2");
     assert.deepEqual(labeled.map((feature) => feature.name).sort(), ["단지0", "단지1", "단지2", "단지3", "단지4", "다산 센트럴"].sort(), "가까운 순 여섯(기존 fixture의 다산 센트럴 포함, 거래 수가 많은 먼 단지가 아님)");
     assert.ok(m.presentation.features.some((feature) => feature.name === null) && m.presentation.features.filter((feature) => feature.name === null).every((feature) => feature.labelPriority === 0), "이름 없는 단지는 가까워도 제외");
+  }
+  // ⑧ 라벨로 놓이는 단지 중 이름이 같은 것이 둘 이상이면 상세 첫 줄에 지번을 더한다(하나뿐이면 그대로)
+  {
+    const sCtx = (await make({ trades: true, manyComplexes: true, sameName: true }))();
+    const s = a07(sCtx);
+    sCtx.close();
+    const dup = s.presentation.features.filter((feature) => feature.name === "단지0" && feature.labelPriority === 2);
+    assert.equal(dup.length, 2, "전제: 같은 이름 두 곳이 라벨 대상");
+    assert.deepEqual(dup.map((f) => f.sublabel.split(" · ")[0]).sort(), ["산 0", "산 1"], "같은 이름이면 지번(산 본번)으로 구분");
+    const single = s.presentation.features.filter((feature) => feature.labelPriority === 2 && feature.name !== "단지0");
+    assert.ok(single.length > 0 && single.every((f) => f.sublabel.startsWith("㎡당 중앙값 ")), "이름이 하나뿐이면 지금 그대로");
   }
   // 그래프용 값: 모든 거래 점에서 value === weight (㎡당 중앙값, 만원)
   assert.deepEqual(a.presentation.valueAxis, { label: "㎡당 가격", unit: "만원", countUnit: "단지" });

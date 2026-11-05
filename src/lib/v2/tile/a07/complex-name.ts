@@ -31,3 +31,12 @@ export function lookupComplexNames(db: BetterSqlite3.Database | null | undefined
   }
   return names;
 }
+
+/** PNU(19자리: 법정동 10 + 산 1 + 본번 4 + 부번 4)를 `대치동 1027`·`대치동 산 3-1` 꼴로 쓴다. 동 이름을 모르면 번지만. */
+export function jibunLabel(pnu: string, emdName: string | undefined): string | null {
+  if (!PNU_PATTERN.test(pnu)) return null;
+  const bun = Number(pnu.slice(11, 15));
+  const ji = Number(pnu.slice(15, 19));
+  const lot = `${pnu[10] === "2" ? "산 " : ""}${bun}${ji ? `-${ji}` : ""}`;
+  return emdName ? `${emdName} ${lot}` : lot;
+}
