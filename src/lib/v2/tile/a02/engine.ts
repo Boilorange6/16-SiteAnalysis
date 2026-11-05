@@ -2,13 +2,15 @@
 import type { TileResult } from "../../tile-result";
 import type { EngineContext } from "../../engine/context";
 import type { FeatureHit } from "../../data/features";
-import { candidate, fmt, makeTile, missing, nearestHit, nearestM, obs, type TileDraft } from "../../engine/tiles/common";
+import { candidate, fmt, makeTile, missing, nearestHit, nearestM, nearestN, obs, type TileDraft } from "../../engine/tiles/common";
 import { notProvided } from "../../engine/tiles/not-provided";
 import { assignedSchools, schoolZoneSources, siteZones, zoneName, zoneOffice } from "../../engine/tiles/school-zone-shared";
 import { formatDistanceM } from "../../ui/tile-view";
 
 export const SCHOOL_SEARCH_MIN_M = 1500;
 export const SCHOOL_ZONE_NOTE = "통학구역 도형 미확보 — 배정은 교육청 확인";
+export const ASSIGNED_SCHOOL_SUBLABEL = "통학구역 배정";
+const LABELED_SCHOOLS = 8;
 
 const LEVELS = [
   { level: "초등학교", key: "elem", name: "초등학교", layer: "school_elem" },
@@ -40,6 +42,12 @@ export function a02(ctx: EngineContext): TileResult {
   const metrics: TileDraft["metrics"] = [];
   const map: TileDraft["map"] = [];
   const nearestOf: Record<string, number | null> = {};
+  const site: ReadonlyMap<string, FeatureHit[]> = hasZones ? siteZones(ctx) : new Map();
+  const elemZones = site.get("school_zone_elem") ?? [];
+  const assignedElem = hasZones ? assignedSchools(ctx, elemZones, "elem") : [];
+  const assignedIds = new Set(assignedElem.map((school) => school.stableId));
+  // 학교급을 섞어 반경 안 가까운 순 8곳이 자동 라벨 대상(우선순위 2)이다.
+  const labeled = new Set(nearestN(all.filter((h) => h.distanceM! <= radiusM), (h) => h.distanceM, LABELED_SCHOOLS, (h) => h.featureId));
   for (const L of LEVELS) {
     const ofLevel = all.filter((h) => h.properties.level === L.level);
     const inR = ofLevel.filter((h) => h.distanceM! <= radiusM);
@@ -53,21 +61,22 @@ export function a02(ctx: EngineContext): TileResult {
     for (const h of inR) {
       const isNearest = h === near && h.distanceM !== null;
       const layer = isNearest && L.key === "elem" ? "school_nearest" : L.layer;
-      const sublabel = isNearest && h.distanceM !== null ? formatDistanceM(h.distanceM) : null;
+      const assigned = L.key === "elem" && assignedIds.has(h.stableId);
+      const sublabel = h.distanceM === null ? null
+        : assigned ? `${ASSIGNED_SCHOOL_SUBLABEL} · 직선 ${formatDistanceM(h.distanceM)}`
+        : isNearest || labeled.has(h) ? `${L.level} · 직선 ${formatDistanceM(h.distanceM)}`
+        : null;
       map.push(candidate(h, layer, {
         distanceM: h.distanceM,
         sublabel,
-        labelPriority: isNearest ? 2 : 0,
+        labelPriority: labeled.has(h) ? 2 : 0,
         counted: true, // 반경 안 운영 학교 — 그래프 개수가 반경 판정 대신 따른다
         ...(isNearest && h.distanceM !== null ? { highlight: true, ...(L.key === "elem" ? { label: `직선 ${formatDistanceM(h.distanceM)}` } : {}) } : {}),
       }));
     }
   }
-  const site: ReadonlyMap<string, FeatureHit[]> = hasZones ? siteZones(ctx) : new Map();
-  const elemZones = site.get("school_zone_elem") ?? [];
   const middleZones = site.get("school_zone_middle") ?? [];
   const highZones = site.get("school_zone_high") ?? [];
-  const assignedElem = hasZones ? assignedSchools(ctx, elemZones, "elem") : [];
   if (!hasZones) {
     metrics.push(missing("in_school_zone", "대상 주소의 통학구역", "", "a02-zone@0"));
     metrics.push(missing("assigned_elem_schools", "배정 초등학교(연계 확인)", "개교", "a02-assigned@0"));

@@ -19,6 +19,7 @@ function d19KeyFigure(result: TileResult, helpers: TileHeadlineHelpers): KeyFigu
 
 export const d19ClientModule = {
   code: "D19",
+  baseSuppress: ["parcel"],
   headline: { ids: ["median_parcel_m2", "parcels"] },
   keyFigureFor: d19KeyFigure,
   mapNote: "연속지적 · 지목·필지 규모 레이어 · 참조용",

@@ -62,6 +62,7 @@ function a01KeyFigure(result: TileResult, helpers: TileHeadlineHelpers): KeyFigu
 
 export const a01ClientModule = {
   code: "A01",
+  baseSuppress: ["rail", "station"],
   headline: { ids: ["nearest_rail_m", "nearest_bus_m"] },
   keyFigureFor: a01KeyFigure,
   chart: { subject: "정류장·출입구", countUnit: "곳" },

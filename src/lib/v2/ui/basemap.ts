@@ -5,7 +5,7 @@ import type { MapFrameState } from "../report/report-doc";
 import type { BasemapChoice } from "./map-projection";
 import { mergeOverlapping } from "./poly-overlap";
 
-/** 벡터 바탕이 그리는 층. 묶음(`MapSceneBaseBucket.layer`)과 타일별 생략(`BASE_SUPPRESS`)이 같은 이름을 쓴다. */
+/** 벡터 바탕이 그리는 층. 묶음(`MapSceneBaseBucket.layer`)과 타일별 생략(`TileClientModule.baseSuppress`)이 같은 이름을 쓴다. */
 export type BaseLayerKind = "water" | "green" | "parcel" | "road" | "rail" | "building" | "station";
 
 /** 분석 장면(`Scene`)을 WGS84로 옮긴 바탕지도 자료. 카드·펼침·보고서가 같은 객체를 공유한다. */
@@ -23,14 +23,6 @@ export type MapBase = {
    * truncated = 건물·필지가 장면 상한에 잘려 바깥 고리가 빈다. 없으면 쓸 수 있음.
    */
   flaw?: "legacy" | "truncated";
-};
-
-/** 타일이 같은 내용을 주제 레이어로 직접 그리는 경우 바탕에서는 뺀다. */
-export const BASE_SUPPRESS: Readonly<Record<string, readonly BaseLayerKind[]>> = {
-  A01: ["rail", "station"],
-  A10: ["rail", "station"],
-  D13: ["road"],
-  D19: ["parcel"],
 };
 
 const memo = new WeakMap<Scene, MapBase>();

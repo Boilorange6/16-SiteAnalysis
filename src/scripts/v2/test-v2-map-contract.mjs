@@ -56,6 +56,11 @@ assert.deepEqual(
   { title: "강남역", detailLines: ["2호선", "환승", "5분"], lines: ["강남역", "2호선", "환승", "5분"], titleIsName: true },
   "말풍선 내용은 이름 굵은 줄과 보조 문구 최대 3줄로 정규화",
 );
+assert.deepEqual(
+  mapLabelContent("rail_entrance", "feature", { layer: "rail_entrance", name: "연신내역 7번 출구", sublabel: "6호선·GTX-A·3호선 · 직선 900m", labelPriority: 2 }).detailLines,
+  ["6호선·GTX-A·3호선", "직선 900m"],
+  "붙여 쓴 「·」(호선 목록)는 줄을 나누지 않는다 — 나누면 거리 줄이 3줄 한도 밖으로 밀린다",
+);
 
 assert.equal(badgeTextColor("#111111"), "#FFFFFF");
 assert.equal(badgeTextColor("#FDE725"), "#111111");

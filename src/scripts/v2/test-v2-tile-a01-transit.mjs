@@ -106,7 +106,7 @@ function addDirectionDuplicateSubwayLines(dataDir) {
   assert.equal(tile.presentation.features.filter((feature) => feature.layer === "bus_nearest").length, 1);
   assert.equal(tile.presentation.features.filter((feature) => feature.layer === "rail_station").length, 1);
   const nearestRail = tile.presentation.features.filter((feature) => feature.layer === "rail_nearest");
-  assert.deepEqual(nearestRail.map((f) => [f.name, f.sublabel, f.labelPriority]), [["나래역", "5호선", 2]], "최근접은 nearest_rail_m을 정한 지물이며 역명·호선을 정규화한다");
+  assert.deepEqual(nearestRail.map((f) => [f.name, f.sublabel, f.labelPriority]), [["나래역", "5호선 · 직선 600m", 2]], "최근접은 nearest_rail_m을 정한 지물이며 역명·호선·직선거리를 쓴다");
   assert.equal(nearestRail[0]?.distanceM, 600, "최근접 거리의 근거 지물은 유지한다");
   assert.equal(tile.presentation.features.filter((feature) => feature.layer === "rail_entrance").length, 1);
   assert.equal(tile.presentation.features.filter((feature) => ["rail_station", "rail_nearest", "rail_entrance"].includes(feature.layer)).length, 3);
@@ -129,8 +129,9 @@ function addDirectionDuplicateSubwayLines(dataDir) {
   assert.equal(entrance?.label, "1", "출구 번호는 지도 점의 명시 라벨로 보존한다");
   assert.equal(entrance?.badges, undefined, "출구 번호는 점 주변 배지로 표시하지 않는다");
   assert.equal(entrance?.color, "#996CAC", "출구는 매칭 역의 첫 공식 호선 색을 사용한다");
-  assert.equal(entrance?.sublabel, null, "최근접이 아닌 출입구는 거리 부라벨 없음");
-  assert.equal(entrance?.labelPriority, 0);
+  assert.equal(entrance?.sublabel, "9호선 · 직선 650m", "5호선 최근접은 나래역 대표점이고 9호선 최근접은 이 출입구다");
+  assert.equal(entrance?.labelPriority, 2);
+  assert.equal(entrance?.highlight, false, "highlight는 전체 최근접 하나만");
   assert.equal(tile.presentation.features.filter((feature) => feature.layer === "rail_line").length, 0, "A01은 노선 위 샘플 점을 만들지 않는다");
   assert.ok(tile.presentation.lines.filter((line) => line.layer === "rail_line").length > 0, "철도 노선 선 표시");
   const railLines = tile.presentation.lines.filter((line) => line.layer === "rail_line");
@@ -257,6 +258,73 @@ function addDirectionDuplicateSubwayLines(dataDir) {
   assert.equal(chart.total, 5);
   assert.deepEqual(chart.composition.map((c) => c.label).sort(), ["버스정류장", "역 출입구"]);
   ctx.close();
+}
+
+// 호선별 최근접 출구: 2는 호선마다 그 호선 역들의 최근접 출입구 하나 + 버스 최근접. 환승은 한 장으로 합친다.
+{
+  const mini = async (stations, entrances, radiusM = 800) => {
+    const dir = mkdtempSync(join(tmpdir(), "v2-eng-a01-line-labels-"));
+    await buildEngineFixture(dir, "v1", { rail: "far" });
+    const db = new Database(join(dir, "versions", "v1", "reference.sqlite"));
+    const releaseId = db.prepare("SELECT release_id FROM source_release WHERE source_id = 'osm_subway'").pluck().get();
+    for (const [name, refs, names, dx, dy] of stations) {
+      insertFeature(db, { stableId: `rail_station:${name}`, kind: "rail_station", sourceKey: name, releaseId, geometry: { type: "Point", coordinates: at(dx, dy) }, name, properties: { lineRefs: refs, lineNames: names, lineColors: [], operator: null } });
+    }
+    for (const [station, id, dx, dy] of entrances) {
+      insertFeature(db, { stableId: `rail_entrance:${id}`, kind: "rail_entrance", sourceKey: id, releaseId, geometry: { type: "Point", coordinates: at(dx, dy) }, name: id, properties: { stationName: station, entranceRef: id } });
+    }
+    db.close();
+    const ctx = new EngineContext(dir, M.readManifest(dir), "an-1", { address: "경기도 남양주시 다산동 100", center: CENTER, radiusM, analysisDate: "2026-09-30" });
+    const tile = a01(ctx);
+    ctx.close();
+    return tile;
+  };
+  const three = ["3", ["수도권 전철 3호선"]];
+  const suin = ["수인분당", ["수인분당선"]];
+  // ① 3호선 역(출입구 321·400 m) + 수인분당선 역(출입구 356 m)
+  {
+    const tile = await mini(
+      [["삼호역", [three[0]], three[1], 0, -300], ["수인역", [suin[0]], suin[1], 0, 600]],
+      [["삼호역", "삼호1", 321, 0], ["삼호역", "삼호2", -400, 0], ["수인역", "수인1", 0, 356]],
+    );
+    const lineLabel = railLineMemberships({ properties: { lineRefs: [three[0], suin[0]], lineNames: [three[1][0], suin[1][0]] } }).map((m) => m.label);
+    const top = tile.presentation.features.filter((f) => f.labelPriority === 2 && ["rail_entrance", "rail_nearest", "rail_station"].includes(f.layer));
+    assert.deepEqual(top.map((f) => [f.layer, f.name, f.sublabel]).sort(), [
+      ["rail_entrance", "삼호역 1번 출구", `${lineLabel[0]} · 직선 321m`],
+      ["rail_entrance", "수인역 1번 출구", `${lineLabel[1]} · 직선 356m`],
+    ].sort(), "2는 출입구 둘");
+    assert.equal(tile.presentation.features.filter((f) => f.layer === "bus_nearest" && f.labelPriority === 2).length, 1, "버스 최근접 1곳은 2 그대로");
+    assert.equal(tile.presentation.features.find((f) => f.name === "삼호역 2번 출구")?.labelPriority, 0, "다른 출입구는 0");
+    const highlights = tile.presentation.features.filter((f) => f.highlight && f.layer.startsWith("rail_"));
+    assert.deepEqual(highlights.map((f) => f.name), ["삼호역 1번 출구"], "highlight는 전체 최근접 출입구 하나");
+  }
+  // ② 환승: 한 출입구가 두 호선의 최근접 → 한 장
+  {
+    const tile = await mini(
+      [["환승역", [three[0], suin[0]], [three[1][0], suin[1][0]], 0, -300]],
+      [["환승역", "환승1", 0, -321], ["환승역", "환승2", 500, 0]],
+    );
+    const labels = railLineMemberships({ properties: { lineRefs: [three[0], suin[0]], lineNames: [three[1][0], suin[1][0]] } }).map((m) => m.label);
+    const top = tile.presentation.features.filter((f) => f.labelPriority === 2 && f.layer === "rail_entrance");
+    assert.deepEqual(top.map((f) => f.sublabel), [`${labels.join("·")} · 직선 321m`], "두 호선 한 장");
+  }
+  // ④ 겹침: 설명선 상자가 철도 장면의 출구 배지·역 이름 상자와 겹치지 않는다(300 m 상세: 출구가 보이는 축척)
+  {
+    const { buildMapScene } = await import("../../lib/v2/ui/map-scene.ts");
+    const tile = await mini(
+      [["삼호역", [three[0]], three[1], 0, -150], ["수인역", [suin[0]], suin[1], 60, 140]],
+      [["삼호역", "삼호1", 120, 0], ["삼호역", "삼호2", -90, -80], ["수인역", "수인1", 0, 200], ["수인역", "수인2", 90, 150]],
+      300,
+    );
+    const overlap = (a, b) => a.x0 < b.x1 && a.x1 > b.x0 && a.y0 < b.y1 && a.y1 > b.y0;
+    const scene = buildMapScene({ model: toTileView(tile).map, width: 960, height: 600, activeLayer: "transit", scale: true, north: 30 });
+    assert.ok(scene.labelPlacements.some((p) => p.entry.layer === "rail_entrance"), "우선순위 2 출구는 자동 설명선 후보다");
+    assert.ok(scene.rail.exits.length > 0, "300 m 상세는 출구 배지를 그린다");
+    const railBoxes = [...scene.rail.exits.map((e) => e.box), ...scene.rail.stationLabels.map((l) => l.box)];
+    for (const placement of scene.labelPlacements) {
+      for (const box of railBoxes) assert.ok(!overlap(placement.box, box), "설명선 상자가 철도 출구·역 이름 상자와 겹침");
+    }
+  }
 }
 
 console.log("✓ v2 A01/D14 transit tile");

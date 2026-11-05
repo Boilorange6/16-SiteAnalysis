@@ -2,7 +2,8 @@
 import assert from "node:assert/strict";
 
 const { toUtmk } = await import("../../lib/v2/crs.ts");
-const { mapBaseFromScene, BASE_SUPPRESS, resolveBasemap, baseUsable } =await import("../../lib/v2/ui/basemap.ts");
+const { mapBaseFromScene, resolveBasemap, baseUsable } =await import("../../lib/v2/ui/basemap.ts");
+const { tileClientModuleFor } = await import("../../lib/v2/tile/client.ts");
 const { buildMapScene, northArrowBox, scaleBarBox } = await import("../../lib/v2/ui/map-scene.ts");
 const { baseTheme } = await import("../../lib/v2/ui/map-theme.ts");
 
@@ -79,7 +80,7 @@ const build = (model, options = {}) => buildMapScene({ model, width: 800, height
   // 철도: 공용 노선만, 공식 노선색(OSM의 #ED6C00 -> 3호선 공식 #EF7C1C)
   assert.equal(base.rail.length, 1, "셔틀 노선은 뺀다");
   assert.equal(base.rail[0].color, "#EF7C1C");
-  assert.deepEqual(BASE_SUPPRESS, { A01: ["rail", "station"], A10: ["rail", "station"], D13: ["road"], D19: ["parcel"] });
+  assert.deepEqual(Object.fromEntries(["A01", "A10", "D13", "D19"].map((code) => [code, tileClientModuleFor(code)?.baseSuppress])), { A01: ["rail", "station"], A10: ["rail", "station"], D13: ["road"], D19: ["parcel"] });
 }
 
 // ── resolveBasemap: 결과 지정 > 사용자 선택 > 바탕 있으면 벡터 > 일반지도 ──

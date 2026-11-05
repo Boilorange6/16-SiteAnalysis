@@ -17,7 +17,7 @@ const { sampleSchoolZones } = await import("./fixtures/school-zone-sample.mjs");
 const { csvRecords } = await import("../../lib/v2/a0/measure.ts");
 const M = await import("../../lib/v2/data/manifest.ts");
 const { EngineContext } = await import("../../lib/v2/engine/context.ts");
-const { a02 } = await import("../../lib/v2/tile/a02/engine.ts");
+const { a02, ASSIGNED_SCHOOL_SUBLABEL } = await import("../../lib/v2/tile/a02/engine.ts");
 const { TILES } = await import("../../lib/v2/engine/run.ts");
 const a02WithSchoolZones = TILES.find(([code]) => code === "A02")[1];
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
@@ -93,11 +93,11 @@ assert.deepEqual(
   { label: null, name: null, sublabel: null, labelPriority: 0 },
   "비대상 학구는 자동·호버 라벨을 내지 않음",
 );
-for (const [layer, expectedName] of [["school_nearest", "대구옥산초등학교"], ["school_middle", "테스트중학교"], ["school_high", "테스트고등학교"]]) {
+for (const [layer, expectedName, expectedHead] of [["school_nearest", "대구옥산초등학교", ASSIGNED_SCHOOL_SUBLABEL], ["school_middle", "테스트중학교", "중학교"], ["school_high", "테스트고등학교", "고등학교"]]) {
   const nearest = d.presentation.features.filter((f) => f.layer === layer && f.highlight);
   assert.equal(nearest.length, 1, `${layer} 최근접 highlight`);
   assert.equal(nearest[0].name, expectedName);
-  assert.equal(nearest[0].sublabel, formatDistanceM(nearest[0].distanceM), `${layer} 거리 sublabel`);
+  assert.equal(nearest[0].sublabel, `${expectedHead} · 직선 ${formatDistanceM(nearest[0].distanceM)}`, `${layer} 상세 줄(배정 초등학교는 「통학구역 배정」)`);
   assert.equal(nearest[0].labelPriority, 2, `${layer} 최근접 priority`);
 }
 assert.equal(layerStyle("school_elem").label, "초등학교");
@@ -152,6 +152,31 @@ assert.doesNotMatch(JSON.stringify(toTileView(a)), /도보|\d\s*분|종합/);
     }
     countCtx.close();
   }
+}
+
+// 라벨: 학교급을 섞어 반경 안 가까운 순 8곳이 2, 상세는 `${학교급} · 직선 Xm`, 배정 초등학교는 `통학구역 배정 · 직선 Xm`.
+{
+  const more = new Database(referencePath);
+  [["초등학교", 120], ["중학교", 180], ["고등학교", 240], ["초등학교", 350], ["중학교", 420], ["고등학교", 500]].forEach(([level, dx], i) => {
+    insertFeature(more, { stableId: `school:lab-${i}`, kind: "school", sourceKey: `lab-${i}`, releaseId: schoolRelease, geometry: { type: "Point", coordinates: at(dx, 10) }, name: `라벨${i}${level}`, properties: { schoolId: `lab-${i}`, level, operatingStatus: "운영" } });
+  });
+  more.close();
+  const labelCtx = new EngineContext(dataDir, M.readManifest(dataDir), "a02-labels", { address: "대구광역시 북구 칠성동2가 395-1", center: CENTER, radiusM: 800, analysisDate: "2026-10-01" });
+  const tile = parseTileResult(a02(labelCtx));
+  const schools = tile.presentation.features.filter((f) => f.layer.startsWith("school_"));
+  assert.ok(schools.length > 8, `전제: 반경 안 학교가 8곳보다 많다(${schools.length})`);
+  const top = schools.filter((f) => f.labelPriority === 2);
+  assert.equal(top.length, 8, "2는 가까운 8곳");
+  const byDistance = [...schools].sort((a, b) => a.distanceM - b.distanceM);
+  assert.deepEqual(new Set(top.map((f) => f.fid)), new Set(byDistance.slice(0, 8).map((f) => f.fid)), "학교급을 섞어 가까운 순 8");
+  assert.ok(top.every((f) => /^(초등학교|중학교|고등학교|통학구역 배정) · 직선 /.test(f.sublabel)), "상세 줄 꼴");
+  assert.ok(schools.filter((f) => f.labelPriority !== 2).every((f) => f.highlight || f.sublabel === null), "나머지는 0(최근접 highlight만 상세 유지)");
+  assert.ok(top.some((f) => f.sublabel.startsWith("중학교 · 직선 ")) && top.some((f) => f.sublabel.startsWith("고등학교 · 직선 ")), "학교급이 섞인다");
+  const assigned = schools.filter((f) => f.name === "대구옥산초등학교");
+  assert.equal(assigned.length, 1);
+  assert.match(assigned[0].sublabel, /^통학구역 배정 · 직선 /);
+  assert.equal(schools.filter((f) => f.highlight).length, 3, "학교급별 최근접 highlight 수는 그대로");
+  labelCtx.close();
 }
 ctx.close();
 console.log("✓ v2 D26/A02 school-zone engine");

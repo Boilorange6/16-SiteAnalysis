@@ -446,15 +446,35 @@ export function a01(ctx: EngineContext): TileResult {
     const nearFeatureId = railBest && railM !== null && railBest.best.dist <= radiusM ? railBest.best.hit.featureId : null;
     // D14 흡수 후에도 반경 내 원천 역·출입구 전체를 지도에 남긴다.
     let axisSequence = 0;
+    // 호선마다 그 호선 역들의 최근접 출입구(없으면 역 대표점) 하나가 자동 라벨 대상이다. 한 지물이 둘 이상 호선의 최근접이면 한 장에 모은다.
+    const bestByLine = new Map<string, RailPoint>();
+    for (const s of stations) {
+      for (const line of railLineNames(s.hit)) {
+        const cur = bestByLine.get(line);
+        if (!cur || s.best.dist < cur.dist || (s.best.dist === cur.dist && s.best.hit.featureId < cur.hit.featureId)) bestByLine.set(line, s.best);
+      }
+    }
+    const lineLabels = new Map<number, { lines: string[]; distM: number }>();
+    for (const [line, point] of bestByLine) {
+      if (point.dist > radiusM) continue;
+      const entry = lineLabels.get(point.hit.featureId) ?? { lines: [], distM: point.dist };
+      entry.lines.push(line);
+      lineLabels.set(point.hit.featureId, entry);
+    }
+    const lineDetail = (hit: FeatureHit): string | null => {
+      const entry = lineLabels.get(hit.featureId);
+      return entry ? `${entry.lines.join("·")} · ${distanceSublabel(entry.distM)}` : null;
+    };
     for (const station of stationHits) {
       const isNearest = station.featureId === nearFeatureId;
       const lineNames = railLineNames(station);
       const sourceName = stationName(station);
+      const detail = lineDetail(station);
       map.push(candidate(station, isNearest ? "rail_nearest" : "rail_station", {
         name: sourceName ? subwayStationDisplayName(sourceName) : null,
         highlight: isNearest,
-        sublabel: lineNames.length > 0 ? lineNames.join("·") : null,
-        labelPriority: isNearest ? 2 : sourceName ? 1 : 0,
+        sublabel: detail ?? (lineNames.length > 0 ? lineNames.join("·") : null),
+        labelPriority: isNearest || detail ? 2 : sourceName ? 1 : 0,
         distanceM: isNearest ? railM : null,
         badges: stationBadges(station),
       }));
@@ -465,12 +485,13 @@ export function a01(ctx: EngineContext): TileResult {
     for (const entrance of entranceHits) {
       const isNearest = entrance.featureId === nearFeatureId;
       const color = railEntranceColor(entrance, stationHits);
+      const detail = lineDetail(entrance);
       map.push(candidate(entrance, "rail_entrance", {
         name: entranceDisplayName(entrance),
         label: entranceNumber(entrance),
         highlight: isNearest,
-        sublabel: isNearest ? distanceSublabel(railM) : null,
-        labelPriority: isNearest ? 2 : 0,
+        sublabel: detail ?? (isNearest ? distanceSublabel(railM) : null),
+        labelPriority: isNearest || detail ? 2 : 0,
         counted: true, // 반경 안 출입구
         ...(color ? { color } : {}),
       }));

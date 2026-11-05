@@ -23,7 +23,7 @@ function joinLabel(name: string, sublabel: string | null): string {
 function splitSublabel(value: string | null): string[] {
   if (!value) return [];
   return value
-    .split(/\r?\n|\s*·\s*/)
+    .split(/\r?\n|\s+·\s+/)
     .map((part) => part.trim())
     .filter(Boolean)
     .slice(0, 3);

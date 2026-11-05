@@ -11,7 +11,7 @@ import { terrainSectionLabelAnchor } from "./terrain-section";
 import type { MapLabelBox } from "../report/report-doc";
 import { toUtmk, type LngLat } from "../crs";
 import type { SiteOutline } from "./site-outline";
-import { BASE_SUPPRESS, resolveBasemap, type BaseLayerKind, type MapBase } from "./basemap";
+import { resolveBasemap, type BaseLayerKind, type MapBase } from "./basemap";
 import { baseTheme, type BaseTheme, type BaseThemeRef } from "./map-theme";
 
 export type MapSceneBox = { x0: number; y0: number; x1: number; y1: number };
@@ -1724,7 +1724,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     const topOnly = tileModule?.autoLabels === "top";
     const topLayerPrefix = tileModule?.autoLabelLayerPrefix;
     const automatic = showAutomaticLabels
-      ? selectAutomaticLabels(labels).filter((entry) => (!topOnly || (entry.labelPriority === 2 && (!topLayerPrefix || entry.layer.startsWith(topLayerPrefix)))) &&!hidden.has(entry.key) && !pinnedSet.has(entry.key) && entry.key !== hoverLabel?.key && !["rail_station", "rail_nearest", "rail_entrance", "rail_line", "rail_station_axis"].includes(entry.layer))
+      ? selectAutomaticLabels(labels).filter((entry) => (!topOnly || (entry.labelPriority === 2 && (!topLayerPrefix || entry.layer.startsWith(topLayerPrefix)))) &&!hidden.has(entry.key) && !pinnedSet.has(entry.key) && entry.key !== hoverLabel?.key && !(["rail_station", "rail_nearest", "rail_line", "rail_station_axis"].includes(entry.layer) || (entry.layer === "rail_entrance" && entry.labelPriority !== 2)))
       : [];
     placementCandidates.push(...pinnedLabels.map((entry) => ({ entry, variant: "fixed" as const, rank: -2 })), ...(hoverLabel ? [{ entry: hoverLabel, variant: "hover" as const, rank: -1 }] : []), ...automatic.map((entry) => ({ entry, variant: "auto" as const, rank: 2 - (entry.labelPriority ?? 0) + Math.min(0.999, entry.siteDistance / (W + H)) })));
   }
@@ -1872,7 +1872,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
   let baseScene: MapScene["base"] = null;
   const theme = layer === "vector" && model.base ? baseTheme(model.baseTheme ?? options.baseTheme) : null;
   if (theme && model.base) {
-    const suppress = new Set<BaseLayerKind>([...(BASE_SUPPRESS[model.tileCode ?? ""] ?? []), ...(model.baseHide ?? [])]);
+    const suppress = new Set<BaseLayerKind>([...((model.tileCode ? tileClientModuleFor(model.tileCode)?.baseSuppress : undefined) ?? []), ...(model.baseHide ?? [])]);
     const projection = baseProjection(model.base, theme, vp, W, H, mpp, suppress);
     // 바탕 라벨은 가장 낮은 우선순위: 방위표·축척·범례·대지 표식·철도 라벨·주제 라벨이 먼저 자리를 잡는다.
     // 주제 점 기호는 라벨 위에 그려지므로 점 상자(중심 ± 반지름)도 비켜 간다.

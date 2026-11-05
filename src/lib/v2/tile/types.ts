@@ -2,6 +2,7 @@ import type { EngineContext } from "../engine/context";
 import type { MergeOptions } from "../engine/tiles/merge";
 import type { A05Counts } from "../engine/a05-filter";
 import type { CalloutMode } from "../ui/callout-layout";
+import type { BaseLayerKind } from "../ui/basemap";
 import type { MapModel } from "../ui/map-layers";
 import type { MassModel } from "../ui/mass-projection";
 import type { Scene } from "../scene";
@@ -130,6 +131,8 @@ export interface TileClientModule {
   autoLabels?: "top";
   /** 「top」 모드에서 자동 후보를 이 접두의 레이어로 좁힌다(D05: 옛 저장 결과의 `tall_ge35*` 우선순위 2가 지도를 덮지 않게 `floors_`). */
   autoLabelLayerPrefix?: string;
+  /** 타일이 같은 내용을 주제 레이어로 직접 그리는 경우 벡터 바탕에서 뺄 층. */
+  baseSuppress?: readonly BaseLayerKind[];
   /** 카드 헤드라인으로 우선 선택할 결과 지표 정책이다. */
   headline?: TileHeadlinePolicy;
   /** 지도 아래에 표시할 타일 고유 설명이다. */

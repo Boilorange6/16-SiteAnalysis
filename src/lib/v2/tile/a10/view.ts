@@ -15,6 +15,7 @@ function a10KeyFigure(result: TileResult, helpers: TileHeadlineHelpers): KeyFigu
 
 export const a10ClientModule = {
   code: "A10",
+  baseSuppress: ["rail", "station"],
   headline: { ids: ["planned_projects"] },
   keyFigureFor: a10KeyFigure,
   layers: {

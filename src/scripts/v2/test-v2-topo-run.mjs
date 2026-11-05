@@ -15,8 +15,8 @@ const { EngineContext } = await import("../../lib/v2/engine/context.ts");
 const { putTopoUpload } = await import("../../lib/v2/topo/upload.ts");
 
 const BASELINE_KEYS = {
-  A01: "19d22a4b472ac8899ed12032e6475c4ea622c50f7b99718418cb23afbc3eeba1",
-  A02: "90de8533f8f60ce2cfd258a088531258437b84a2648cc267a40f86063d713fcf", // 2026-11-04 A02 리비전 +koies-r1(학구도 원천 교체)
+  A01: "301ab8d3ea2f985e1502827834ab5da9dabb73752c0f2fd41d740cbd40870b18",
+  A02: "b7374ae6f8c8035baff702496ee80bdf087106fce992743ec250d10161aa89f9", // 2026-11-04 A02 리비전 +koies-r1(학구도 원천 교체)
   A03: "b8468e662c21268c3faa85c6d1d01b0711d57e9eb6c907759396eb70daecc3d7",
   A04: "c02c6f8b7e3ef3d7960cc94355523008eca43829bbcd3dc004c5d9941ae1c907",
   A05: "d958fa00b1976ca516cb85d056a4cfd86f15f8d016b846498a4e7ee4535c47fc",
