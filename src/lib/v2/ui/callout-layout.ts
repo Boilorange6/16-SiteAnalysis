@@ -803,11 +803,34 @@ function lowerPriorityFirst(a: LayoutPoint, b: LayoutPoint): number {
   return b.id.localeCompare(a.id, "en");
 }
 
+/**
+ * 칸 배정(사용자 결정 LABEL_RULES, 2026-11-05): 점을 화면 x 순으로 놓고 왼쪽 점부터 왼쪽 칸을 채운다.
+ * 두 칸 모두 들어가는 분할 중 중심선 기준 분할(x < centerX)에 가장 가까운 것을 고른다(같으면 왼쪽에 적게).
+ * 중심선 분할이 들어가면 그것이다. 들어가는 분할이 없으면 null.
+ */
+function splitByX(f: CalloutFrame, points: readonly LayoutPoint[], centerCount: number): [LayoutPoint[], LayoutPoint[]] | null {
+  const sorted = [...points].sort((a, b) => a.x - b.x || a.y - b.y || (a.id < b.id ? -1 : 1));
+  let best: number | null = null;
+  for (let k = 0; k <= sorted.length; k++) {
+    if (!fitsColumn(sorted.slice(0, k), f.left, f) || !fitsColumn(sorted.slice(k), f.right, f)) continue;
+    if (best === null || Math.abs(k - centerCount) < Math.abs(best - centerCount)) best = k;
+  }
+  return best === null ? null : [sorted.slice(0, best), sorted.slice(best)];
+}
+
 /** Same placement rules as the legacy layout, with optional real card dimensions per point. */
 function layoutVariableCallouts(f: CalloutFrame, points: LayoutPoint[]): { placed: Placed[]; overflow: string[] } {
   const byY = (a: LayoutPoint, b: LayoutPoint) => a.y - b.y || a.x - b.x || (a.id < b.id ? -1 : 1);
   const L = points.filter((point) => point.x < f.centerX).sort(byY);
   const R = points.filter((point) => point.x >= f.centerX).sort(byY);
+  if (!fitsColumn(L, f.left, f) || !fitsColumn(R, f.right, f)) {
+    // 한쪽 칸이 넘치면 남는 자리를 비워 두지 않고 반대쪽 칸을 쓰되, 배정은 점의 x 순이다.
+    const split = splitByX(f, points, L.length);
+    if (split) {
+      L.splice(0, L.length, ...split[0].sort(byY));
+      R.splice(0, R.length, ...split[1].sort(byY));
+    }
+  }
   const overflow: string[] = [];
   const distance = (point: LayoutPoint) => Math.abs(point.x - f.centerX);
 

@@ -175,3 +175,27 @@ globalThis.React = React;
   assert.doesNotMatch(runOf("제2종근린생활시설"), /b="1"/);
   console.log("test-v2-label-render task4: ok");
 }
+
+// ── L1 수정 1: 칸 배정은 점의 x 순(사용자 결정 LABEL_RULES) ──
+{
+  const C = await import("../../lib/v2/ui/callout-layout.ts");
+  const frame = C.calloutFrame({ W: 960, H: 400, m: C.PX, edge: 4, top: 10, bottom: 10 + 4 * 30 + 3 * 8, perSide: 100, rows: 3, variant: "compact", maxFill: 0.8 });
+  const mk = (id, x, y) => ({ id, x, y, rank: 0, width: 130, height: 30 });
+  const sideOf = (result) => Object.fromEntries(result.placed.map((p) => [p.id, p.side]));
+  // ① 칸마다 4장, 오른쪽 점 6·왼쪽 점 2 → 8장 모두 놓이고 왼쪽 칸 = 왼쪽 점 2 + 오른쪽 점 중 x가 가장 작은 2개
+  const six = [0, 1, 2, 3, 4, 5].map((i) => mk(`R${i}`, 500 + i * 40, 60 + i * 50));
+  const over = C.layoutCallouts(frame, [mk("L1", 400, 100), mk("L2", 420, 200), ...six]);
+  assert.deepEqual(over.overflow, []);
+  assert.equal(over.placed.length, 8);
+  const sides = sideOf(over);
+  assert.deepEqual(Object.keys(sides).filter((id) => sides[id] === "L").sort(), ["L1", "L2", "R0", "R1"]);
+  // 오른쪽 점이 더 오른쪽에 있어도 그 점이 왼쪽 칸으로 가는 일은 없다(먼 점이 아니라 반대쪽에 가장 가까운 점이 넘어간다)
+  assert.ok(["R2", "R3", "R4", "R5"].every((id) => sides[id] === "R"));
+  // ② 넘치지 않으면 중심선 기준 배정과 같다
+  const fits = C.layoutCallouts(frame, [mk("L1", 400, 100), mk("L2", 420, 200), mk("R0", 500, 60), mk("R1", 540, 110), mk("R2", 580, 160)]);
+  assert.deepEqual(sideOf(fits), { L1: "L", L2: "L", R0: "R", R1: "R", R2: "R" });
+  // 두 칸 합계를 넘으면 낮은 순위부터 버린다(9번째)
+  const nine = C.layoutCallouts(frame, [mk("L1", 400, 100), mk("L2", 420, 200), ...six, { ...mk("R6", 740, 330), rank: 1 }]);
+  assert.deepEqual(nine.overflow, ["R6"]);
+  assert.equal(nine.placed.length, 8);
+}
