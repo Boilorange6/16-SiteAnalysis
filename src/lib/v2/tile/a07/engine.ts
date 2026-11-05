@@ -7,7 +7,7 @@ import { toUtmk, type LngLat } from "../../crs";
 import { lookupParcelPoints } from "../../data/parcels";
 import type { TileResult } from "../../tile-result";
 import type { EngineContext, Limitation, SourceRef } from "../../engine/context";
-import { jibunLabel, lookupComplexNames } from "./complex-name";
+import { jibunLabel, lookupComplexNames, lookupEmdNames } from "./complex-name";
 import { districtPolygons, formatTradeRecent, legalEmdAreas, legalEmdCode, mean, type DistrictArea, type DistrictMetric } from "./district";
 import { fmt, makeTile, missing, nearestN, obs, type MapCandidate, type TileDraft } from "../../engine/tiles/common";
 import { notProvided } from "../../engine/tiles/not-provided";
@@ -244,7 +244,9 @@ export function a07(ctx: EngineContext): TileResult {
   // 라벨로 놓이는 단지 중 이름이 같은 것이 둘 이상이면 각 상세 첫 줄에 지번(대치동 1027)을 더해 구분한다.
   const labelNames = points.filter((p) => labeled.has(p.pnu)).map((p) => names.get(p.pnu));
   const sameName = (p: TradePoint) => labeled.has(p.pnu) && labelNames.filter((n) => n === names.get(p.pnu)).length > 1;
-  const emdNames = new Map(districtAreas.map((a) => [a.code, a.name]));
+  // 법정동 지물에 이름이 비면 `legalEmdAreas`가 코드를 이름 자리에 넣는다: 그 코드는 동 이름이 아니므로 legal_area에서 찾고, 없으면 이름 없음.
+  const unnamedEmd = districtAreas.filter((a) => a.name === a.code).map((a) => a.code);
+  const emdNames = new Map([...districtAreas.filter((a) => a.name !== a.code).map((a) => [a.code, a.name] as const), ...lookupEmdNames(ctx.db("core"), unnamedEmd)]);
   const map: MapCandidate[] = points.map((p) => ({
     id: p.i,
     f: {

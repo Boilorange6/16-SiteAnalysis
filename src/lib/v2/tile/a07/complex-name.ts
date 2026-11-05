@@ -32,11 +32,24 @@ export function lookupComplexNames(db: BetterSqlite3.Database | null | undefined
   return names;
 }
 
-/** PNU(19자리: 법정동 10 + 산 1 + 본번 4 + 부번 4)를 `대치동 1027`·`대치동 산 3-1` 꼴로 쓴다. 동 이름을 모르면 번지만. */
+/** 법정동 코드(8자리) → 읍면동 이름. core `legal_area`에서 찾고, 없는 코드는 빼 둔다(코드를 이름 대신 쓰지 않는다). */
+export function lookupEmdNames(db: BetterSqlite3.Database | null | undefined, codes: readonly string[]): Map<string, string> {
+  const names = new Map<string, string>();
+  const unique = [...new Set(codes.filter((code) => /^\d{8}$/.test(code)))];
+  if (!db || unique.length === 0) return names;
+  for (let offset = 0; offset < unique.length; offset += PNU_CHUNK_SIZE) {
+    const chunk = unique.slice(offset, offset + PNU_CHUNK_SIZE);
+    const rows = db.prepare(`SELECT code, name FROM legal_area WHERE level = 'emd' AND code IN (${chunk.map(() => "?").join(",")})`).all(...chunk) as { code: string; name: string }[];
+    for (const row of rows) if (row.name?.trim()) names.set(row.code, row.name.trim());
+  }
+  return names;
+}
+
+/** PNU(19자리: 법정동 10 + 산 1 + 본번 4 + 부번 4)를 `대치동 1027`·`대치동 산 3-1` 꼴로 쓴다. 동 이름을 모르면 `지번 506`(코드 숫자는 쓰지 않는다). */
 export function jibunLabel(pnu: string, emdName: string | undefined): string | null {
   if (!PNU_PATTERN.test(pnu)) return null;
   const bun = Number(pnu.slice(11, 15));
   const ji = Number(pnu.slice(15, 19));
   const lot = `${pnu[10] === "2" ? "산 " : ""}${bun}${ji ? `-${ji}` : ""}`;
-  return emdName ? `${emdName} ${lot}` : lot;
+  return emdName ? `${emdName} ${lot}` : `지번 ${lot}`;
 }

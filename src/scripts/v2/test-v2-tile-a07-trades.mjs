@@ -13,7 +13,7 @@ const { EngineContext } = await import("../../lib/v2/engine/context.ts");
 const { a07, collectTrades } = await import("../../lib/v2/tile/a07/engine.ts");
 const { d25 } = await import("../../lib/v2/tile/a07/d25.ts");
 const { a07ServerModule } = await import("../../lib/v2/tile/a07/server.ts");
-const { lookupComplexNames } = await import("../../lib/v2/tile/a07/complex-name.ts");
+const { jibunLabel, lookupComplexNames, lookupEmdNames } = await import("../../lib/v2/tile/a07/complex-name.ts");
 const { a07ClientModule } = await import("../../lib/v2/tile/a07/view.ts");
 const { parseTileResult } = await import("../../lib/v2/tile-result.ts");
 const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
@@ -174,9 +174,22 @@ const clean = (tile) => {
     sCtx.close();
     const dup = s.presentation.features.filter((feature) => feature.name === "단지0" && feature.labelPriority === 2);
     assert.equal(dup.length, 2, "전제: 같은 이름 두 곳이 라벨 대상");
-    assert.deepEqual(dup.map((f) => f.sublabel.split(" · ")[0]).sort(), ["산 0", "산 1"], "같은 이름이면 지번(산 본번)으로 구분");
+    assert.deepEqual(dup.map((f) => f.sublabel.split(" · ")[0]).sort(), ["지번 산 0", "지번 산 1"], "같은 이름이면 지번(산 본번)으로 구분, 동 이름을 모르면 「지번」을 앞에");
+    assert.ok(dup.every((f) => !/\d{8}/.test(f.sublabel)), "법정동 코드 숫자는 화면 글에 없다");
     const single = s.presentation.features.filter((feature) => feature.labelPriority === 2 && feature.name !== "단지0");
     assert.ok(single.length > 0 && single.every((f) => f.sublabel.startsWith("㎡당 중앙값 ")), "이름이 하나뿐이면 지금 그대로");
+  }
+  // T14b-5: 동 이름 조회는 legal_area에서, 없는 코드는 비워 둔다(코드를 이름으로 쓰지 않는다)
+  {
+    const mem = new Database(":memory:");
+    mem.exec("CREATE TABLE legal_area (code TEXT PRIMARY KEY, level TEXT, name TEXT, parent_code TEXT, release_id TEXT)");
+    mem.prepare("INSERT INTO legal_area VALUES ('11680106','emd','대치동','11680','r'), ('11680107','ri','가짜리','11680','r')").run();
+    const found = lookupEmdNames(mem, ["11680106", "11680107", "99999999", "abc"]);
+    assert.deepEqual([...found], [["11680106", "대치동"]]);
+    assert.equal(jibunLabel("1168010600105060000", found.get("11680106")), "대치동 506");
+    assert.equal(jibunLabel("1168010600105060000", found.get("99999999")), "지번 506");
+    assert.equal(jibunLabel("1168010600105060000", undefined).includes("11680106"), false);
+    mem.close();
   }
   // 그래프용 값: 모든 거래 점에서 value === weight (㎡당 중앙값, 만원)
   assert.deepEqual(a.presentation.valueAxis, { label: "㎡당 가격", unit: "만원", countUnit: "단지" });
