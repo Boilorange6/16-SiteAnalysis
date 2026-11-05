@@ -97,7 +97,9 @@ for (const [layer, expectedName, expectedHead] of [["school_nearest", "대구옥
   const nearest = d.presentation.features.filter((f) => f.layer === layer && f.highlight);
   assert.equal(nearest.length, 1, `${layer} 최근접 highlight`);
   assert.equal(nearest[0].name, expectedName);
-  assert.equal(nearest[0].sublabel, `${expectedHead} · 직선 ${formatDistanceM(nearest[0].distanceM)}`, `${layer} 상세 줄(배정 초등학교는 「통학구역 배정」)`);
+  // 이름에 학교급이 이미 있으면 상세는 `직선 Xm`만(T12c ⑦), 배정 초등학교는 「통학구역 배정」을 그대로 둔다
+  const head = expectedHead !== ASSIGNED_SCHOOL_SUBLABEL && expectedName.includes(expectedHead) ? "" : `${expectedHead} · `;
+  assert.equal(nearest[0].sublabel, `${head}직선 ${formatDistanceM(nearest[0].distanceM)}`, `${layer} 상세 줄(배정 초등학교는 「통학구역 배정」)`);
   assert.equal(nearest[0].labelPriority, 2, `${layer} 최근접 priority`);
 }
 assert.equal(layerStyle("school_elem").label, "초등학교");
@@ -158,7 +160,7 @@ assert.doesNotMatch(JSON.stringify(toTileView(a)), /도보|\d\s*분|종합/);
 {
   const more = new Database(referencePath);
   [["초등학교", 120], ["중학교", 180], ["고등학교", 240], ["초등학교", 350], ["중학교", 420], ["고등학교", 500]].forEach(([level, dx], i) => {
-    insertFeature(more, { stableId: `school:lab-${i}`, kind: "school", sourceKey: `lab-${i}`, releaseId: schoolRelease, geometry: { type: "Point", coordinates: at(dx, 10) }, name: `라벨${i}${level}`, properties: { schoolId: `lab-${i}`, level, operatingStatus: "운영" } });
+    insertFeature(more, { stableId: `school:lab-${i}`, kind: "school", sourceKey: `lab-${i}`, releaseId: schoolRelease, geometry: { type: "Point", coordinates: at(dx, 10) }, name: i < 3 ? `라벨${i}${level}` : `라벨${i}`, /* 뒤 셋은 이름에 학교급이 없다(⑦) */ properties: { schoolId: `lab-${i}`, level, operatingStatus: "운영" } });
   });
   more.close();
   const labelCtx = new EngineContext(dataDir, M.readManifest(dataDir), "a02-labels", { address: "대구광역시 북구 칠성동2가 395-1", center: CENTER, radiusM: 800, analysisDate: "2026-10-01" });
@@ -169,9 +171,13 @@ assert.doesNotMatch(JSON.stringify(toTileView(a)), /도보|\d\s*분|종합/);
   assert.equal(top.length, 8, "2는 가까운 8곳");
   const byDistance = [...schools].sort((a, b) => a.distanceM - b.distanceM);
   assert.deepEqual(new Set(top.map((f) => f.fid)), new Set(byDistance.slice(0, 8).map((f) => f.fid)), "학교급을 섞어 가까운 순 8");
-  assert.ok(top.every((f) => /^(초등학교|중학교|고등학교|통학구역 배정) · 직선 /.test(f.sublabel)), "상세 줄 꼴");
+  assert.ok(top.every((f) => /^((초등학교|중학교|고등학교|통학구역 배정) · )?직선 /.test(f.sublabel)), "상세 줄 꼴");
+  // ⑦ 학교급은 이름에 그 학교급이 없을 때만 앞에 붙는다
+  assert.ok(top.every((f) => !/^(초등학교|중학교|고등학교) · /.test(f.sublabel) || !/(초등학교|중학교|고등학교)/.test(f.name) || !f.name.includes(f.sublabel.split(" · ")[0])), "이름에 학교급이 있으면 상세에 되풀이하지 않는다");
+  assert.ok(top.some((f) => /^(초등학교|중학교|고등학교) · 직선 /.test(f.sublabel) && !/(초등학교|중학교|고등학교)$/.test(f.name)), "이름에 학교급이 없으면 학교급을 붙인다");
+  assert.ok(top.some((f) => /^직선 /.test(f.sublabel) && /(초등학교|중학교|고등학교)$/.test(f.name)), "이름에 학교급이 있으면 직선만");
   assert.ok(schools.filter((f) => f.labelPriority !== 2).every((f) => f.highlight || f.sublabel === null), "나머지는 0(최근접 highlight만 상세 유지)");
-  assert.ok(top.some((f) => f.sublabel.startsWith("중학교 · 직선 ")) && top.some((f) => f.sublabel.startsWith("고등학교 · 직선 ")), "학교급이 섞인다");
+  assert.ok(top.some((f) => f.layer === "school_middle") && top.some((f) => f.layer === "school_high"), "학교급이 섞인다");
   const assigned = schools.filter((f) => f.name === "대구옥산초등학교");
   assert.equal(assigned.length, 1);
   assert.match(assigned[0].sublabel, /^통학구역 배정 · 직선 /);

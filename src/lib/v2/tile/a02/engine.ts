@@ -64,7 +64,8 @@ export function a02(ctx: EngineContext): TileResult {
       const assigned = L.key === "elem" && assignedIds.has(h.stableId);
       const sublabel = h.distanceM === null ? null
         : assigned ? `${ASSIGNED_SCHOOL_SUBLABEL} · 직선 ${formatDistanceM(h.distanceM)}`
-        : isNearest || labeled.has(h) ? `${L.level} · 직선 ${formatDistanceM(h.distanceM)}`
+        // 이름에 학교급이 이미 있으면(서울대도초등학교) 학교급을 되풀이하지 않는다.
+        : isNearest || labeled.has(h) ? `${h.name?.includes(L.level) ? "" : `${L.level} · `}직선 ${formatDistanceM(h.distanceM)}`
         : null;
       map.push(candidate(h, layer, {
         distanceM: h.distanceM,
