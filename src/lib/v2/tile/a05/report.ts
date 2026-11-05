@@ -1,6 +1,6 @@
 import { GROUP_TAG_PREFIX } from "../../../pptx-shape-group";
 import { PAGE_EDGE } from "../../ui/report-page-layout";
-import { INCH, SLIDE_OVERVIEW_FILL, calloutFrame, calloutKeyTag, calloutPageItems, cardName, cardRows, dotColor, dotRadius, inkOn, isHollowComplexMarker, layoutCallouts, overlapChip, rowsFor, slideCalloutFrame, type CalloutFrame, type Complex, type Placed, type Pt } from "../../ui/callout-layout";
+import { INCH, OTHER_HOUSING_COLOR, SLIDE_OVERVIEW_FILL, calloutFrame, calloutKeyTag, calloutPageItems, cardName, cardRows, dotColor, dotRadius, inkOn, isHollowComplexMarker, layoutCallouts, overlapChip, rowsFor, slideCalloutFrame, type CalloutFrame, type Complex, type Placed, type Pt } from "../../ui/callout-layout";
 import { makeProjector, slideViewport } from "../../ui/map-projection";
 import { scaleOptionsForFrame, zoomForScale } from "../../ui/report-scale";
 import { calloutLegendEntries, slideCalloutLegendLayout, slideSiteX, type CalloutLegendOptions } from "../../ui/overlay-layout";
@@ -19,7 +19,7 @@ const K = SLIDE.w / 960;
 const cTag = (c: Complex, part: string) => `${GROUP_TAG_PREFIX}${calloutKeyTag(c.key)}|${`콜아웃 ${c.rank} ${cardName(c)}`.replace(/\|/g, "/")}|${part}`;
 
 /** 배경 지도(map-pptx·미리보기)와 같은 뷰: 사용자가 옮기거나 확대한 보고서 프레임(고정 축척 포함)을 따른다 */
-function projector(p: PlannedSlide & { kind: "tile" }, model: CalloutModel, siteX: number, fill: number, map?: Rect): (c: Complex) => Pt {
+function projector(p: PlannedSlide & { kind: "tile" }, model: CalloutModel, siteX: number, fill: number, map?: Rect): (c: { lng: number; lat: number }) => Pt {
   // 새 장 배치의 지도 틀(`map`, inch)이 오면 틀 폭을 960 장면 폭으로 보고 틀 모양대로 투영한다. 없으면 옛 쪽 전체(16:9, 폭 SLIDE.w).
   const frameW = map?.w ?? SLIDE.w;
   const dims = { width: 960, height: map ? (960 * map.h) / map.w : 540, siteX, siteY: 0.5, fill };
@@ -124,6 +124,15 @@ function calloutLegend(s: Slide, model: CalloutModel, x: number, bottom: number,
   );
 }
 
+/** 연립·다세대 등 기타 공동주택: 보드 카드와 같은 번호·라벨 없는 작은 회색 점(반지름 2/960 장면 폭, 불투명 70%). 번호·아파트 점 아래에 먼저 그린다 */
+function otherHousingDots(s: Slide, cm: CalloutModel, proj: (c: { lng: number; lat: number }) => Pt) {
+  const r = (2 / 960) * SLIDE.w;
+  cm.others.forEach((o, i) => {
+    const [x, y] = proj(o);
+    s.addShape("ellipse", { x: x - r, y: y - r, w: 2 * r, h: 2 * r, fill: { color: hex(OTHER_HOUSING_COLOR), transparency: 30 }, line: { color: "FFFFFF", width: 0, transparency: 100 }, objectName: `${GROUP_TAG_PREFIX}other-housing|기타 공동주택 ${i + 1}|other-dot` });
+  });
+}
+
 /** 개요 장: 번호 점 전체 + 왼쪽 아래 핵심 값 카드 + 범례 (오른쪽 정보 판은 공용 renderer가 그린다) */
 function calloutOverview(s: Slide, p: PlannedSlide & { kind: "tile" }, overviewFrame?: CalloutOverviewFrame) {
   const cm = p.callout!.model;
@@ -134,6 +143,7 @@ function calloutOverview(s: Slide, p: PlannedSlide & { kind: "tile" }, overviewF
   const proj = projector(p, cm, overviewFrame ? 0.5 : slideSiteX(style, style.summary !== false), SLIDE_OVERVIEW_FILL, overviewFrame?.map);
   const hMax = Math.max(0, ...cm.complexes.map((c) => c.households ?? 0));
   // 새 틀 개요: 상위 8곳에 번호 카드. 칸이 모자라 못 놓은 곳은 번호 없는 점으로 남는다.
+  otherHousingDots(s, cm, proj);
   const cards: { c: Complex; pl: Placed }[] = [];
   let cardFrame: CalloutFrame | undefined;
   if (overviewFrame && cm.complexes.length > 0) {
@@ -206,6 +216,7 @@ function calloutPage(s: Slide, p: PlannedSlide & { kind: "tile" }) {
   const proj = projector(p, cm, f.siteX, f.fill);
   const hMax = Math.max(0, ...cm.complexes.map((c) => c.households ?? 0));
   const at = new Map(cm.complexes.map((c) => [c.key, proj(c)]));
+  otherHousingDots(s, cm, proj);
   cm.complexes.filter((c) => !shownKeys.has(c.key)).forEach((c) => {
     const [x, y] = at.get(c.key)!;
     s.addShape("ellipse", { x: x - 0.045, y: y - 0.045, w: 0.09, h: 0.09, fill: { color: hex(dotColor(c, cm.palette)), transparency: 40 }, line: { color: "FFFFFF", width: 0.5 }, objectName: cTag(c, "mini") });

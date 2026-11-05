@@ -333,6 +333,13 @@ const spec = (o = {}) => ({ W: 1200, H: 800, m: C.PX, edge: 12, top: 96, bottom:
     const complexes = overview.callout.model.complexes;
     assert.ok(complexes.length > 8, "전제: 단지가 8곳을 넘는다");
     const { shapes, texts } = draw(overview, f.calloutOverview);
+    const otherDots = shapes.filter((s) => /\|other-dot$/.test(s.o.objectName ?? ""));
+    assert.equal(otherDots.length, overview.callout.model.others.length, `${layout}: 기타 공동주택 점 수 = 기타 공동주택 수`);
+    if (otherDots.length > 0) {
+      const aptMin = Math.min(...shapes.filter((s) => /\|dot$/.test(s.o.objectName ?? "") ).map((s) => s.o.w / 2));
+      assert.ok(otherDots.every((s) => s.o.w / 2 < aptMin), `${layout}: 기타 공동주택 점은 아파트 점 최소보다 작다`);
+      assert.ok(shapes.indexOf(otherDots.at(-1)) < shapes.findIndex((s) => /\|dot$/.test(s.o.objectName ?? "") ), `${layout}: 기타 공동주택 점은 번호 점 아래(먼저)`);
+    } else assert.fail(`${layout}: 전제: 고정 자료에 기타 공동주택이 있다`);
     const cards = shapes.filter((s) => s.o.objectName?.endsWith("|card"));
     assert.ok(cards.length >= 3 && cards.length <= 8, `${layout}: 카드는 줄이 늘어 들어가는 만큼만(상위 8곳 이내): ${cards.length}`);
     const tagKey = (name) => decodeURIComponent(/callout-key:([^|]+)\|/.exec(name)[1]);
