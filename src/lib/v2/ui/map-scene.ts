@@ -350,6 +350,7 @@ export type MapLabelEntry = {
   title: string;
   detailLines: string[];
   lines: string[];
+  titleIsName: boolean;
   autoText: string | null;
   labelPriority: number;
   order: number;
@@ -372,6 +373,8 @@ export type MapCalloutTextLayout = {
   height: number;
   textWidth: number;
   lines: MapCalloutTextLine[];
+  /** 제목이 원천 이름이면 굵게, 용도·범례 이름이면 보통 굵기. 화면과 PPT가 같이 읽는다. */
+  titleIsName: boolean;
 };
 
 export const mapFeatureKey = (layer: string, fid: string | undefined, index: number): string => `${layer}|${fid ?? index}`;
@@ -474,7 +477,7 @@ export function mapLabelEntries(model: MapModel): MapLabelEntry[] {
 
 /** SVG text의 흰 외곽선과 같은 폭 규칙을 PPT 말풍선에도 적용한다. */
 export function mapCalloutTextLayout(
-  entry: Pick<MapLabelEntry, "title" | "detailLines">,
+  entry: Pick<MapLabelEntry, "title" | "detailLines"> & { titleIsName?: boolean },
   fontSize: number,
   maxWidth: number,
   textLeft = 8,
@@ -503,7 +506,7 @@ export function mapCalloutTextLayout(
   const textSafety = reserveShortLabelSpace && textWidth > 0 ? Math.max(2, fontSize * 0.25) : 0;
   const width = Math.min(maxWidth, textLeft + textRight + textWidth + textSafety);
   const lineHeight = fontSize * 1.24;
-  return { fontSize, lineHeight, width, height: lines.length * lineHeight + 2 * padY, textWidth: Math.min(textWidth, availableTextWidth), lines };
+  return { fontSize, lineHeight, width, height: lines.length * lineHeight + 2 * padY, textWidth: Math.min(textWidth, availableTextWidth), lines, titleIsName: entry.titleIsName !== false };
 }
 
 export type MapSceneFeature = {
@@ -1722,8 +1725,10 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     const pinnedLabels = pinnedLabelKeys.map((key) => labelByKey.get(key)).filter((entry): entry is MapSceneLabel => !!entry && !hidden.has(entry.key));
     const pinnedSet = new Set(pinnedLabels.map((entry) => entry.key));
     const hoverLabel = hoverKey && !pinned.has(hoverKey) && !hidden.has(hoverKey) ? labelByKey.get(hoverKey) : undefined;
-    const automatic = showAutomaticLabels && (model.tileCode ? tileClientModuleFor(model.tileCode)?.autoLabels !== false : true)
-      ? selectAutomaticLabels(labels).filter((entry) => !hidden.has(entry.key) && !pinnedSet.has(entry.key) && entry.key !== hoverLabel?.key && !["rail_station", "rail_nearest", "rail_entrance", "rail_line", "rail_station_axis"].includes(entry.layer))
+    // 「top」 모드: 우선순위 2만 자동 후보(옛 결과의 0·1은 자동 라벨 없음).
+    const topOnly = model.tileCode ? tileClientModuleFor(model.tileCode)?.autoLabels === "top" : false;
+    const automatic = showAutomaticLabels
+      ? selectAutomaticLabels(labels).filter((entry) => (!topOnly || entry.labelPriority === 2) && !hidden.has(entry.key) && !pinnedSet.has(entry.key) && entry.key !== hoverLabel?.key && !["rail_station", "rail_nearest", "rail_entrance", "rail_line", "rail_station_axis"].includes(entry.layer))
       : [];
     placementCandidates.push(...pinnedLabels.map((entry) => ({ entry, variant: "fixed" as const, rank: -2 })), ...(hoverLabel ? [{ entry: hoverLabel, variant: "hover" as const, rank: -1 }] : []), ...automatic.map((entry) => ({ entry, variant: "auto" as const, rank: 2 - (entry.labelPriority ?? 0) + Math.min(0.999, entry.siteDistance / (W + H)) })));
   }

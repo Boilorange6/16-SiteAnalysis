@@ -53,7 +53,7 @@ assert.equal(mapLabelText("rail_station", "feature", { layer: "rail_station", na
 assert.equal(mapLabelText("rail_station", "feature", { layer: "rail_station", name: "강남역", sublabel: "미상", labelPriority: 2 }), "강남역");
 assert.deepEqual(
   mapLabelContent("rail_station", "feature", { layer: "rail_station", name: "강남역", sublabel: "2호선\n환승 · 5분 · 추가 줄", labelPriority: 2 }),
-  { title: "강남역", detailLines: ["2호선", "환승", "5분"], lines: ["강남역", "2호선", "환승", "5분"] },
+  { title: "강남역", detailLines: ["2호선", "환승", "5분"], lines: ["강남역", "2호선", "환승", "5분"], titleIsName: true },
   "말풍선 내용은 이름 굵은 줄과 보조 문구 최대 3줄로 정규화",
 );
 
@@ -120,8 +120,8 @@ assert.match(styledSvg, /data-map-label-variant="auto"/, "자동 라벨도 말�
 assert.match(styledSvg, /data-map-label-box="[^"]+"/, "자동 말풍선 상자 렌더");
 assert.match(styledSvg, /data-map-label-leader="[^"]+"/, "자동 말풍선 꺾인 지시선 렌더");
 
-// D03/D04/D05/D12는 초기 자동 라벨을 숨기되, 사용자가 고정한 요소는 남긴다.
-for (const code of ["D03", "D04", "D05", "D12"]) assert.equal(tileClientModuleFor(code)?.autoLabels, false, `${code} 자동 라벨 정책`);
+// D03/D04/D05/D12는 우선순위 2만 자동 라벨로 삼고, 사용자가 고정한 요소는 남긴다.
+for (const code of ["D03", "D04", "D05", "D12"]) assert.equal(tileClientModuleFor(code)?.autoLabels, "top", `${code} 자동 라벨 정책`);
 const d04Key = "rail_station|0";
 const d04Model = {
   center,

@@ -1198,10 +1198,10 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseT
             const rendered = renderMapCalloutLabelText(line.text, textMaxWidth, textFs, preserveShortCalloutLabels);
             if (line.kind === "joined" && rendered === line.text) {
               return <tspan key={`${d.key}-line-${index}`} x={textX} dy={index === 0 ? 0 : placement.text.lineHeight}>
-                <tspan fontWeight={700}>{line.title}</tspan><tspan fill="#5c5f66" fontWeight={500}>{` · ${line.detail}`}</tspan>
+                <tspan fontWeight={placement.text.titleIsName ? 700 : 500}>{line.title}</tspan><tspan fill="#5c5f66" fontWeight={500}>{` · ${line.detail}`}</tspan>
               </tspan>;
             }
-            return <tspan key={`${d.key}-line-${index}`} x={textX} dy={index === 0 ? 0 : placement.text.lineHeight} fontWeight={line.kind === "title" ? 700 : 500} fill={line.kind === "title" ? INK : "#5c5f66"}>{rendered}</tspan>;
+            return <tspan key={`${d.key}-line-${index}`} x={textX} dy={index === 0 ? 0 : placement.text.lineHeight} fontWeight={line.kind === "title" && placement.text.titleIsName ? 700 : 500} fill={line.kind === "title" ? INK : "#5c5f66"}>{rendered}</tspan>;
           })}
         </text>
         {canSelectLabel && labelInteractive && <rect data-map-label-hit={d.key} data-map-pick="true" x={labelHitLeft} y={labelHitTop} width={labelHitWidth} height={labelHitHeight} fill="transparent" pointerEvents="all" aria-hidden="true" className="map-figure-hit" onClick={(event: ReactMouseEvent<SVGRectElement>) => { event.stopPropagation(); if (onLabelSelect) selectLabel(); else pinPick(); }} onPointerDownCapture={(event: ReactPointerEvent<SVGRectElement>) => { event.stopPropagation(); }} onMouseDownCapture={(event: ReactMouseEvent<SVGRectElement>) => { event.stopPropagation(); }} />}

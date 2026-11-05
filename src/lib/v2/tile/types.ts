@@ -118,8 +118,8 @@ export type TileCutModule = {
 
 export interface TileClientModule {
   code: string;
-  /** 자동 라벨을 기본으로 숨기고 사용자가 고정한 요소만 지도에 남긴다. */
-  autoLabels?: false;
+  /** 「top」: 우선순위 2만 자동 라벨 후보로 삼는다(우선순위 0·1은 사용자가 고정할 때만 보인다). */
+  autoLabels?: "top";
   /** 카드 헤드라인으로 우선 선택할 결과 지표 정책이다. */
   headline?: TileHeadlinePolicy;
   /** 지도 아래에 표시할 타일 고유 설명이다. */

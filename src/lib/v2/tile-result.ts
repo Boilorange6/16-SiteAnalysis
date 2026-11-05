@@ -62,6 +62,8 @@ const MapFeatureSchema = z.object({
   sublabel: z.string().nullable().optional(),
   /** 자동 라벨 노출 등급: 0은 자동 숨김, 1·2는 우선순위. */
   labelPriority: z.number().int().min(0).max(2).optional(),
+  /** `name`이 null일 때만 타일이 서식까지 끝낸 용도 이름(D03·D04·D05). 이름 없는 라벨의 보통 굵기 제목이다. */
+  unnamedTitle: z.string().min(1).max(40).optional(),
   /** 역 출입구처럼 지물별로 원천 색을 덧씌울 때 쓰는 선택 색. */
   color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
   /** 짧은 표식. 색만으로 뜻을 구분하지 않도록 텍스트를 함께 그린다. */
@@ -129,6 +131,8 @@ const MapPolygonSchema = z.object({
   name: z.string().nullable().optional(),
   sublabel: z.string().nullable().optional(),
   labelPriority: z.number().int().min(0).max(2).optional(),
+  /** `name`이 null일 때만 타일이 서식까지 끝낸 용도 이름(D03·D04·D05). 이름 없는 라벨의 보통 굵기 제목이다. */
+  unnamedTitle: z.string().min(1).max(40).optional(),
   /** 그래프 y값(타일의 `valueAxis` 단위). 값이 없거나 추정이면 null. */
   value: z.number().finite().nullable().optional(),
   /** 엔진이 센 지물인가(예: 건물은 중심이 반경 안인 것만 동수에 든다). 지도는 반경에 걸친 것도 그리므로 그래프 개수가 이 표시를 따른다. */

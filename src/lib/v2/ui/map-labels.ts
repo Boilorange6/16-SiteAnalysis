@@ -54,36 +54,44 @@ function hasLabelContract(item: MapLabelItem): boolean {
   return item.labelPriority !== undefined || Object.prototype.hasOwnProperty.call(item, "sublabel");
 }
 
-type RawLabelParts = { title: string; sublabel: string | null };
+type RawLabelParts = { title: string; sublabel: string | null; titleIsName: boolean };
+
+/** `name`이 없을 때만 엔진이 내는 용도 이름(D03·D04·D05). 이름 없는 대상의 보통 굵기 제목이다. */
+function unnamedTitleOf(item: MapLabelItem): string | null {
+  return userText((item as { unnamedTitle?: string | null }).unnamedTitle);
+}
 
 function rawLabelParts(layer: string, kind: MapLabelKind, item: MapLabelItem): RawLabelParts {
   const legendName = layerStyle(layer).label;
   const name = userText(item.name);
   const sublabel = userText(item.sublabel);
   if (name) {
-    if (hasLabelContract(item)) return { title: name, sublabel };
+    if (hasLabelContract(item)) return { title: name, sublabel, titleIsName: true };
     if (kind === "feature") {
       const legacyValue = legacyFeatureValue(item as MapFeature);
-      return { title: name, sublabel: legacyValue && legacyValue !== name ? legacyValue : null };
+      return { title: name, sublabel: legacyValue && legacyValue !== name ? legacyValue : null, titleIsName: true };
     }
-    return { title: name, sublabel: null };
+    return { title: name, sublabel: null, titleIsName: true };
   }
-  if (hasLabelContract(item)) return { title: legendName, sublabel };
-  if (kind === "feature") return { title: legendName, sublabel: legacyFeatureValue(item as MapFeature) };
-  return { title: userText(item.label) ?? legendName, sublabel: null };
+  if (hasLabelContract(item)) return { title: unnamedTitleOf(item) ?? legendName, sublabel, titleIsName: false };
+  if (kind === "feature") return { title: legendName, sublabel: legacyFeatureValue(item as MapFeature), titleIsName: false };
+  const label = userText(item.label);
+  return { title: label ?? legendName, sublabel: null, titleIsName: label !== null };
 }
 
 export type MapLabelContent = {
   title: string;
   detailLines: string[];
   lines: string[];
+  /** 제목이 원천 이름인가(굵게). 용도 이름·범례 이름이면 false(보통 굵기). */
+  titleIsName: boolean;
 };
 
 /** 말풍선의 굵은 이름 + 보조 문구 줄. 상자 높이는 지도 쪽에서 공통으로 예약한다. */
 export function mapLabelContent(layer: string, kind: MapLabelKind, item: MapLabelItem): MapLabelContent {
   const parts = rawLabelParts(layer, kind, item);
   const detailLines = splitSublabel(parts.sublabel);
-  return { title: parts.title, detailLines, lines: [parts.title, ...detailLines].slice(0, 4) };
+  return { title: parts.title, detailLines, lines: [parts.title, ...detailLines].slice(0, 4), titleIsName: parts.titleIsName };
 }
 
 /**
@@ -100,7 +108,13 @@ export function mapLabelText(layer: string, kind: MapLabelKind, item: MapLabelIt
  * 계약 필드가 없는 결과(W2b 전 타일·이미 저장된 분석)는 이전 규칙 그대로: 명시 label(점은 name도)이 있거나 강조된 요소.
  */
 export function automaticLabelText(layer: string, kind: MapLabelKind, item: MapLabelItem, highlighted = false): string | null {
-  if (hasLabelContract(item)) return item.labelPriority !== undefined && item.labelPriority >= 1 ? userText(item.name) : null;
+  if (hasLabelContract(item)) {
+    if (item.labelPriority === undefined || item.labelPriority < 1) return null;
+    if (item.labelPriority === 1) return userText(item.name);
+    // 우선순위 2: 이름 또는 용도 이름이 있을 때 `제목 · 상세`(같은 문구 판정 키). 같은 제목이라도 상세가 다르면 따로 남는다.
+    const title = userText(item.name) ?? unnamedTitleOf(item);
+    return title ? joinLabel(title, userText(item.sublabel)) : null;
+  }
   const explicit = trimLabel(item.label) ?? (kind === "feature" ? trimLabel(item.name) : null);
   return explicit ?? (highlighted ? mapLabelText(layer, kind, item) : null);
 }

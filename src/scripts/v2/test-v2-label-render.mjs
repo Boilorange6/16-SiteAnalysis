@@ -99,3 +99,76 @@ const farFirst = (n, extra) => Array.from({ length: n }, (_, i) => point(n - i, 
 }
 
 console.log("test-v2-label-render: ok");
+
+// ── Task 4: 이름 없는 대상의 제목·top 모드·제목 굵기 ──
+import * as React from "react";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import JSZip from "jszip";
+
+globalThis.React = React;
+{
+  const { automaticLabelText, mapLabelContent, selectAutomaticLabels } = await import("../../lib/v2/ui/map-labels.ts");
+  const { layerStyle } = await import("../../lib/v2/ui/map-layers.ts");
+  const { tileClientModuleFor } = await import("../../lib/v2/tile/client.ts");
+  const { default: MapFigure } = await import("../../components/v2/map-figure.tsx");
+  const { renderReportPptx } = await import("../../lib/v2/report/render-pptx.ts");
+  const { toTileView } = await import("../../lib/v2/ui/tile-view.ts");
+  const { GODEOK_RESULTS } = await import("../../lib/v2/ui/fixtures/godeok.ts");
+
+  const ring = (cx, cy, d = 0.0002) => [[[cx - d, cy - d], [cx + d, cy - d], [cx + d, cy + d], [cx - d, cy + d], [cx - d, cy - d]]];
+  const item = (extra) => ({ layer: "bldg_footprint", rings: ring(127.0003, 37.5003), labelPriority: 2, ...extra });
+
+  // ① 이름 없음 + 우선순위 2 + unnamedTitle
+  const titled = item({ name: null, unnamedTitle: "제2종근린생활시설", sublabel: "1994년 · 직선 269m" });
+  assert.notEqual(automaticLabelText("bldg_footprint", "polygon", titled), null);
+  assert.equal(mapLabelContent("bldg_footprint", "polygon", titled).title, "제2종근린생활시설");
+  assert.equal(mapLabelContent("bldg_footprint", "polygon", titled).titleIsName, false);
+  // ② unnamedTitle 없음 ③ 우선순위 1 + unnamedTitle
+  assert.equal(automaticLabelText("bldg_footprint", "polygon", item({ name: null, sublabel: "1994년" })), null);
+  assert.equal(automaticLabelText("bldg_footprint", "polygon", item({ name: null, unnamedTitle: "공동주택", labelPriority: 1 })), null);
+  // ④ 같은 제목이어도 상세가 다르면 둘 다, 같으면 하나
+  const apt = (key, sublabel) => ({ key, labelPriority: 2, order: 0, siteDistance: 1, autoText: automaticLabelText("bldg_footprint", "polygon", item({ name: null, unnamedTitle: "공동주택", sublabel })) });
+  assert.equal(selectAutomaticLabels([apt("a", "1983년 · 직선 25m"), apt("b", "1994년 · 직선 269m")]).length, 2);
+  assert.equal(selectAutomaticLabels([apt("a", "1983년 · 직선 25m"), apt("b", "1983년 · 직선 25m")]).length, 1);
+  // ⑤ 호버 제목
+  const bare = mapLabelContent("bldg_footprint", "polygon", item({ name: null, labelPriority: 0 }));
+  assert.equal(bare.title, layerStyle("bldg_footprint").label);
+  assert.equal(bare.titleIsName, false);
+  assert.equal(mapLabelContent("bldg_footprint", "polygon", item({ name: "고덕 센트럴", labelPriority: 0 })).titleIsName, true);
+
+  // ⑥ 옛 결과(unnamedTitle 없음)·top 모드
+  const sceneOf = (tileCode, polygons) => buildMapScene({ model: { center: CENTER, radiusM: 1000, features: [], total: polygons.length, notes: [], polygons, polygonsTotal: polygons.length, tileCode }, width: W, height: 519, activeLayer: "white", scale: true, north: 30 });
+  const old = [item({ name: null, labelPriority: 0 }), item({ name: "이름만 있음", labelPriority: 1, rings: ring(127.0006, 37.5003) })];
+  assert.equal(sceneOf("D03", old).labelPlacements.length, 0, "D03 옛 결과는 top 모드에서 자동 라벨 0");
+  const d05 = sceneOf("D05", [item({ layer: "tall_ge35", name: "고덕 센트럴", sublabel: "36층" }), item({ layer: "tall_ge35", name: "이름만 1순위", labelPriority: 1, rings: ring(127.0006, 37.5003) })]);
+  assert.deepEqual(d05.labelPlacements.map((p) => p.entry.title), ["고덕 센트럴"]);
+  // ⑦ 모드 값
+  for (const code of ["D03", "D04", "D05", "D12"]) assert.equal(tileClientModuleFor(code)?.autoLabels, "top");
+
+  // ⑧ 화면: 이름 제목 700, 이름 없는 제목 500
+  const mixed = [
+    item({ name: "고덕 센트럴", sublabel: "36층" }),
+    item({ name: null, unnamedTitle: "제2종근린생활시설", sublabel: "1994년", rings: ring(127.0012, 37.5003) }),
+  ];
+  const mixedModel = { center: CENTER, radiusM: 1000, features: [], total: 2, notes: [], polygons: mixed, polygonsTotal: 2, tileCode: "D03" };
+  const svg = renderToStaticMarkup(createElement(MapFigure, { model: mixedModel, width: W, height: 519, fixed: true, basemap: "none", legend: false }));
+  const weightOf = (text) => svg.match(new RegExp(`font-weight="(\\d+)"[^>]*>${text}<`))?.[1];
+  assert.equal(weightOf("고덕 센트럴"), "700");
+  assert.equal(weightOf("제2종근린생활시설"), "500");
+
+  // ⑨ PPT: 이름 제목 run은 bold, 이름 없는 제목 run은 bold 아님
+  const view = { ...toTileView(GODEOK_RESULTS.find((r) => r.tileCode === "A01")), tileId: "t4-d03", code: "D03", title: "D03 제목 fixture", tileType: "diagram", hasFace: false, map: mixedModel, backdrop: mixedModel };
+  const plan = { kind: "tile", view, body: { kind: "result", face: "single" }, faceLabel: null, map: mixedModel, muted: false, pinnedKeys: [], footer: "출처 fixture", no: 1, total: 1 };
+  const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+  const { mapKeysOf } = await import("../../lib/v2/report/report-plan.ts");
+  const images = Object.fromEntries(mapKeysOf(plan).map((key) => [key, PNG]));
+  const zip = await JSZip.loadAsync(await renderReportPptx([plan], images));
+  const xml = await zip.file("ppt/slides/slide1.xml").async("string");
+  const runOf = (text) => xml.match(new RegExp(`<a:r>(?:(?!</a:r>)[\\s\\S])*<a:t>${text}[^<]*</a:t></a:r>`))?.[0];
+  assert.ok(runOf("고덕 센트럴"), "PPT에 이름 라벨 run");
+  assert.ok(runOf("제2종근린생활시설"), "PPT에 이름 없는 라벨 run");
+  assert.match(runOf("고덕 센트럴"), /b="1"/);
+  assert.doesNotMatch(runOf("제2종근린생활시설"), /b="1"/);
+  console.log("test-v2-label-render task4: ok");
+}

@@ -1040,8 +1040,8 @@ function addLabels(slide: Slide, code: string, scene: MapScene): void {
     const lastLine = placement.text.lines.length - 1;
     const runs = placement.text.lines.flatMap((line, li) => {
       const br = li < lastLine ? { breakLine: true } : {};
-      if (line.kind === "joined") return [{ text: line.title, options: { bold: true, color: INK } }, { text: ` · ${line.detail}`, options: { color: "5C5F66", ...br } }];
-      return [line.kind === "title" ? { text: line.text, options: { bold: true, color: INK, ...br } } : { text: line.text, options: { color: "5C5F66", ...br } }];
+      if (line.kind === "joined") return [{ text: line.title, options: { bold: placement.text.titleIsName, color: INK } }, { text: ` · ${line.detail}`, options: { color: "5C5F66", ...br } }];
+      return [line.kind === "title" ? { text: line.text, options: { bold: placement.text.titleIsName, color: INK, ...br } } : { text: line.text, options: { color: "5C5F66", ...br } }];
     });
     slide.addText(runs, { x: pxX(box.x0 + 8 * scene.unit), y: pxY(box.y0 + 3 * scene.unit), w: pxW(Math.max(1, box.x1 - box.x0 - 12 * scene.unit)), h: pxH(Math.max(1, box.y1 - box.y0 - 6 * scene.unit)), valign: "top", fontFace: FONT, fontSize: fontPt(placement.text.fontSize, 7), color: dimmed ? "8C919B" : INK, transparency: dimmed ? 80 : 0, margin: 0, fit: "shrink", breakLine: false, objectName: tag(code, key, `라벨 · ${display}`, "text") });
   }
