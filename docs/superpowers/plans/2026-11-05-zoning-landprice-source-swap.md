@@ -1,5 +1,7 @@
 # 용도지역·구역·정비구역·공시지가 원천 교체(VWorld 24·6 → data.go.kr) Implementation Plan
 
+> **보류 (2026-11-05 사용자 결정):** Task 1 게이트 실패(포털 파일이 같은 VWorld 파일로 넘김) 뒤 대체 원천 탐색도 막혀(토지이음 받기 차단, 공시지가 전국 원천 없음), 사용자가 「포털 『이용허락범위 제한 없음』을 근거로 지금 VWorld 다운로드 자료를 계속 쓴다」로 정했다. 이 계획은 실행하지 않는다. 근거: vault `10-Projects/16-SiteAnalysis/Decisions/2026-11-05 라이선스 미지정 VWorld 다운로드는 포털 제한 없음 근거로 계속 쓴다.md`. 영리 전환 때 다시 본다.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** VWorld 다운로드 dsId 24(용도지역지구정보, 「라이센스 미지정」)와 dsId 6(개별공시지가, 「라이센스 미지정」)에서 받아 저장해 쓰던 자료를 공공데이터포털의 같은 국토교통부 자료 — 15148355 일별용도지역지구정보 SHP(「이용허락범위 제한 없음」)와 15052266 개별공시지가정보 CSV(「제한 없음」) — 로 바꾼 reference 새 판을 게시하고, 출처 장·각주·가이드 문구를 바꾼다. 같은 원본인지 먼저 대조하고, 다르면 멈춘다.
