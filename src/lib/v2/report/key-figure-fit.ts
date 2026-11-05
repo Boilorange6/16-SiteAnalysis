@@ -238,7 +238,7 @@ function fitAt({ figure, badges, grades, filterLine, sentence, width, columns, n
   const cellFullW = (inner - (columns - 1) * 0.02) / columns;
   const textW = cellFullW - 0.12;
   let statValuePt = 15 * s;
-  while (statValuePt > 9 * s && stats.some((stat) => textIn(stat.value, statValuePt) * 1.1 > textW)) statValuePt -= 0.5;
+  while (statValuePt > 8 * s && stats.some((stat) => textIn(stat.value, statValuePt) * 1.1 > textW)) statValuePt -= 0.5;
   // 보조 숫자 값은 한 줄이다. 줄일 만큼 줄여도 넘치면 …로 닫는다(PPT 상자는 자르지 않으므로 여기서 자른다).
   const statValueText = stats.map((stat) => wrapToLines(stat.value, statValuePt, textW, 1)[0] ?? "");
   const statValueClipped = stats.map((stat, i) => statValueText[i] !== stat.value.trim());

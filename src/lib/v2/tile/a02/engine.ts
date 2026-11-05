@@ -6,10 +6,11 @@ import { candidate, fmt, makeTile, missing, nearestHit, nearestM, nearestN, obs,
 import { notProvided } from "../../engine/tiles/not-provided";
 import { assignedSchools, schoolZoneSources, siteZones, zoneName, zoneOffice } from "../../engine/tiles/school-zone-shared";
 import { formatDistanceM } from "../../ui/tile-view";
+import { ASSIGNED_SCHOOL_SUBLABEL } from "./labels";
 
 export const SCHOOL_SEARCH_MIN_M = 1500;
 export const SCHOOL_ZONE_NOTE = "통학구역 도형 미확보 — 배정은 교육청 확인";
-export const ASSIGNED_SCHOOL_SUBLABEL = "통학구역 배정";
+export { ASSIGNED_SCHOOL_SUBLABEL };
 const LABELED_SCHOOLS = 8;
 
 const LEVELS = [

@@ -705,6 +705,10 @@ for (const format of ["wide", "a3", "a4"]) {
   assert.ok(f.statValueText[0].endsWith("…") && textIn(f.statValueText[0], f.statValuePt) * 1.1 <= f.rows.stats[0].value.w + 1e-6, "보조 숫자 값은 칸 안에서 …로 닫는다");
   assert.equal(f.statValueClipped[1], false);
   assert.equal(f.statValueText[1], "73%");
+  // T11: A02 셋째 칸 배정 초등학교 이름(8글자)은 ②(세 칸)에서 세 칸 함께 줄여 잘리지 않는다
+  const a02 = keyFigureFit({ figure: { question: "q", answer: { value: "196m", kind: "number" }, stats: [{ value: "5개교", label: "1km 안 초등학교" }, { value: "4개교", label: "1km 안 중학교" }, { value: "서울대치초등학교", label: "통학구역 배정" }] }, badges: [], grades: [], filterLine: null, sentence: null, width: 3.76, columns: 3, summaryPt: 13 });
+  assert.equal(a02.statValueClipped[2], false, "배정 학교 이름이 칸 안에 들어간다");
+  assert.ok(a02.statValuePt < 15 && a02.statValuePt >= 8, "세 칸이 함께 줄었다");
   assert.equal(f.subClipped, true, "보조 줄이 두 줄을 넘어 …로 닫혔다");
   assert.equal(f.subFull, fig.sub);
   assert.equal(f.sentenceClipped, false);
