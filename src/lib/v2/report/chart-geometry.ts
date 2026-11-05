@@ -11,7 +11,7 @@ export type ChartShape =
   | { kind: "text"; x: number; y: number; w: number; h: number; text: string; pt: number; bold?: boolean; color: string; align: "left" | "right" | "center"; name: string };
 export type ChartBox = { x: number; y: number; w: number; h: number }; // 인치
 
-const C = { track: "#f1efea", grid: "#ecebe6", axis: "#77766f", label: "#3b3a35", strong: "#1d1d1b", siteFill: "#f2b6b8", siteStroke: "#c9404a", lightBar: "#b9b4aa", bar: "#9db3d4" };
+const C = { track: "#f1efea", grid: "#ecebe6", axis: "#77766f", label: "#3b3a35", strong: "#1d1d1b", siteFill: "#f2b6b8", siteStroke: "#c9404a", median: "#15171c", mean: "#B45309", lightBar: "#b9b4aa", bar: "#9db3d4" };
 const PX = 1 / 96;
 const AXIS_PT = 7.5; // 시안 10 px
 const LABEL_PT = 8.6; // 시안 11.5 px
@@ -167,8 +167,8 @@ function scatterShapes(d: Scatter, radiusM: number, box: ChartBox, scale: number
 
   const yMed = Y(d.median);
   const yMean = Y(d.mean);
-  out.push({ kind: "line", x1: px, y1: yMean, x2: px + pw, y2: yMean, stroke: C.strong, width: 0.75, dash: true, name: "chart-distance-mean" });
-  out.push({ kind: "line", x1: px, y1: yMed, x2: px + pw, y2: yMed, stroke: C.strong, width: 0.9, name: "chart-distance-median" });
+  out.push({ kind: "line", x1: px, y1: yMean, x2: px + pw, y2: yMean, stroke: C.mean, width: 0.75, dash: true, name: "chart-distance-mean" });
+  out.push({ kind: "line", x1: px, y1: yMed, x2: px + pw, y2: yMed, stroke: C.median, width: 0.9, name: "chart-distance-median" });
   // 두 선이 글자 높이보다 가까우면 위쪽 선의 글자는 선 위, 아래쪽 선의 글자는 선 아래에 엇갈려 둔다(두 글자가 한 줄에서 맞닿지 않는다.
   // 실제 글꼴 폭은 어림보다 넓어 나란히 두면 붙는다). 아래쪽 글자가 x 눈금 줄까지 내려가면 선 위쪽에 틈을 두고 두 줄로 쌓는다.
   const gap = 0.03 * scale;
@@ -190,7 +190,7 @@ function scatterShapes(d: Scatter, radiusM: number, box: ChartBox, scale: number
   const [siteAbove, siteMid, siteBelow] = siteSpots;
   const sides = (["right", "left"] as const).map((align) => {
     const ax = align === "right" ? right : px + 0.04 * scale;
-    const labels = [text("median-label", medText, pt, C.strong, align, ax, yMedLabel, true), text("mean-label", meanText, pt, C.label, align, ax, yMeanLabel)];
+    const labels = [text("median-label", medText, pt, C.median, align, ax, yMedLabel, true), text("mean-label", meanText, pt, C.mean, align, ax, yMeanLabel)];
     const r = (dense ? 0.018 : 0.03) * scale;
     const covered = d.points.filter((p) => labels.some((l) => X(p.d) > l.x - r && X(p.d) < l.x + l.w + r && Y(p.v) > l.y - r && Y(p.v) < l.y + l.h + r)).length;
     const hits = (s: TextShape | undefined) => !!s && labels.some((l) => overlapArea(l, s) > 0);

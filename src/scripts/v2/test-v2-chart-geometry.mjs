@@ -104,6 +104,12 @@ for (const scale of SCALES) {
   assert.ok(Math.abs(mean.y1 - yOf(6.2)) < EPS, "평균 선 y");
   assert.equal(med.dash, undefined, "중앙값은 실선");
   assert.equal(mean.dash, true, "평균은 점선");
+  // 선색으로 구분, 라벨 글자색 = 그 선 색(2026-11-05 사용자 답 ⑤). 「대지 평균」 빨강과 겹치지 않는다.
+  assert.equal(med.stroke, "#15171c");
+  assert.equal(mean.stroke, "#B45309");
+  assert.equal(byName(shapes, "chart-distance-median-label").color, med.stroke, "중앙값 글자색 = 선 색");
+  assert.equal(byName(shapes, "chart-distance-mean-label").color, mean.stroke, "평균 글자색 = 선 색");
+  assert.notEqual(byName(shapes, "chart-distance-site-label").color, mean.stroke, "대지 평균 글자색과 다르다");
 
   // 점: 색마다 한 묶음, 처음 나온 순서, 입력 순서 유지, x = 거리 비
   const dots = shapes.filter((s) => s.kind === "dots" && s.name.startsWith("chart-distance-dots-"));
