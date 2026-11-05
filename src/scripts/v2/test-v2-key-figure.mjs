@@ -224,6 +224,13 @@ const a02 = (zone = 1, features = [feature("school_nearest", "서울대치초등
   // 배정 지물이 있으면 셋째 칸은 그 학교 이름(통학구역 안일 때만), 없으면 안/밖 그대로(T11, 사용자 답 ①B)
   const assignedFeature = feature("school_nearest", "서울대치초등학교", { sublabel: "통학구역 배정 · 직선 196m" });
   assert.deepEqual(kfOf(a02(1, [assignedFeature])).stats[2], stat("서울대치초등학교", "통학구역 배정"));
+  // 공동학구(T14b-1): 가장 가까운 배정 학교 이름 + 「외 n곳」. 먼 학교가 먼저 나와도 가까운 쪽을 고른다.
+  const far = feature("school_middle", "먼초등학교", { sublabel: "통학구역 배정 · 직선 900m", distanceM: 900 });
+  const near = feature("school_nearest", "서울대치초등학교", { sublabel: "통학구역 배정 · 직선 196m", distanceM: 196 });
+  const third = feature("school_middle", "셋째초등학교", { sublabel: "통학구역 배정 · 직선 1.2 km", distanceM: 1200 });
+  assert.deepEqual(kfOf(a02(1, [far, near])).stats[2], stat("서울대치초등학교", "통학구역 배정 · 외 1곳"));
+  assert.deepEqual(kfOf(a02(1, [far, third, near])).stats[2], stat("서울대치초등학교", "통학구역 배정 · 외 2곳"));
+  assert.deepEqual(kfOf(a02(1, [near])).stats[2], stat("서울대치초등학교", "통학구역 배정"), "1곳이면 이름표 그대로");
   assert.deepEqual(kfOf(a02(0, [assignedFeature])).stats[2], stat("밖", "대지 초등 통학구역"), "통학구역 밖이면 안/밖 그대로");
   assert.equal(kfOf(a02(null, [assignedFeature])).stats.length, 2, "통학구역을 모르면 그 칸을 뺀다");
 }
