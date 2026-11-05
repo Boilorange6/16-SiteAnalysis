@@ -101,7 +101,14 @@ const clean = (tile) => {
   for (let i = 1; i < pnus.length; i += 1) {
     insertFeature(db, { stableId: `housing:${i}`, kind: "housing_complex", sourceKey: String(i), releaseId, geometry: { type: "Point", coordinates: [127, 37] }, pnu: pnus[i], name: `단지 ${i}` });
   }
-  const names = lookupComplexNames(db, [...pnus, "없는 PNU"]);
+  // 법인명은 단지명이 아니다: 법인명만 있는 PNU는 이름 없음, 다른 종류 행에 진짜 이름이 있으면 그 이름
+  insertFeature(db, { stableId: "housing:corp", kind: "housing_complex", sourceKey: "corp", releaseId, geometry: { type: "Point", coordinates: [127, 37] }, pnu: "4136011800199990001", name: "(유)갈현상가" });
+  insertFeature(db, { stableId: "housing:corp2", kind: "housing_complex", sourceKey: "corp2", releaseId, geometry: { type: "Point", coordinates: [127, 37] }, pnu: "4136011800199990002", name: "㈜가나다" });
+  insertFeature(db, { stableId: "officetel:corp2", kind: "officetel", sourceKey: "corp2", releaseId, geometry: { type: "Point", coordinates: [127, 37] }, pnu: "4136011800199990002", name: "진짜오피스텔" });
+  const names = lookupComplexNames(db, [...pnus, "없는 PNU", "4136011800199990001", "4136011800199990002"]);
+  assert.equal(names.has("4136011800199990001"), false, "법인명만 있으면 이름 없음");
+  assert.equal(names.get("4136011800199990002"), "진짜오피스텔", "법인명 행은 건너뛰고 다음 행의 이름");
+  names.delete("4136011800199990002");
   assert.equal(names.size, 501);
   assert.equal(names.get(pnus[0]), "대표 아파트", "같은 PNU면 공동주택 이름을 오피스텔보다 우선");
   assert.equal(names.get(pnus[500]), "단지 500", "두 번째 500개 청크도 조회");

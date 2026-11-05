@@ -1,4 +1,5 @@
 import type BetterSqlite3 from "better-sqlite3";
+import { isLabelNoiseName } from "../../ingest/sources/building-names";
 
 const PNU_CHUNK_SIZE = 500;
 const PNU_PATTERN = /^\d{19}$/;
@@ -9,6 +10,7 @@ type NameRow = { pnu: string; name: string | null; kind: string; stable_id: stri
  * 매매·임대차가 가진 PNU를 core의 단지/오피스텔 이름으로 연결한다.
  * 전국 단위 PNU 목록도 SQLite 변수 상한을 넘지 않도록 500개씩 조회한다.
  * 같은 PNU에 여러 행이 있으면 housing_complex를 우선하고 stable_id로 결정한다.
+ * 라벨 제목이 될 수 없는 이름(법인명·동 번호·용도 이름 등, `isLabelNoiseName`)은 이름 없음으로 둔다.
  */
 export function lookupComplexNames(db: BetterSqlite3.Database | null | undefined, pnus: readonly string[]): Map<string, string> {
   const names = new Map<string, string>();
@@ -24,7 +26,7 @@ export function lookupComplexNames(db: BetterSqlite3.Database | null | undefined
       .all(...chunk) as NameRow[];
     for (const row of rows) {
       const name = row.name?.trim();
-      if (name && !names.has(row.pnu)) names.set(row.pnu, name);
+      if (name && !isLabelNoiseName(name) && !names.has(row.pnu)) names.set(row.pnu, name);
     }
   }
   return names;
