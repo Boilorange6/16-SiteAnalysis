@@ -31,7 +31,7 @@ const BASELINE_HASHES = {
   D05: "2b5965a4dcabda48dacc1055e803aaee2be20e6ac14c9959f555dbc527797414", // 2026-10-28 분석 장: 지물 value·valueAxis(Task 1), 건물 면 counted(Task 4)로 갱신
   D06: "4ff7a0359142e9280230ee697f72415683fffef3e7ff80d2b545a83f2c338276", // 2026-10-28 분석 장 Task 4: 건물 면 counted 추가로 갱신
   D07: "c81a0694f5ad126d6aa4a0433ad5ec04846865aac35da89a18205c444f085985", // 2026-10-28 분석 장 Task 4: 건물 면 counted 추가로 갱신
-  D10: "0fd9c1c078ccacde94332ba82332c476b6079493b83f7991ea56479bde4d1ad0", // NGII 영상 부재 문구 2건 변경; 아래 역변환 검증
+  D10: "008d37d46e3c8496220220b18b5e7c49e5e22cc349431c26b94ec65ae2620329", // 수계 지표·범례 이름 변경; 아래 역변환 검증
   D16: "61edc5ebc98a921c31de55b381f14f2a954f00e9e6bcab48188b543ebfae8317",
   S01: "aff5b8d52517cf3355f406d7b96dbe42b27f6eda07de8f9ba8049d78d4966a2e",
   scene: "12e75a01c3f44974f33d7c12aa146616a16b6f17fe122ceacc3892a324ec39c1", // 2026-10-27 벡터 바탕지도 Task 1: 장면 맥락층 optional 필드 추가로 갱신
@@ -199,11 +199,19 @@ try {
       const value = factory(ctx);
       if (code === "D10") {
         const oldOutput = JSON.parse(JSON.stringify(value, (_key, v) => {
+          if (typeof v === "string" && v.endsWith("+no-osm-green-r1")) return v.slice(0, -"+no-osm-green-r1".length);
+          if (v === "하천·수면 면적률") return "OSM 수계 면적률";
+          if (v === "구성비: 하천·수면") return "구성비: OSM 수계";
+          if (v === "하천·수면") return "OSM 수계";
+          return v;
+        }));
+        assert.equal(sha(oldOutput), "0fd9c1c078ccacde94332ba82332c476b6079493b83f7991ea56479bde4d1ad0", "D10 지표 이름만 되돌리면 직전 핀과 같다");
+        const earlierOutput = JSON.parse(JSON.stringify(oldOutput, (_key, v) => {
           if (v === "d10-imagery-fill@1:영상지도 타일을 받지 못함") return "d10-imagery-fill@1:VWorld WMTS 타일을 받지 못함";
           if (v === "영상지도를 받지 못해 수관 면적률·수관 면을 계산하지 않고 OSM 녹지·수계만 표시합니다.") return "수관 검출을 하지 않았습니다. VWorld 영상은 이용조건상 분석(가공)에 쓸 수 없어 수관 면적률·수관 면을 계산하지 않고 OSM 녹지·수계만 표시합니다.";
           return v;
         }));
-        assert.equal(sha(oldOutput), "7ac6f15bc1316f5be5de3cb03fdc4717629321de8a0f20b0db0ab7276a0bdac4", "D10 변경 문구만 되돌리면 이전 핀과 같다");
+        assert.equal(sha(earlierOutput), "7ac6f15bc1316f5be5de3cb03fdc4717629321de8a0f20b0db0ab7276a0bdac4", "D10 변경 문구만 되돌리면 이전 핀과 같다");
       }
       assert.equal(sha(value), BASELINE_HASHES[code], `no-topo ${code} must remain byte-identical to HEAD 01e8932`);
     } finally {

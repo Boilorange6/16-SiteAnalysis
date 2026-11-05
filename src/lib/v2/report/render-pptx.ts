@@ -418,7 +418,7 @@ function legendPlate(s: Slide, p: PlannedSlide & { kind: "tile" }, hasSummary = 
       const x = iconXFor(barW);
       const barY = y + iconDy + (0.26 * iconScale - barH) / 2;
       colors.forEach((color, ci) => {
-        target.addShape("rect", { x: x + (barW * ci) / colors.length, y: barY, w: barW / colors.length, h: barH, fill: { color: hex(color), transparency: fade }, line: { color: INK, width: 0, transparency: 100 }, objectName: `${group}|item-${i}|raster${colors.length > 1 ? `-${ci}` : ""}` });
+        target.addShape("rect", { x: x + (barW * ci) / colors.length, y: barY, w: barW / colors.length, h: barH, fill: { color: hex(color), transparency: 100 - (100 - fade) * (it.fillOpacity ?? 1) }, line: { color: INK, width: 0, transparency: 100 }, objectName: `${group}|item-${i}|raster${colors.length > 1 ? `-${ci}` : ""}` });
       });
       target.addShape("rect", { x, y: barY, w: barW, h: barH, fill: { color: "FFFFFF", transparency: 100 }, line: { color: INK, width: 0.5, transparency: 65 + fade / 3 }, objectName: `${group}|item-${i}|raster-frame` });
     } else if (it.lineSwatch) {

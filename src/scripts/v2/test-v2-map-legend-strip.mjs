@@ -8,7 +8,7 @@ const {
   toggleLegendPin,
   appendUniqueLegendItems,
 } = await import("../../lib/v2/ui/map-legend.ts");
-const { buildingStyleForRaster, layerStyle, NEUTRAL_BUILDING_STYLE, normalizeLegendStripLabels } = await import("../../lib/v2/ui/map-layers.ts");
+const { buildingStyleForRaster, layerStyle, NEUTRAL_BUILDING_STYLE, normalizeLegendStripLabels, rasterLegendItems, RASTER_STYLES } = await import("../../lib/v2/ui/map-layers.ts");
 
 // 세로 휠은 넘치는 띠 안에서만 가로 스크롤로 바뀌고, 끝에서는 페이지 스크롤을 돌려준다.
 assert.equal(legendWheelScrollTarget({ scrollLeft: 0, clientWidth: 300, scrollWidth: 900, deltaX: 0, deltaY: 120 }), 120);
@@ -50,6 +50,9 @@ assert.deepEqual(
   ["수관", "OSM 녹지"],
   "벡터와 같은 표시명인 래스터 범례는 한 번만 남김",
 );
+assert.deepEqual(appendUniqueLegendItems([{ label: layerStyle("osm_water").label, layer: "osm_water" }], [{ label: layerStyle("water").label, layer: "water" }]).map((item) => item.label), ["하천·수면"]);
+assert.equal(RASTER_STYLES.canopy.opacity, 0.3);
+assert.equal(rasterLegendItems({ rasters: [{ name: "canopy", palette: "canopy" }] })[0].fillOpacity, 0.3);
 
 const prefixResult = normalizeLegendStripLabels([
   { label: "지목 · 대지", layer: "jimok:site" },

@@ -55,7 +55,7 @@ export const TILE_CATALOG = {
   D03: { title: "건축물 용도", kind: "diagram", description: "건축물 용도를 건물 단위 구성으로 봅니다.", sources: BUILDING_SOURCES, forms: ["vector"], color: "#B05A3C", mapZoom: { maxDelta: 3, maxAbsZoom: 19 } },
   D04: { title: "준공 연대", kind: "diagram", description: "사용승인 연대별 건물 분포를 봅니다.", sources: BUILDING_SOURCES, forms: ["vector"], color: "#A0522D", mapZoom: { maxDelta: 3, maxAbsZoom: 19 } },
   D05: { title: "건축물 높이", kind: "diagram", description: "층수 기본 보기에서 35 m·12 m 기준과 확인·추정·미상을 레이어로 전환합니다.", calculation: "층수 분포를 기본으로 35 m 이상·12 m 이하 높이 모드를 별도 레이어로 계산하며 층수×3 m 추정은 [추정]으로 분리", sources: BUILDING_SOURCES, forms: ["vector"], color: "#A5673F", mapZoom: { maxDelta: 3, maxAbsZoom: 19 } },
-  D10: { title: "수관·녹지", kind: "diagram", description: "항공사진 기반 수관과 OSM 녹지·수계를 함께 봅니다.", sources: ["ngii_air", "osm_landuse", "osm_water", "ngii_topo"], forms: ["aerial", "raster", "vector"], color: "#3F7D4E", mapZoom: { maxDelta: 3, maxAbsZoom: 19 } },
+  D10: { title: "수관·녹지", kind: "diagram", description: "항공사진 기반 수관과 하천·수면을 봅니다.", sources: ["ngii_air", "osm_landuse", "osm_water", "ngii_topo"], forms: ["aerial", "raster", "vector"], color: "#3F7D4E", mapZoom: { maxDelta: 3, maxAbsZoom: 19 } },
   D11: { title: "구역·지구", kind: "diagram", description: "용도지구·구역 경계를 계층별로 확인합니다.", sources: DISTRICT_SOURCES, forms: ["vector"], color: "#537A8F", mapZoom: { maxDelta: 2 } },
   D12: { title: "도시계획시설", kind: "diagram", description: "도시계획시설의 선·면·점을 유형별로 확인합니다.", sources: FACILITY_SOURCES, forms: ["vector"], color: "#4E7599", mapZoom: { maxDelta: 2 } },
   D13: { title: "도로", kind: "diagram", description: "OSM 도로 중심선 길이와 위계를 확인합니다.", sources: ["osm_roads", "ngii_topo"], forms: ["vector"], color: "#657B8D", mapZoom: { maxDelta: 2 } },

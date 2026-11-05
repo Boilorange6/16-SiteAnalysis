@@ -132,6 +132,7 @@ export function LegendSwatch({ item }: { item: MapLegendItem }) {
       style={{
         "--map-legend-color": item.color,
         "--map-legend-gradient": gradient,
+        opacity: kind === "raster" ? item.fillOpacity : undefined,
         background: item.hollow ? "transparent" : undefined,
       } as CSSProperties}
     />

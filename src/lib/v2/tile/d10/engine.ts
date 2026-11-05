@@ -196,21 +196,21 @@ export function d10(ctx: EngineContext, options: CanopyForOptions = {}): TileRes
     canopyMetric,
     siteMetric,
     imageryFillMetric,
-    greenSources.length > 0
+    ...(!canopy ? [greenSources.length > 0
       ? obs("osm_green_pct", "OSM 녹지 면적률", Math.min(100, percent(green.areaM2, circleArea(ctx.input.radiusM))), "%", "d10-osm-green@1:OSM landuse 반경 교차면적÷π·r²", Math.round(green.areaM2), Math.round(circleArea(ctx.input.radiusM)))
-      : missing("osm_green_pct", "OSM 녹지 면적률", "%", "d10-osm-green@1:OSM 토지이용 자료 확인 불가"),
+      : missing("osm_green_pct", "OSM 녹지 면적률", "%", "d10-osm-green@1:OSM 토지이용 자료 확인 불가")] : []),
     waterAvailable
-      ? obs("osm_water_pct", "OSM 수계 면적률", Math.min(100, percent(waterAreaM2, circleArea(ctx.input.radiusM))), "%", "d10-osm-water@1:OSM water 반경 교차면적÷π·r²", Math.round(waterAreaM2), Math.round(circleArea(ctx.input.radiusM)))
-      : missing("osm_water_pct", "OSM 수계 면적률", "%", "d10-osm-water@1:OSM 수계 자료 확인 불가"),
+      ? obs("osm_water_pct", "하천·수면 면적률", Math.min(100, percent(waterAreaM2, circleArea(ctx.input.radiusM))), "%", "d10-osm-water@1:OSM water 반경 교차면적÷π·r²", Math.round(waterAreaM2), Math.round(circleArea(ctx.input.radiusM)))
+      : missing("osm_water_pct", "하천·수면 면적률", "%", "d10-osm-water@1:OSM 수계 자료 확인 불가"),
     canopy
       ? est("share_canopy_pct", "구성비: 수관", percent(canopyAreaM2, circleAreaM2), "%", "d10-share-layer@1:유효 항공영상 수관 셀의 반경 교차면적÷π·r²", Math.round(canopyAreaM2), Math.round(circleAreaM2))
       : missing("share_canopy_pct", "구성비: 수관", "%", "d10-share-layer@1:유효 항공영상 없음"),
-    greenSources.length > 0
+    ...(!canopy ? [greenSources.length > 0
       ? obs("share_osm_green_pct", "구성비: OSM 녹지", percent(green.areaM2, circleAreaM2), "%", "d10-share-layer@1:OSM landuse 반경 교차면적÷π·r²", Math.round(green.areaM2), Math.round(circleAreaM2))
-      : missing("share_osm_green_pct", "구성비: OSM 녹지", "%", "d10-share-layer@1:OSM 녹지 자료 확인 불가"),
+      : missing("share_osm_green_pct", "구성비: OSM 녹지", "%", "d10-share-layer@1:OSM 녹지 자료 확인 불가")] : []),
     waterAvailable
-      ? obs("share_osm_water_pct", "구성비: OSM 수계", percent(waterAreaM2, circleAreaM2), "%", "d10-share-layer@1:OSM water 반경 교차면적÷π·r²", Math.round(waterAreaM2), Math.round(circleAreaM2))
-      : missing("share_osm_water_pct", "구성비: OSM 수계", "%", "d10-share-layer@1:OSM 수계 자료 확인 불가"),
+      ? obs("share_osm_water_pct", "구성비: 하천·수면", percent(waterAreaM2, circleAreaM2), "%", "d10-share-layer@1:OSM water 반경 교차면적÷π·r²", Math.round(waterAreaM2), Math.round(circleAreaM2))
+      : missing("share_osm_water_pct", "구성비: 하천·수면", "%", "d10-share-layer@1:OSM 수계 자료 확인 불가"),
     canopy
       ? est("exg_threshold", "ExG 검출 임계값", Math.round(canopy.threshold * 1000) / 1000, "ExG", "d10-exg-threshold@1:유효 항공영상 ExG Otsu 임계값(0.04~0.20)")
       : missing("exg_threshold", "ExG 검출 임계값", "ExG", "d10-exg-threshold@1:유효 항공영상 없음"),
@@ -218,7 +218,7 @@ export function d10(ctx: EngineContext, options: CanopyForOptions = {}): TileRes
 
   const status: TileResult["status"] = canopy && canopy.missingTiles === 0 ? "complete" : "partial";
   const topoBuildingsApplied = canopy?.buildingMaskApplied && ctx.topoBuildingSupplementByRadius.get(ctx.input.radiusM + SUN_INFLUENCE_M);
-  const sources = [...imagerySources, ...greenSources, ...waterSources, ...(canopy?.buildingMaskApplied ? sunBuildingSources(ctx) : []), ...((topoWater.applied || topoBuildingsApplied) ? [ctx.topo!.source] : [])];
+  const sources = [...imagerySources, ...(!canopy ? greenSources : []), ...waterSources, ...(canopy?.buildingMaskApplied ? sunBuildingSources(ctx) : []), ...((topoWater.applied || topoBuildingsApplied) ? [ctx.topo!.source] : [])];
   const limitations: TileResult["limitations"] = canopy ? [
     { kind: "estimated", note: "항공사진 색 지수(ExG) 기반 수관 검출 · 재현율 미검증(sitedia 공개 재현율 약 70% 수준 예상)" },
     canopy.buildingMaskApplied
@@ -232,16 +232,16 @@ export function d10(ctx: EngineContext, options: CanopyForOptions = {}): TileRes
   if (canopy && canopy.missingTiles > 0) limitations.push({ kind: "partial", note: `영상지도 ${canopy.missingTiles}/${canopy.totalTiles}개 타일을 받지 못해 유효 영역만 표시했습니다.` });
   const displayStep = canopy ? Math.ceil(Math.max(canopy.grid.cols, canopy.grid.rows) / MAX_RASTER_SIDE) : 1;
   if (canopy && displayStep > 1) limitations.push({ kind: "estimated", note: `지도 표시용 수관은 ${displayStep * canopy.grid.cellM}m 격자로 묶어 그림(다수결) · 수관 면적률은 ${canopy.grid.cellM}m 격자로 계산` });
-  if (greenSources.length === 0) limitations.push({ kind: "not_provided", note: "OSM 녹지 면 자료를 확인하지 못해 수관과 별도인 보조층을 표시하지 않았습니다." });
+  if (!canopy && greenSources.length === 0) limitations.push({ kind: "not_provided", note: "OSM 녹지 면 자료를 확인하지 못해 수관과 별도인 보조층을 표시하지 않았습니다." });
   if (!waterAvailable) limitations.push({ kind: "not_provided", note: "OSM 수계 면 자료를 확인하지 못해 수관과 별도인 보조층을 표시하지 않았습니다." });
-  limitations.push({ kind: "unknown", note: "수관·OSM 녹지·OSM 수계는 독립 레이어라 서로 겹칠 수 있어 구성비 합이 100%가 아닐 수 있습니다. 수관 구성비의 분모는 π·반경²이며 항공영상 결측 영역은 분자에서 제외합니다." });
+  limitations.push({ kind: "unknown", note: canopy ? "수관과 하천·수면은 독립 레이어라 서로 겹칠 수 있어 구성비 합이 100%가 아닐 수 있습니다. 수관 구성비의 분모는 π·반경²이며 항공영상 결측 영역은 분자에서 제외합니다." : "수관·OSM 녹지·OSM 수계는 독립 레이어라 서로 겹칠 수 있어 구성비 합이 100%가 아닐 수 있습니다. 수관 구성비의 분모는 π·반경²이며 항공영상 결측 영역은 분자에서 제외합니다." });
 
   const polygonCandidates: PolygonCandidate[] = [];
-  polygonCandidates.push(...green.polygons, ...water.polygons, ...topoWater.polygons);
+  polygonCandidates.push(...(!canopy ? green.polygons : []), ...water.polygons, ...topoWater.polygons);
   const basisMetricIds = metrics.filter((metric) => (metric.status === "estimated" || metric.status === "observed") && !metric.id.startsWith("share_")).map((metric) => metric.id);
   const canopyText = canopy ? `항공사진 검출 수관 ${canopyMetric.value?.toFixed(1)}%` : "항공사진 수관 자료 미확인";
   const greenText = greenSources.length > 0 ? `OSM 녹지 ${metrics.find((metric) => metric.id === "osm_green_pct")?.value?.toFixed(1)}%` : "OSM 녹지 자료 미확인";
-  const sentence = `${canopyText}, ${greenText} → 항공사진 색 기반 수관과 OSM 녹지·수계를 분리해 표시한 현황 → 촬영시기·현장 수관과 녹지 경계는 원본과 현장에서 확인할 것`;
+  const sentence = canopy ? `${canopyText} → 항공사진 색 기반 수관과 하천·수면을 표시한 현황 → 촬영시기·현장 수관은 원본과 현장에서 확인할 것` : `${canopyText}, ${greenText} → 항공사진 색 기반 수관과 OSM 녹지·수계를 분리해 표시한 현황 → 촬영시기·현장 수관과 녹지 경계는 원본과 현장에서 확인할 것`;
   const tile = makeTile(ctx, {
     code: "D10",
     type: "diagram",
@@ -249,7 +249,7 @@ export function d10(ctx: EngineContext, options: CanopyForOptions = {}): TileRes
     metrics,
     judgment: { ruleId: "D10-canopy@1", basisMetricIds, sentence, level: null, criteria: null },
     sources,
-    layers: ["canopy", "osm_green", "osm_water", ...(topoWater.applied ? ["water"] : [])],
+    layers: ["canopy", ...(!canopy ? ["osm_green"] : []), "osm_water", ...(topoWater.applied ? ["water"] : [])],
     polygons: polygonCandidates,
     limitations,
   });

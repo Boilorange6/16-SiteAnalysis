@@ -1416,7 +1416,7 @@ export function LegendPanel({ slide, rect, unit, format = (slide.format ?? "wide
         );
         // 썸네일(버튼 안)처럼 조작할 수 없는 범례는 button을 중첩하지 않는다.
         const swatch = item.swatch === "raster"
-          ? <span className={styles.legendSwatchRaster} data-swatch="raster" style={{ background: rasterSwatchBackground(item) }} aria-hidden="true" />
+          ? <span className={styles.legendSwatchRaster} data-swatch="raster" style={{ background: rasterSwatchBackground(item), opacity: item.fillOpacity }} aria-hidden="true" />
           : item.lineSwatch || item.legendSwatch
             ? <LegendSwatch item={item} />
             : <span className={styles.legendSwatch} style={{ background: item.color }} aria-hidden="true" />;

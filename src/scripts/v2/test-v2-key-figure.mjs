@@ -433,7 +433,7 @@ const d05Metrics = (withAssumed = true) => [
   assert.equal(kf.question, "반경 수관 면적률");
   assert.deepEqual(kf.answer, { value: "33.8%", kind: "number" });
   assert.equal(kf.sub, "반경 1km 원 면적 기준");
-  assert.deepEqual(kf.stats, [stat("33.5%", "대지 수관 면적률"), stat("13.8%", "OSM 녹지")]);
+  assert.deepEqual(kf.stats, [stat("33.5%", "대지 수관 면적률")]);
 }
 
 // D11 — 대지에 걸친 구역을 결과가 알려 주지 않으니 반경 교차면적(㎡ 7자리를 km²로)

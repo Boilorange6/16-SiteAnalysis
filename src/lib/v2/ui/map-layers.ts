@@ -420,7 +420,8 @@ export const LAYER_STYLES: Record<string, LayerStyle> = {
   // 수관 면은 선이 없다(사용자 결정 2026-11-02): "zone" 톤의 흰 1.7u 선이 수관 덩어리를 얼룩으로 만든다. stroke "none"이라 PPT도 선 없음.
   canopy: { ...S("수관", "#2E7D32"), stroke: "none", strokeWidth: 0, fillOpacity: 0.3 },
   osm_green: S("OSM 녹지", "#5FAE5B"),
-  osm_water: S("OSM 수계", "#4F9DA6"),
+  osm_water: { ...S("하천·수면", "#6AAED6"), stroke: "none", strokeWidth: 0, fillOpacity: 0.6 },
+  water: { ...S("하천·수면", "#6AAED6"), stroke: "none", strokeWidth: 0, fillOpacity: 0.6 },
   walk_5: S("도보 5분", "#4D9D7E"),
   walk_10: S("도보 10분", "#8FC9B3"),
   walk_15: S("도보 15분", "#CDE8DC"),
@@ -462,7 +463,7 @@ export const RASTER_STYLES: Record<string, RasterStyle> = {
     legendTicks: [0, 0.25, 0.5, 0.75, 1],
     legendNote: "색 stop: 0·25·50·65·75·85·92·100% · 낮음=닫힘, 높음=열림",
   },
-  canopy: { mode: "mask", colors: ["#2E7D32"], opacity: 0.7, label: "수관" },
+  canopy: { mode: "mask", colors: ["#2E7D32"], opacity: 0.3, label: "수관" },
 };
 const FALLBACK: LayerStyle = S("기타", "#7A7E87");
 
@@ -661,7 +662,7 @@ export function rasterLegendItems(model: Pick<MapModel, "rasters" | "legend">): 
     return [{ layer: `raster:${raster.name}`, id: `raster:${raster.name}:continuous`, label: `${title}${range}`, color: style.colors[0] ?? "#43566B", colors: [...style.colors], swatch: "raster", static: true }];
   }
   if (style.mode === "mask") {
-    return [{ layer: `raster:${raster.name}`, id: `raster:${raster.name}:mask`, label: title, color: style.colors[0] ?? "#43566B", swatch: "raster", static: true }];
+    return [{ layer: `raster:${raster.name}`, id: `raster:${raster.name}:mask`, label: title, color: style.colors[0] ?? "#43566B", fillOpacity: style.opacity, swatch: "raster", static: true }];
   }
   return rasterLegendEntries(raster, style, model.legend ?? []).map((entry, index) => ({
     layer: `raster:${raster.name}`,

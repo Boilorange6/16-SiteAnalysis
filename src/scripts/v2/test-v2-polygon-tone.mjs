@@ -25,11 +25,15 @@ for (const l of ["zone:주거", "district:지구단위계획", "facility:교통"
 for (const l of ["school_zone_elem", "school_zone_elem_site", "school_zone_middle", "school_zone_middle_site", "school_zone_high", "school_zone_high_site", "maint_stage:정비계획", "maint_stage:미확인"]) assert.equal(polygonTone(l), "zone", l);
 // 스타일이 fillOpacity·stroke·strokeWidth·dash·hatch를 직접 정하면 지금 값 그대로(null)
 for (const l of ["use:미상", "maint_area:모아타운", "park", "trade_district_q1", "dens_0", "block_open", "svf_building", "sun_face", "topo_coverage", "parcel_picker", "canopy"]) assert.equal(polygonTone(l), null, l);
-// 수관 면은 선이 없다(사용자 결정 2026-11-02: 흰 선이 수관 덩어리를 얼룩으로 만든다). OSM 녹지·수계는 이번에 그대로 구역 면.
+// 수관과 하천·수면은 외곽선이 없고 OSM 녹지는 구역 면이다(2026-11-05 결정).
 assert.equal(polygonPaint("canopy", layerStyle("canopy"), false).stroke, "none", "수관 면은 선 없음");
 assert.equal(polygonPaint("canopy", layerStyle("canopy"), true).stroke, "none");
 assert.equal(polygonPaint("canopy", layerStyle("canopy"), false).fillOpacity, 0.3, "수관 면 채움은 구역 면과 같은 30 %를 유지한다(선만 없앤다)");
-for (const l of ["osm_green", "osm_water"]) assert.equal(polygonTone(l), "zone", l);
+assert.equal(polygonTone("osm_green"), "zone");
+for (const l of ["osm_water", "water"]) {
+  assert.equal(polygonTone(l), null, l);
+  assert.deepEqual(polygonPaint(l, layerStyle(l), false), { fillOpacity: 0.6, stroke: "none", strokeWidth: 0 });
+}
 
 // polygonPaint
 assert.deepEqual(polygonPaint("use:주거", layerStyle("use:주거"), false), { fillOpacity: 0.25, stroke: null, strokeWidth: 0 });
