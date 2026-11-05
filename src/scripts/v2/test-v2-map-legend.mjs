@@ -270,7 +270,7 @@ for (const model of [d10Raster, { ...d10Raster, polygons: [] }]) {
   assert.equal(hidden.polygons.length, 0, "옛 저장본의 수관 면도 함께 사라진다");
 }
 const canopyRgba = paintRgba({ name: "canopy", palette: "canopy", kind: "mask", dtype: "u8", cols: 3, rows: 1, bands: 1, nodata: 255, scale: 1, offset: 0 }, Uint8Array.of(1, 0, 255), RASTER_STYLES.canopy);
-assert.deepEqual([canopyRgba[3], canopyRgba[7], canopyRgba[11]], [179, 0, 0], "수관만 칠하고 비수관·결측은 투명");
+assert.deepEqual([canopyRgba[3], canopyRgba[7], canopyRgba[11]], [77, 0, 0], "수관만 칠하고(진하기 30 %, 2026-11-05 D10_LOOK) 비수관·결측은 투명");
 const d10DuplicateEngine = {
   ...base,
   polygons: polygons("canopy", 1),
