@@ -72,6 +72,12 @@ export type TileClientLayers = {
   baseExcludes?: readonly string[];
   /** 타일 고유 레이어 id를 처리하며, 미처리 시 undefined를 반환한다. */
   filter?: (model: MapModel | null, layerId: string) => MapModel | null | undefined;
+  /** 저장된 구형 레이어 id를 현재 id로 변환한다. */
+  normalizeId?: (layerId: string) => string;
+  /** 필터 결과의 범례를 타일 규칙에 맞게 정리한다. */
+  trimLegend?: (model: MapModel | null) => MapModel | null;
+  /** 레이어 전환에 필터 전 지도를 보존한다. */
+  preserveSourceMap?: boolean;
 };
 
 export type TileCutCandidate = { cut: object; label: string; disabled: boolean };
@@ -118,6 +124,8 @@ export type TileCutModule = {
 
 export interface TileClientModule {
   code: string;
+  /** 면 레이어의 그리기 순서 키를 제공한다. */
+  polygonDrawOrder?: (layer: string) => number;
   /** 「top」: 우선순위 2만 자동 라벨 후보로 삼는다(우선순위 0·1은 사용자가 고정할 때만 보인다). */
   autoLabels?: "top";
   /** 「top」 모드에서 자동 후보를 이 접두의 레이어로 좁힌다(D05: 옛 저장 결과의 `tall_ge35*` 우선순위 2가 지도를 덮지 않게 `floors_`). */

@@ -21,6 +21,12 @@ function a04KeyFigure(result: TileResult, helpers: TileHeadlineHelpers): KeyFigu
 
 export const a04ClientModule = {
   code: "A04",
+  polygonDrawOrder: (layer: string) => {
+    if (layer === "green_zone" || layer === "green_parcel") return 0;
+    if (layer === "water_parcel") return 1;
+    if (layer === "park" || layer === "park_nearest") return 2;
+    return 3;
+  },
   headline: { ids: ["parks", "nearest_park_point_m"] },
   keyFigureFor: a04KeyFigure,
   mapNote: "공원·그 밖의 녹지·하천·수면 평면 레이어 (공원 경계 아님·입구 자료 한계)",

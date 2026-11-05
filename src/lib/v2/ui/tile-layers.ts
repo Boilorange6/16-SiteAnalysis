@@ -1,7 +1,7 @@
 import type { RasterRef, TileResult } from "../tile-result";
 import { tileClientModuleFor } from "../tile/client";
 import type { TileLayerOption } from "../tile/types";
-import { layerStyle, type MapModel } from "./map-layers";
+import type { MapModel } from "./map-layers";
 
 export type { TileLayerOption } from "../tile/types";
 
@@ -29,8 +29,7 @@ const LEGACY_LAYER_FALLBACKS: Record<string, string> = {
 
 export function normalizeLayerId(code: string, layerId: string): string {
   const legacyId = LEGACY_LAYER_FALLBACKS[layerId] ?? layerId;
-  if (code === "A08" && legacyId === "all") return "building_jeonse";
-  return legacyId;
+  return tileClientModuleFor(code)?.layers?.normalizeId?.(legacyId) ?? legacyId;
 }
 
 function currentLayerOptions(options: readonly TileLayerOption[]): TileLayerOption[] {
@@ -60,16 +59,6 @@ type LayeredMapModel = MapModel & {
   rasterOptions?: RasterRef[];
 };
 
-function trimA08Legend(code: string, model: LayeredMapModel | null): LayeredMapModel | null {
-  if (code !== "A08" || model === null || !model.legend) return model;
-  const visibleLabels = new Set([
-    ...model.features.map((feature) => layerStyle(feature.layer).label),
-    ...(model.polygons ?? []).map((polygon) => layerStyle(polygon.layer).label),
-    ...(model.lines ?? []).map((line) => layerStyle(line.layer).label),
-  ]);
-  return { ...model, legend: model.legend.filter((entry) => visibleLabels.has(entry.label)) };
-}
-
 /** 기본 보기에서 빼는 전환 레이어 — 흡수한 타일의 레이어가 기본 보기에 겹쳐 그려지지 않게 (타일 모듈 layers.baseExcludes) */
 function baseExcludesFor(code: string): readonly string[] {
   return tileClientModuleFor(code)?.layers?.baseExcludes ?? [];
@@ -81,7 +70,7 @@ export function filterMapForLayer(model: MapModel | null, code: string, layerId:
   const moduleFilter = tileClientModuleFor(code)?.layers?.filter;
   const normalizedLayerId = normalizeLayerId(code, layerId);
   const moduleResult = moduleFilter?.(model, normalizedLayerId);
-  if (moduleResult !== undefined) return trimA08Legend(code, moduleResult as LayeredMapModel | null);
+  if (moduleResult !== undefined) return (tileClientModuleFor(code)?.layers?.trimLegend?.(moduleResult) ?? moduleResult) as LayeredMapModel | null;
   let matches: ((layer: string) => boolean) | undefined;
   if (normalizedLayerId === "all") {
     const excluded = baseExcludesFor(code).map((id) => optionMatches[id]!);
@@ -92,11 +81,12 @@ export function filterMapForLayer(model: MapModel | null, code: string, layerId:
   const features = model.features.filter((feature) => matches(feature.layer));
   const polygons = (model.polygons ?? []).filter((polygon) => matches(polygon.layer));
   const lines = (model.lines ?? []).filter((line) => matches(line.layer));
-  return trimA08Legend(code, {
+  const filtered = {
     ...layered,
     features,
     total: features.length,
     ...(model.polygons ? { polygons, polygonsTotal: polygons.length } : {}),
     ...(model.lines ? { lines, linesTotal: lines.length } : {}),
-  });
+  };
+  return (tileClientModuleFor(code)?.layers?.trimLegend?.(filtered) ?? filtered) as LayeredMapModel;
 }

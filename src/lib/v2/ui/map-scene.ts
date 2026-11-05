@@ -767,13 +767,6 @@ function recordMapSceneBuild(): void {
   metrics.buildMapSceneCalls = (metrics.buildMapSceneCalls ?? 0) + 1;
 }
 
-function a04PolygonDrawOrder(layer: string): number {
-  if (layer === "green_zone" || layer === "green_parcel") return 0;
-  if (layer === "water_parcel") return 1;
-  if (layer === "park" || layer === "park_nearest") return 2;
-  return 3;
-}
-
 function polygonArea(ring: Array<[number, number]>): number {
   return Math.abs(ring.reduce((sum, point, i) => {
     const previous = ring[(i + ring.length - 1) % ring.length];
@@ -1617,7 +1610,8 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     return { polygon, rings, center, area: polygonArea(outer), index, key: mapElementKey("polygon", polygon.layer, polygon.fid, index) };
   });
   const visiblePolygons = polygons.filter((entry) => !deleted.has(entry.key));
-  if (model.tileCode === "A04") visiblePolygons.sort((a, b) => a04PolygonDrawOrder(a.polygon.layer) - a04PolygonDrawOrder(b.polygon.layer) || a.index - b.index);
+  const polygonDrawOrder = model.tileCode ? tileClientModuleFor(model.tileCode)?.polygonDrawOrder : undefined;
+  if (polygonDrawOrder) visiblePolygons.sort((a, b) => polygonDrawOrder(a.polygon.layer) - polygonDrawOrder(b.polygon.layer) || a.index - b.index);
   const polygonCount = polygons.length;
   const siteParcelModels = model.siteParcel === undefined ? (model.polygons ?? []).filter((polygon) => isSiteParcelLayer(polygon.layer)) : (model.siteParcel ?? []);
   const siteParcels: MapScenePolygon[] = siteParcelModels.map((polygon, index) => {

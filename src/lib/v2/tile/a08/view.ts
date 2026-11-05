@@ -30,6 +30,16 @@ const layerOptions = (_result: TileResult) => [
 
 const normalizeLayerId = (layerId: string) => layerId === "all" ? DEFAULT_LAYER : layerId;
 
+function trimLegend(model: MapModel | null): MapModel | null {
+  if (model === null || !model.legend) return model;
+  const visibleLabels = new Set([
+    ...model.features.map((feature) => layerStyle(feature.layer).label),
+    ...(model.polygons ?? []).map((polygon) => layerStyle(polygon.layer).label),
+    ...(model.lines ?? []).map((line) => layerStyle(line.layer).label),
+  ]);
+  return { ...model, legend: model.legend.filter((entry) => visibleLabels.has(entry.label)) };
+}
+
 function matchesBuildingLayer(layer: string, contract: "jeonse" | "monthly"): boolean {
   const prefix = `rent_${contract}`;
   // W2 이전 저장 결과는 분위 레이어 suffix 없이 이 정확한 id를 사용했다.
@@ -92,6 +102,9 @@ export const a08ClientModule = {
   layers: {
     options: layerOptions,
     filter: filterA08Map,
+    normalizeId: normalizeLayerId,
+    trimLegend,
+    preserveSourceMap: true,
   },
   // 첫 렌더도 모드 선택과 같은 건물-전세 지도·범례를 사용한다. 구형 all 호출은 여기서도 같은 결과로 귀결된다.
   view: (base) => {
