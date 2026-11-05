@@ -9,7 +9,7 @@ import type { TileResult } from "../../tile-result";
 import type { EngineContext, Limitation, SourceRef } from "../../engine/context";
 import { lookupComplexNames } from "./complex-name";
 import { districtPolygons, formatTradeRecent, legalEmdAreas, legalEmdCode, mean, type DistrictArea, type DistrictMetric } from "./district";
-import { fmt, makeTile, missing, obs, type MapCandidate, type TileDraft } from "../../engine/tiles/common";
+import { fmt, makeTile, missing, nearestN, obs, type MapCandidate, type TileDraft } from "../../engine/tiles/common";
 import { notProvided } from "../../engine/tiles/not-provided";
 
 const SOURCE = "rtms_apt_trade";
@@ -224,9 +224,13 @@ export function a07(ctx: EngineContext): TileResult {
         : `최근 12개월 반경 안 아파트 매매 ${valid.length}건, ㎡당 중앙값 ${fmt(Math.round(med))}만원(중간 절반 ${rangeTxt}만원)${changeTxt} → 관측된 거래 분포이며 시세·감정가가 아니고 단지·면적 구성에 따라 달라짐${change === null ? ", 기간별 거래가 적어 변화는 판단하지 않음" : ""} → 단지·면적별 개별 거래 확인 필요`;
 
   // 지도: 필지(단지) 대표점 단위로 묶는다. 색은 이번 결과 안의 점별 중앙 단가 5분위.
-  const top3 = new Set([...points].sort((a, b) => b.n - a.n || a.i - b.i).slice(0, 3).map((p) => p.pnu));
   const all = points.map((p) => p.m);
   const names = lookupComplexNames(ctx.db("core"), points.map((p) => p.pnu));
+  // 라벨 대상: 이름 있는 단지 중 대지에서 가까운 6곳(중심 → 대표점 직선거리).
+  const [cx, cy] = toUtmk(ctx.input.center);
+  const labeled = new Set(
+    nearestN(points.filter((p) => names.has(p.pnu)), (p) => Math.hypot(toUtmk(p.at)[0] - cx, toUtmk(p.at)[1] - cy), 6, (p) => p.i).map((p) => p.pnu),
+  );
   const district = districtPolygons(
     districtAreas,
     districtMetrics,
@@ -250,7 +254,7 @@ export function a07(ctx: EngineContext): TileResult {
         `㎡당 중앙값 ${fmt(Math.round(p.m))}만원`,
         `최근 ${p.recent.map(formatTradeRecent).join(" / ")}`,
       ].join(" · "),
-      labelPriority: top3.has(p.pnu) && names.has(p.pnu) ? 1 : 0,
+      labelPriority: labeled.has(p.pnu) ? 2 : 0,
       counted: true, // 엔진이 센 거래 단지 — 그래프 개수가 반경 판정 대신 따른다
     },
   }));

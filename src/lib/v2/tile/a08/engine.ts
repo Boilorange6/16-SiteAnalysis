@@ -176,15 +176,8 @@ function rentFeatures(points: RentPoint[], values: readonly number[], startId: n
       lat: Math.round(point.at[1] * 1e6) / 1e6,
       weight: point.metricValue,
       name: point.name,
-      sublabel: point.contractType === "jeonse"
-        ? [
-            point.medianJeonseUnit === null ? "전세" : `전세 ㎡당 중앙값 ${fmt(Math.round(point.medianJeonseUnit))}만원`,
-            `최근 ${point.recent.map(formatRentRecent).join(" / ")}`,
-          ].join(" · ")
-        : [
-            point.medianMonthlyRent === null ? "월세" : `월세 중앙값 ${fmt(Math.round(point.medianMonthlyRent))}만원`,
-            `최근 ${point.recent.map(formatRentRecent).join(" / ")}`,
-          ].join(" · "),
+      // 중앙값은 지표·점 크기로 이미 전해지므로 라벨 상세에서는 뺀다(금액이 줄바꿈으로 끊기던 줄).
+      sublabel: `최근 ${point.recent.map(formatRentRecent).join(" / ")}`,
       labelPriority: top3.has(point.pnu) && point.name !== null ? 1 : 0,
     },
   }));

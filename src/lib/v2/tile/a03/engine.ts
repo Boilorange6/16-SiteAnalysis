@@ -13,6 +13,7 @@ export const STORE_GROUPS = [
   { id: "other", label: "기타", basic: false },
 ] as const;
 export type StoreGroup = (typeof STORE_GROUPS)[number]["id"];
+const LABELED_GROUPS: ReadonlySet<StoreGroup> = new Set(["grocery", "clinic", "pharmacy"]);
 const storeLegendLabel = (group: (typeof STORE_GROUPS)[number]) => group.id === "other" ? "기타 업소" : group.label;
 const pct = (part: number, whole: number) => whole > 0 ? Math.round((part / whole) * 1000) / 10 : 0;
 
@@ -47,11 +48,12 @@ export function a03(ctx: EngineContext): TileResult {
   const map = hits.map((h) => {
     const g = storeGroup(h.properties);
     const isNearest = h === nearestOf[g] && h.distanceM !== null;
-    const sublabel = isNearest && h.distanceM !== null ? formatDistanceM(h.distanceM) : null;
+    const sublabel = isNearest && h.distanceM !== null ? `직선 ${formatDistanceM(h.distanceM)}` : null;
     return candidate(h, `store:${g}`, {
       distanceM: h.distanceM,
       sublabel,
-      labelPriority: isNearest ? 2 : 0,
+      // 라벨은 식료품·의원·약국 최근접만. 나머지 3군 최근접은 강조(highlight)만 둔다.
+      labelPriority: isNearest && LABELED_GROUPS.has(g) ? 2 : 0,
       ...(isNearest ? { highlight: true } : {}),
     });
   });

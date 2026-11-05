@@ -46,6 +46,21 @@ const make = async (options) => {
     ins.run("edge2", "edge-k2", "2026-08-21", 1200 * 100 * 10_000, pnu, tradeRelease);
     market.close();
   }
+  if (options.manyComplexes) {
+    // 이름 있는 단지 9곳(동쪽 100~260 m, 멀수록 거래 많음) + 가장 가까운(50 m) 이름 없는 단지 1곳
+    const parcelRelease = core.prepare("SELECT release_id FROM source_release WHERE source_id = 'parcel'").pluck().get();
+    const market = new Database(join(dir, "versions", "v1", "market.sqlite"));
+    const tradeRelease = market.prepare("SELECT release_id FROM source_release WHERE source_id = 'rtms_apt_trade'").pluck().get();
+    const ins = market.prepare(`INSERT INTO property_transaction (transaction_id, source_record_key, lawd_cd, deal_date, property_type, contract_type, price_krw, deposit_krw, rent_krw, area_m2, floor, cancelled_at, location_id, match_status, release_id)
+      VALUES (?, ?, '41360', ?, 'apt', 'trade', ?, NULL, NULL, 100, 5, NULL, ?, 'located', ?)`);
+    for (let i = 0; i < 10; i += 1) {
+      const pnu = `4136011800200${String(i).padStart(2, "0")}0000`;
+      core.prepare("INSERT INTO parcel_point VALUES (?, ?, ?, ?, ?)").run(pnu, ...at(i === 9 ? 50 : 100 + i * 20, 0), "대", parcelRelease);
+      if (i < 9) insertFeature(core, { stableId: `housing:many-${i}`, kind: "housing_complex", sourceKey: `many-${i}`, releaseId: nameRelease, geometry: { type: "Point", coordinates: CENTER }, pnu, name: `단지${i}` });
+      for (let k = 0; k <= (i === 9 ? 0 : i); k += 1) ins.run(`many${i}-${k}`, `many-k${i}-${k}`, "2026-08-20", 1000 * 100 * 10_000, pnu, tradeRelease);
+    }
+    market.close();
+  }
   core.close();
   const manifest = M.readManifest(dir);
   return (radiusM = 800, analysisDate = "2026-09-30") =>
@@ -130,12 +145,21 @@ const clean = (tile) => {
   const pointA = trades.points.find((point) => point.pnu === "4136011800100010000");
   const pointC = trades.points.find((point) => point.pnu === "1171010100100030000");
   assert.equal(named?.name, "다산 센트럴");
-  assert.equal(named?.labelPriority, 1);
+  assert.equal(named?.labelPriority, 2, "이름 있는 단지는 6곳 안이면 우선순위 2");
   assert.match(named?.sublabel ?? "", new RegExp(`^㎡당 중앙값 ${Math.round(pointA.m).toLocaleString("en-US")}만원 · 최근 `), "A07은 lookupComplexNames 이름과 단가를 사용한다");
   assert.match(named?.sublabel ?? "", /억|만원/);
   assert.equal(unnamed?.name, null);
   assert.match(unnamed?.sublabel ?? "", new RegExp(`^㎡당 중앙값 ${Math.round(pointC.m).toLocaleString("en-US")}만원 · 최근 `));
   assert.equal(unnamed?.labelPriority, 0, "A07 이름이 없으면 대체 문구 없이 priority 0이다");
+  {
+    const mCtx = (await make({ trades: true, manyComplexes: true }))();
+    const m = a07(mCtx);
+    mCtx.close();
+    const labeled = m.presentation.features.filter((feature) => feature.labelPriority === 2);
+    assert.equal(labeled.length, 6, "이름 있는 단지 가까운 6곳만 우선순위 2");
+    assert.deepEqual(labeled.map((feature) => feature.name).sort(), ["단지0", "단지1", "단지2", "단지3", "단지4", "다산 센트럴"].sort(), "가까운 순 여섯(기존 fixture의 다산 센트럴 포함, 거래 수가 많은 먼 단지가 아님)");
+    assert.ok(m.presentation.features.some((feature) => feature.name === null) && m.presentation.features.filter((feature) => feature.name === null).every((feature) => feature.labelPriority === 0), "이름 없는 단지는 가까워도 제외");
+  }
   // 그래프용 값: 모든 거래 점에서 value === weight (㎡당 중앙값, 만원)
   assert.deepEqual(a.presentation.valueAxis, { label: "㎡당 가격", unit: "만원", countUnit: "단지" });
   const tradePoints = a.presentation.features.filter((feature) => feature.layer.startsWith("trade_q"));

@@ -3,10 +3,12 @@ import type { TileResult } from "../../tile-result";
 import type { FeatureHit } from "../../data/features";
 import type { EngineContext } from "../../engine/context";
 import { toUtmk } from "../../crs";
-import { areaInCircle, polygonArea } from "../../engine/tiles/geo";
-import { candidate, hitPoint, lineCandidate, makeTile, missing, nearestHit, nearestM, noDataTile, obs, polygonCandidate, type LineCandidate, type PolygonCandidate, type TileDraft } from "../../engine/tiles/common";
+import { areaInCircle, distanceToGeometryM, polygonArea } from "../../engine/tiles/geo";
+import { candidate, hitPoint, lineCandidate, makeTile, missing, nearestHit, nearestM, nearestN, noDataTile, obs, polygonCandidate, type LineCandidate, type PolygonCandidate, type TileDraft } from "../../engine/tiles/common";
 import { formatDistanceM } from "../../ui/tile-view";
 import { walkField, walkSources, type WalkField, type WalkRoute } from "../../engine/tiles/walk-shared";
+
+const LABELED_PARKS = 6;
 
 interface WalkTarget {
   hit: FeatureHit;
@@ -64,6 +66,9 @@ export function a04(ctx: EngineContext): TileResult {
       : walkPark
         ? `공원 ${hits.length}곳 확인, 대표점까지 직선 ${formatDistanceM(nearest)} → 입구가 아닌 대표점 기준의 거리와 보행망 도보(OSM, 80 m/분, 내부 제안 기준) ${formatDistanceM(walkPark.route.distanceM)}·${walkPark.route.minutes}분을 함께 표시 → 실제 입구와 경계 확인 필요`
         : `공원 ${hits.length}곳 확인, 대표점까지 직선 ${formatDistanceM(nearest)} → 입구가 아닌 대표점 기준의 거리임 → 실제 입구와 경계 확인 필요`;
+  // 라벨 대상: 이름 있는 공원 중 대지에서 가까운 6곳(면은 도형까지 거리). 도보 대상이 그 안에 있으면 그 점의 상세가 도보 글이다.
+  const labeled = new Set(nearestN(hits.filter((h) => h.name), (h) => distanceToGeometryM(ctx.input.center, h.geometry), LABELED_PARKS, (h) => h.featureId));
+  const walkLabeled = walkPark !== null && labeled.has(walkPark.hit);
   const lines: LineCandidate[] = [];
   if (walkPark) {
     const line = lineCandidate(
@@ -75,7 +80,7 @@ export function a04(ctx: EngineContext): TileResult {
       {
         name: walkPark.hit.name ?? null,
         sublabel: `도보 ${formatDistanceM(walkPark.route.distanceM)} · ${walkPark.route.minutes}분`,
-        labelPriority: 2,
+        labelPriority: walkLabeled ? 0 : 2,
       },
     );
     if (line) lines.push(line);
@@ -88,18 +93,22 @@ export function a04(ctx: EngineContext): TileResult {
   for (const h of hits) {
     const isNearest = h === near && h.distanceM !== null;
     const layer = isNearest ? "park_nearest" : "park";
-    const sublabel = isNearest && h.distanceM !== null ? formatDistanceM(h.distanceM) : null;
+    const isLabeled = labeled.has(h);
+    const meters = distanceToGeometryM(ctx.input.center, h.geometry) ?? h.distanceM;
+    const sublabel = h === walkPark?.hit && isLabeled
+      ? `도보 ${formatDistanceM(walkPark.route.distanceM)} · ${walkPark.route.minutes}분`
+      : isLabeled || isNearest ? (meters === null ? null : `직선 ${formatDistanceM(meters)}`) : null;
     const pointExtra = {
       distanceM: h.distanceM,
       name: h.name ?? null,
       sublabel,
-      labelPriority: isNearest ? 2 : 0,
+      labelPriority: isLabeled ? 2 : 0,
       ...(isNearest ? { highlight: true } : {}),
     };
     const polygonExtra = {
       name: h.name ?? null,
       sublabel,
-      labelPriority: isNearest ? 2 : 0,
+      labelPriority: 0,
     };
     if (h.geometry.type === "Polygon" || h.geometry.type === "MultiPolygon") {
       const clipped = areaInCircle(ctx.input.center, ctx.input.radiusM, h.geometry);
@@ -107,8 +116,11 @@ export function a04(ctx: EngineContext): TileResult {
         parkGeometryFailures++;
         continue;
       }
+      // 라벨은 가장 큰 조각 하나에만(같은 공원 조각마다 글이 겹치지 않게).
+      const areas = clipped.parts.map((rings) => polygonArea(rings));
+      const largest = areas.indexOf(Math.max(...areas));
       for (const [partIndex, rings] of clipped.parts.entries()) {
-        const polygon = polygonCandidate(h.featureId * 1000 + partIndex, layer, rings, polygonArea(rings), null, polygonExtra);
+        const polygon = polygonCandidate(h.featureId * 1000 + partIndex, layer, rings, areas[partIndex], null, partIndex === largest && isLabeled ? { ...polygonExtra, labelPriority: 2 } : polygonExtra);
         if (polygon && polygon.areaM2 > 0) polygons.push(polygon);
       }
       continue;

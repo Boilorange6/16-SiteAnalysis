@@ -56,6 +56,14 @@ const makeContext = async (options, radiusM = 800) => {
     }
     reference.close();
   }
+  if (options.extraParks) {
+    const reference = new Database(M.resolveDataPath(dataDir, manifest.files.reference.path));
+    const parkRelease = reference.prepare("SELECT release_id FROM source_release WHERE source_id = 'park'").pluck().get();
+    for (const [id, dx, name] of options.extraParks) {
+      insertFeature(reference, { stableId: `park:${id}`, kind: "park", sourceKey: id, releaseId: parkRelease, geometry: { type: "Point", coordinates: at(dx, 0) }, name, properties: { parkType: "근린공원", areaM2: 1000, designatedAt: null, jibunAddress: null } });
+    }
+    reference.close();
+  }
   return new EngineContext(dataDir, manifest, "d09-test", {
     address: "경기도 남양주시 다산동 100",
     center: CENTER,
@@ -81,20 +89,20 @@ const makeContext = async (options, radiusM = 800) => {
     assert.equal(nearestPark?.name, "p1");
     assert.equal(nearestPark?.highlight, true);
     assert.equal(nearestPark?.label, undefined, "최근접 공원 legacy label 없음");
-    assert.equal(nearestPark?.sublabel, formatDistanceM(nearestPark?.distanceM), "최근접 공원 거리 sublabel");
+    assert.match(nearestPark?.sublabel ?? "", /^도보 .+ · \d+분$/, "도보 대상 공원이 라벨 6곳 안이면 그 점의 상세가 도보 글");
     assert.equal(nearestPark?.labelPriority, 2);
     const polygonPark = tile.presentation.polygons.find((polygon) => polygon.layer === "park");
     assert.equal(polygonPark?.name, "다산근린공원");
     assert.equal(polygonPark?.label, null);
-    assert.equal(polygonPark?.sublabel, null);
-    assert.equal(polygonPark?.labelPriority, 0);
+    assert.match(polygonPark?.sublabel ?? "", /^직선 /, "면 공원도 이름이 있으면 직선 거리 상세");
+    assert.equal(polygonPark?.labelPriority, 2, "이름 있는 공원 4곳은 모두 6곳 안");
     const pointFids = new Set((tile.presentation.features ?? []).filter((feature) => feature.layer.startsWith("park")).map((feature) => feature.fid));
     assert.ok(tile.presentation.polygons.filter((polygon) => polygon.layer.startsWith("park")).every((polygon) => !pointFids.has(polygon.fid)), "같은 공원 면·대표점 중복 금지");
     assert.equal(tile.presentation.lines?.length, 1, "최근접 공원 보행선 하나");
     assert.equal(tile.presentation.lines?.[0]?.name, "p1");
     assert.match(tile.presentation.lines?.[0]?.label ?? "", /^공원 도보 .+ · \d+분$/, "보행선 legacy label 하위 호환");
     assert.match(tile.presentation.lines?.[0]?.sublabel ?? "", /^도보 .+ · \d+분$/);
-    assert.equal(tile.presentation.lines?.[0]?.labelPriority, 2);
+    assert.equal(tile.presentation.lines?.[0]?.labelPriority, 0, "도보 대상이 6곳 안이면 선 라벨은 0(점 라벨이 한 장으로 대신한다)");
     assert.doesNotMatch(tile.judgment.sentence, /운영 공원/);
 
     assert.deepEqual(a04ClientModule.layers.options.map(({ id }) => id), ["all", "park_only", "green_space"], "A04 레이어 선택지와 legacy green_space 유지");
@@ -168,6 +176,23 @@ const makeContext = async (options, radiusM = 800) => {
     assert.equal(legendItemsForModel(a04Model).filter((item) => item.label === "하천·수면").length, 1, "A04 보드 수면 범례 라벨");
     assert.deepEqual(legendItemsForModel(a04Model).map((item) => item.label), ["지정 공원", "그 밖의 녹지", "하천·수면", "최근접 공원", "보행 경로"], "A04 보드 범례 순서");
     assert.equal(layerStyle("walk_route").label, "보행 경로");
+  } finally {
+    ctx.close();
+  }
+}
+
+// 라벨 6곳: 이름 있는 공원 가까운 6곳만 우선순위 2, 가장 가까운 이름 없는 공원은 제외.
+{
+  const extraParks = [["anon-near", 50, null], ...Array.from({ length: 6 }, (_, i) => [`n${i}`, 100 + i * 10, `가까운공원${i}`])];
+  const ctx = await makeContext({ extraParks }, 1500);
+  try {
+    const tile = d09(ctx);
+    const labeled = tile.presentation.features.filter((f) => f.layer.startsWith("park") && f.labelPriority === 2);
+    assert.equal(labeled.length, 6);
+    assert.ok(labeled.every((f) => typeof f.name === "string" && /^가까운공원\d$/.test(f.name) && f.sublabel === `직선 ${formatDistanceM(f.distanceM)}`), "가까운 이름 있는 공원 여섯, 직선 상세");
+    const anon = tile.presentation.features.find((f) => f.name === null);
+    assert.equal(anon?.labelPriority, 0, "이름 없는 공원은 가까워도 라벨 대상이 아니다");
+    assert.equal(tile.presentation.lines?.length ?? 0, 0, "보행망이 없으면 도보 선 없음");
   } finally {
     ctx.close();
   }

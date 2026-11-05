@@ -30,6 +30,15 @@ try {
     name: "먼 식료품점",
     properties: { majorCategory: "소매", midCategory: "종합 소매", minorCategory: "x", categoryCode: "G20405", floor: null, address: null },
   });
+  insertFeature(reference, {
+    stableId: "store:pharmacy-near",
+    kind: "store",
+    sourceKey: "pharmacy-near",
+    releaseId: storeRelease,
+    geometry: { type: "Point", coordinates: at(600, 0) },
+    name: "가까운 약국",
+    properties: { majorCategory: "소매", midCategory: "의약품", minorCategory: "x", categoryCode: "G21501", floor: null, address: null },
+  });
   reference.close();
   ctx = new EngineContext(dataDir, manifest, "a03-w2a", {
     address: "테스트 대지",
@@ -48,21 +57,24 @@ try {
   assert.equal(tile.metrics.find((metric) => metric.id === "nearest_grocery_m")?.value, 100);
   assert.equal(tile.metrics.find((metric) => metric.id === "nearest_clinic_m")?.value, 300);
   assert.equal(tile.metrics.find((metric) => metric.id === "nearest_life_service_m")?.value, 50);
-  assert.equal(tile.metrics.find((metric) => metric.id === "nearest_pharmacy_m")?.status, "missing");
+  assert.equal(tile.metrics.find((metric) => metric.id === "nearest_pharmacy_m")?.value, 600);
 
   const highlightedLayers = tile.presentation.features.filter((feature) => feature.highlight).map((feature) => feature.layer).sort();
-  assert.deepEqual(highlightedLayers, ["store:clinic", "store:eatery", "store:grocery", "store:life_service", "store:other"], "지도 강조는 각 업종군의 최근접 히트를 재사용");
+  assert.deepEqual(highlightedLayers, ["store:clinic", "store:eatery", "store:grocery", "store:life_service", "store:other", "store:pharmacy"], "지도 강조는 각 업종군의 최근접 히트를 재사용");
   const storeFeatures = tile.presentation.features.filter((feature) => feature.layer.startsWith("store:"));
   assert.ok(storeFeatures.every((feature) => typeof feature.name === "string" && feature.name.length > 0), "상가 feature는 원천 상호명을 name으로 전달");
   const nearestFeatures = storeFeatures.filter((feature) => feature.highlight);
-  assert.ok(nearestFeatures.every((feature) => typeof feature.distanceM === "number" && feature.labelPriority === 2 && feature.sublabel === formatDistanceM(feature.distanceM) && feature.label === undefined), "업종군 최근접만 formatted 거리·priority 2");
+  assert.ok(nearestFeatures.every((feature) => typeof feature.distanceM === "number" && feature.sublabel === `직선 ${formatDistanceM(feature.distanceM)}` && feature.label === undefined), "업종군 최근접만 `직선 거리` 상세");
+  const labeledLayers = storeFeatures.filter((feature) => feature.labelPriority === 2).map((feature) => feature.layer).sort();
+  assert.deepEqual(labeledLayers, ["store:clinic", "store:grocery", "store:pharmacy"], "우선순위 2는 식료품·의원·약국 최근접 셋만");
+  assert.ok(storeFeatures.filter((feature) => feature.highlight && !["store:clinic", "store:grocery", "store:pharmacy"].includes(feature.layer)).every((feature) => feature.labelPriority === 0), "생활서비스·음식·기타 최근접은 강조만 두고 라벨 0");
   const nonNearest = storeFeatures.find((feature) => feature.name === "먼 식료품점");
   assert.equal(nonNearest?.highlight, undefined);
   assert.equal(nonNearest?.labelPriority, 0, "비최근접 priority 0");
   assert.equal(nonNearest?.sublabel, null, "비최근접 sublabel 없음");
   assert.equal(layerStyle("store:grocery").label, "식료품");
   const shares = tile.metrics.filter((metric) => metric.id.startsWith("share_"));
-  assert.deepEqual(shares.map((metric) => metric.id), ["share_grocery", "share_clinic", "share_eatery", "share_life_service", "share_other"], "A03 구성비 순서는 실제 업종 범례와 같다");
+  assert.deepEqual(shares.map((metric) => metric.id), ["share_grocery", "share_clinic", "share_eatery", "share_life_service", "share_other", "share_pharmacy"], "A03 구성비 순서는 실제 업종 범례와 같다");
   assert.deepEqual(shares.map((metric) => metric.label), tile.presentation.legend.map((entry) => `구성비: ${entry.label}`));
   assert.ok(Math.abs(Math.round(shares.reduce((sum, metric) => sum + metric.value, 0) * 10) / 10 - 100) <= 0.1, "A03 업종 수 구성비 합계");
   assert.ok(shares.every((metric) => metric.unit === "%" && metric.formulaVersion.startsWith("a03-share-count@1:")));
