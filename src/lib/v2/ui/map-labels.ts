@@ -117,6 +117,8 @@ export type AutomaticLabelCandidate = {
   autoText: string | null;
   labelPriority?: number;
   order: number;
+  /** 대지 중심에서 도형까지의 장면 px. 있으면 같은 등급에서 가까운 쪽이 먼저다. */
+  siteDistance?: number;
   [key: string]: unknown;
 };
 
@@ -134,12 +136,12 @@ export function labelBoxesOverlap(a: MapLabelBox, b: MapLabelBox, gap = 0): bool
     && b.y0 < a.y1 + clearance;
 }
 
-/** 밀집 지도용 순수 선정기: priority 2→1, 엔진 순서, 같은 문구 하나. */
+/** 밀집 지도용 순수 선정기: priority 2→1, 대지에서 가까운 순(있을 때), 엔진 순서, 같은 문구 하나. */
 export function selectAutomaticLabels<T extends AutomaticLabelCandidate>(entries: readonly T[]): T[] {
   const seen = new Set<string>();
   return [...entries]
     .filter((entry) => !!entry.autoText)
-    .sort((a, b) => (b.labelPriority ?? 0) - (a.labelPriority ?? 0) || a.order - b.order)
+    .sort((a, b) => (b.labelPriority ?? 0) - (a.labelPriority ?? 0) || (a.siteDistance !== undefined && b.siteDistance !== undefined ? a.siteDistance - b.siteDistance : 0) || a.order - b.order)
     .filter((entry) => {
       const text = entry.autoText!;
       if (seen.has(text)) return false;

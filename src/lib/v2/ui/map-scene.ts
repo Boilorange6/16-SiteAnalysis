@@ -2,7 +2,7 @@ import type { MapFeature, MapLine, MapPolygon } from "../tile-result";
 import { maxOf, minOf } from "../extent";
 import { automaticLabelText, legacyLabelPriority, mapLabelContent, mapLabelText as formatMapLabelText, selectAutomaticLabels, type MapLabelKind } from "./map-labels";
 import { applyView, framedViewport, makeProjector, metersPerPixel, scaleBar, tilesFor, type BasemapChoice, type MapView, type Viewport } from "./map-projection";
-import { calloutFrame, layoutCallouts, PX, PX_NARROW, type Placed } from "./callout-layout";
+import { calloutFrame, layoutCallouts, PX, PX_NARROW, type CalloutFrame, type Placed } from "./callout-layout";
 import { isSiteParcelLayer } from "./site-parcel";
 import { layerStyle, legendItemsForModel, type MapModel } from "./map-layers";
 import { tileClientModuleFor } from "../tile/client";
@@ -138,6 +138,28 @@ function pointInRing(x: number, y: number, ring: ReadonlyArray<readonly [number,
     if ((ay > y) !== (by > y) && x < ((bx - ax) * (y - ay)) / (by - ay) + ax) inside = !inside;
   }
   return inside;
+}
+
+function pointSegmentDistance(px: number, py: number, a: readonly [number, number], b: readonly [number, number]): number {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const t = dx === 0 && dy === 0 ? 0 : Math.max(0, Math.min(1, ((px - a[0]) * dx + (py - a[1]) * dy) / (dx * dx + dy * dy)));
+  return Math.hypot(px - (a[0] + t * dx), py - (a[1] + t * dy));
+}
+
+/** 대지 중심에서 도형까지의 장면 px 거리. 점은 점까지, 면은 고리까지(면 안이면 0), 선은 꺾은선까지. */
+export function screenShapeDistance(
+  center: readonly [number, number],
+  shape: { kind: "feature"; p: readonly [number, number] } | { kind: "polygon"; rings: ReadonlyArray<ReadonlyArray<readonly [number, number]>> } | { kind: "line"; points: ReadonlyArray<readonly [number, number]> },
+): number {
+  const [x, y] = center;
+  if (shape.kind === "feature") return Math.hypot(x - shape.p[0], y - shape.p[1]);
+  const edges = (ring: ReadonlyArray<readonly [number, number]>) => ring.reduce((best, point, i) => (i === 0 ? best : Math.min(best, pointSegmentDistance(x, y, ring[i - 1]!, point))), Number.POSITIVE_INFINITY);
+  if (shape.kind === "line") return shape.points.length === 1 ? Math.hypot(x - shape.points[0]![0], y - shape.points[0]![1]) : edges(shape.points);
+  const [outer, ...holes] = shape.rings;
+  if (!outer || outer.length === 0) return Number.POSITIVE_INFINITY;
+  if (pointInRing(x, y, outer) && !holes.some((hole) => pointInRing(x, y, hole))) return 0;
+  return Math.min(...shape.rings.map(edges));
 }
 
 /** 대지 윤곽 변마다 치수선(35 m 이상)을 바깥쪽에 만든다. 바깥쪽은 변 가운데 + n·4u가 윤곽 밖인 쪽이다. */
@@ -378,11 +400,22 @@ export const mapTextWidth = (s: string, fs: number) => [...s].reduce((w, ch) => 
 /** 띄어쓰기 없는 이름이 넘칠 때 끊어도 되는 끝말(긴 것부터). 「…부속고/등학교」 대신 「…부속/고등학교」. */
 const NAME_TAIL_BREAKS = ["주민센터", "고등학교", "초등학교", "어린이집", "오피스텔", "중학교", "대학교", "유치원", "도서관", "아파트", "빌딩", "타워", "센터", "병원", "공원", "시장", "교회", "성당"];
 
+/** 띄어쓰기 낱말. 금액(`18억 9,000만원`)은 `…억`과 `…만원` 사이에서 끊기지 않게 한 낱말로 묶는다. */
+function wrapWords(text: string): string[] {
+  const out: string[] = [];
+  for (const word of text.split(" ")) {
+    const prev = out.at(-1);
+    if (prev !== undefined && prev.endsWith("억") && /^\d[\d,]*만원/.test(word)) out[out.length - 1] = `${prev} ${word}`;
+    else out.push(word);
+  }
+  return out;
+}
+
 /** 사용자가 폭을 줄인 말풍선의 줄바꿈. 띄어쓰기에서 먼저 끊고, 한 단어가 넘치면 글자 단위로 끊되 이름 끝말(`NAME_TAIL_BREAKS`)은 한 덩어리로 넘긴다. */
 export function wrapMapText(text: string, fs: number, width: number): string[] {
   const out: string[] = [];
   let line = "";
-  for (const word of text.split(" ")) {
+  for (const word of wrapWords(text)) {
     const next = line ? `${line} ${word}` : word;
     if (mapTextWidth(next, fs) <= width) { line = next; continue; }
     if (line) out.push(line);
@@ -505,6 +538,8 @@ export type MapSceneLabel = MapLabelEntry & {
   small: boolean;
   explicit: boolean;
   highlighted: boolean;
+  /** 대지 중심에서 도형까지의 장면 px (같은 등급 안에서 가까운 순) */
+  siteDistance: number;
   pick: { fid?: string; lng: number; lat: number; kind: "feature" | "polygon" | "line"; key: string };
 };
 
@@ -710,6 +745,7 @@ export type MapScene = {
   routePoints: Array<[number, number]>;
   labels: MapSceneLabel[];
   labelPlacements: MapSceneLabelPlacement[];
+  calloutFrame: CalloutFrame;
   hiddenKeys: ReadonlySet<string>;
   rail: MapSceneRail;
   occupiedBoxes: MapSceneBox[];
@@ -1649,7 +1685,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
       const base = labelEntriesByKey.get(entry.key);
       if (!base) return [];
       const highlighted = isLayerHighlighted(entry.feature.layer) && (!!entry.feature.highlight || entry.selected);
-      return [{ ...base, autoText: automaticLabelText(entry.feature.layer, "feature", entry.feature, highlighted), labelPriority: legacyLabelPriority("feature", entry.feature, highlighted) ?? 0, order: entry.index, p: entry.p, radius: entry.radius, small: false, explicit: !!automaticLabelText(entry.feature.layer, "feature", entry.feature), highlighted, pick: { fid: entry.feature.fid, lng: entry.feature.lng, lat: entry.feature.lat, kind: "feature" as const, key: entry.key } }];
+      return [{ ...base, autoText: automaticLabelText(entry.feature.layer, "feature", entry.feature, highlighted), labelPriority: legacyLabelPriority("feature", entry.feature, highlighted) ?? 0, order: entry.index, p: entry.p, radius: entry.radius, small: false, explicit: !!automaticLabelText(entry.feature.layer, "feature", entry.feature), highlighted, siteDistance: screenShapeDistance([cx, cy], { kind: "feature", p: entry.p }), pick: { fid: entry.feature.fid, lng: entry.feature.lng, lat: entry.feature.lat, kind: "feature" as const, key: entry.key } }];
     }),
     ...visiblePolygons.flatMap((entry) => {
       const anchor = visibleAnchor(entry.rings.flat(), entry.center, W, H);
@@ -1658,7 +1694,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
       if (!base) return [];
       const highlighted = isLayerHighlighted(entry.polygon.layer) && highlightActive;
       const [lng, lat] = centerOf(entry.polygon.rings[0] ?? []);
-      return [{ ...base, autoText: automaticLabelText(entry.polygon.layer, "polygon", entry.polygon, highlighted), labelPriority: legacyLabelPriority("polygon", entry.polygon, highlighted) ?? 0, order: model.features.length + entry.index, p: anchor, radius: 0, small: false, explicit: !!automaticLabelText(entry.polygon.layer, "polygon", entry.polygon), highlighted, pick: { fid: entry.polygon.fid, lng, lat, kind: "polygon" as const, key: entry.key } }];
+      return [{ ...base, autoText: automaticLabelText(entry.polygon.layer, "polygon", entry.polygon, highlighted), labelPriority: legacyLabelPriority("polygon", entry.polygon, highlighted) ?? 0, order: model.features.length + entry.index, p: anchor, radius: 0, small: false, explicit: !!automaticLabelText(entry.polygon.layer, "polygon", entry.polygon), highlighted, siteDistance: screenShapeDistance([cx, cy], { kind: "polygon", rings: entry.rings }), pick: { fid: entry.polygon.fid, lng, lat, kind: "polygon" as const, key: entry.key } }];
     }),
     ...linePaths.flatMap((entry) => {
       const sectionAnchor = entry.line.layer === "terrain_section_a" || entry.line.layer === "terrain_section_b"
@@ -1670,7 +1706,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
       const base = labelEntriesByKey.get(entry.key);
       if (!base) return [];
       const highlighted = isLayerHighlighted(entry.line.layer) && highlightActive;
-      return [{ ...base, autoText: automaticLabelText(entry.line.layer, "line", entry.line, highlighted), labelPriority: legacyLabelPriority("line", entry.line, highlighted) ?? 0, order: model.features.length + (model.polygons ?? []).length + entry.index, p: center, radius: 0, small: true, explicit: !!automaticLabelText(entry.line.layer, "line", entry.line), highlighted, pick: { fid: entry.line.fid, lng, lat, kind: "line" as const, key: entry.key } }];
+      return [{ ...base, autoText: automaticLabelText(entry.line.layer, "line", entry.line, highlighted), labelPriority: legacyLabelPriority("line", entry.line, highlighted) ?? 0, order: model.features.length + (model.polygons ?? []).length + entry.index, p: center, radius: 0, small: true, explicit: !!automaticLabelText(entry.line.layer, "line", entry.line), highlighted, siteDistance: screenShapeDistance([cx, cy], { kind: "line", points: entry.points }), pick: { fid: entry.line.fid, lng, lat, kind: "line" as const, key: entry.key } }];
     }),
   ];
   const labelByKey = new Map(labels.map((entry) => [entry.key, entry]));
@@ -1680,8 +1716,28 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
   const calloutTextRight = 4 * u * labelScale;
   const calloutPadY = 3 * u * labelScale;
   const calloutLineHeight = calloutLabelFs * 1.24;
+  const placementCandidates: Array<{ entry: MapSceneLabel; variant: "auto" | "fixed" | "hover"; rank: number }> = [];
+  if (!bare) {
+    const pinnedLabelKeys = [...new Set([...pinnedKeys, ...Object.keys(labelBoxes)])];
+    const pinnedLabels = pinnedLabelKeys.map((key) => labelByKey.get(key)).filter((entry): entry is MapSceneLabel => !!entry && !hidden.has(entry.key));
+    const pinnedSet = new Set(pinnedLabels.map((entry) => entry.key));
+    const hoverLabel = hoverKey && !pinned.has(hoverKey) && !hidden.has(hoverKey) ? labelByKey.get(hoverKey) : undefined;
+    const automatic = showAutomaticLabels && (model.tileCode ? tileClientModuleFor(model.tileCode)?.autoLabels !== false : true)
+      ? selectAutomaticLabels(labels).filter((entry) => !hidden.has(entry.key) && !pinnedSet.has(entry.key) && entry.key !== hoverLabel?.key && !["rail_station", "rail_nearest", "rail_entrance", "rail_line", "rail_station_axis"].includes(entry.layer))
+      : [];
+    placementCandidates.push(...pinnedLabels.map((entry) => ({ entry, variant: "fixed" as const, rank: -2 })), ...(hoverLabel ? [{ entry: hoverLabel, variant: "hover" as const, rank: -1 }] : []), ...automatic.map((entry) => ({ entry, variant: "auto" as const, rank: 2 - (entry.labelPriority ?? 0) + Math.min(0.999, entry.siteDistance / (W + H)) })));
+  }
+  const candidateFontSize = (entry: MapSceneLabel, variant: "auto" | "fixed" | "hover") => variant === "auto" ? Math.max(9 * labelScale, entry.small ? 10.5 * u * 0.9 * labelScale : 10.5 * u * labelScale) : calloutLabelFs;
   const baseCalloutMetrics = W <= 420 ? PX_NARROW : PX;
-  const calloutMetrics = { ...baseCalloutMetrics, cardW: baseCalloutMetrics.cardW * u, compactW: baseCalloutMetrics.compactW * u, minW: baseCalloutMetrics.minW * u, gap: baseCalloutMetrics.gap * u, stub: baseCalloutMetrics.stub * u, rMin: baseCalloutMetrics.rMin * u, rMax: baseCalloutMetrics.rMax * u, head: baseCalloutMetrics.head * u, row: baseCalloutMetrics.row * u, pad: baseCalloutMetrics.pad * u, compactH: calloutPadY * 2 + calloutLineHeight };
+  // 끊을 수 없는 낱말(숫자가 든 낱말·금액)이 compact 글 폭보다 넓으면 그 장의 compact 폭을 카드 상한(176u)까지 넓힌다. 호버·사용자 폭 카드는 제외.
+  const unbreakableNeeds = placementCandidates
+    .filter(({ entry, variant }) => variant !== "hover" && !labelBoxes[entry.key])
+    .flatMap(({ entry, variant }) => {
+      const fs = candidateFontSize(entry, variant);
+      return [entry.title, ...entry.detailLines.slice(0, 3)].flatMap(wrapWords).filter((word) => /\d/.test(word)).map((word) => mapTextWidth(word, fs) + calloutTextLeft + calloutTextRight + Math.max(2, fs * 0.25));
+    });
+  const compactWidth = Math.min(baseCalloutMetrics.cardW * u, Math.max(baseCalloutMetrics.compactW * u, ...unbreakableNeeds));
+  const calloutMetrics = { ...baseCalloutMetrics, cardW: baseCalloutMetrics.cardW * u, compactW: compactWidth, minW: baseCalloutMetrics.minW * u, gap: baseCalloutMetrics.gap * u, stub: baseCalloutMetrics.stub * u, rMin: baseCalloutMetrics.rMin * u, rMax: baseCalloutMetrics.rMax * u, head: baseCalloutMetrics.head * u, row: baseCalloutMetrics.row * u, pad: baseCalloutMetrics.pad * u, compactH: calloutPadY * 2 + calloutLineHeight };
   const legendY = legendBox?.y0 ?? 0;
   const legendH = legendBox ? legendBox.y1 - legendBox.y0 : 0;
   const naturalCalloutTop = calloutTopOpt ?? (legendBox && legendY <= H / 2 ? legendY + legendH + 6 * u : 4 * u);
@@ -1689,16 +1745,17 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
   // 그 위를 지난 뒤라서 의미가 없다. 좌우 카드 칸과 실제로 겹치는 상단
   // 오버레이만 먼저 예약해 카드와 설명선의 시작점을 함께 아래로 내린다.
   const provisionalFrame = calloutFrame({ W, H, m: calloutMetrics, edge: calloutEdge ?? 4 * u, top: naturalCalloutTop, bottom: H, ...(calloutLeftBottom !== undefined ? { leftBottom: Math.max(naturalCalloutTop, calloutLeftBottom) } : {}), rightInset, perSide: 100, rows: 3, variant: "compact", maxFill: 0.8 });
-  const calloutColumns = [provisionalFrame.left, provisionalFrame.right];
-  const overlayCalloutTop = calloutAvoid
-    .filter((box) => box.y0 < naturalCalloutTop + provisionalFrame.cardH && box.y1 > naturalCalloutTop && calloutColumns.some((column) => box.x0 < column.x1 && column.x0 < box.x1))
+  // 칸 위 끝은 칸마다 따로: 그 칸과 겹치는 상단 오버레이 아래에서 시작한다(숫자 카드는 왼쪽만, 방위표는 오른쪽만 민다).
+  const columnTop = (column: { x0: number; x1: number }) => calloutAvoid
+    .filter((box) => box.y0 < Math.max(naturalCalloutTop + provisionalFrame.cardH, H / 2) && box.y1 > naturalCalloutTop && box.x0 < column.x1 && column.x0 < box.x1)
     .reduce((top, box) => Math.max(top, box.y1 + 6 * u), naturalCalloutTop);
-  const calloutTop = overlayCalloutTop;
+  const calloutTop = columnTop(provisionalFrame.left);
+  const calloutRightTop = columnTop(provisionalFrame.right);
   const naturalCalloutBottom = legendBox && legendY > H / 2 ? legendY - 6 * u : H - bottomInset - 4 * u;
   // 축척 판은 occupiedBoxes에만 기록하면 이미 배치된 콜아웃과 겹칠 수 있다.
   // 콜아웃 하단을 축척 판 위로 먼저 제한해 조판 셀에서도 카드가 축척을 가리지 않게 한다.
   const calloutBottom = Math.min(naturalCalloutBottom, scale ? scaleBox.y0 - 6 * u : H);
-  const calloutFrameModel = calloutFrame({ W, H, m: calloutMetrics, edge: calloutEdge ?? 4 * u, top: calloutTop, bottom: Math.max(calloutTop, calloutBottom), ...(calloutLeftBottom !== undefined ? { leftBottom: Math.max(calloutTop, calloutLeftBottom) } : {}), rightInset, perSide: 100, rows: 3, variant: "compact", maxFill: 0.8 });
+  const calloutFrameModel = calloutFrame({ W, H, m: calloutMetrics, edge: calloutEdge ?? 4 * u, top: calloutTop, rightTop: calloutRightTop, bottom: Math.max(calloutTop, calloutRightTop, calloutBottom), ...(calloutLeftBottom !== undefined ? { leftBottom: Math.max(calloutTop, calloutLeftBottom) } : {}), rightInset, perSide: 100, rows: 3, variant: "compact", maxFill: 0.8 });
   const hasTerrainSupplement = (model.lines ?? []).some((line) => ["retaining_wall", "cut_fill", "fence"].includes(line.layer));
   const protectTerrainLabel = (layerName: string) => hasTerrainSupplement && (layerName === "contour" || layerName === "retaining_wall" || layerName === "cut_fill" || layerName === "fence" || layerName === "terrain_section_a" || layerName === "terrain_section_b");
   const placementFor = (placed: Placed, entry: MapSceneLabel, text: MapCalloutTextLayout): MapSceneLabelPlacement => {
@@ -1725,17 +1782,6 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     const points = [entry.p, placed.knee, placed.edge];
     return { x0: Math.max(0, Math.min(...points.map(([x]) => x)) - 2 * u), y0: Math.max(0, Math.min(...points.map(([, y]) => y)) - 2 * u), x1: Math.min(W, Math.max(...points.map(([x]) => x)) + 2 * u), y1: Math.min(H, Math.max(...points.map(([, y]) => y)) + 2 * u) };
   };
-  const placementCandidates: Array<{ entry: MapSceneLabel; variant: "auto" | "fixed" | "hover"; rank: number }> = [];
-  if (!bare) {
-    const pinnedLabelKeys = [...new Set([...pinnedKeys, ...Object.keys(labelBoxes)])];
-    const pinnedLabels = pinnedLabelKeys.map((key) => labelByKey.get(key)).filter((entry): entry is MapSceneLabel => !!entry && !hidden.has(entry.key));
-    const pinnedSet = new Set(pinnedLabels.map((entry) => entry.key));
-    const hoverLabel = hoverKey && !pinned.has(hoverKey) && !hidden.has(hoverKey) ? labelByKey.get(hoverKey) : undefined;
-    const automatic = showAutomaticLabels && (model.tileCode ? tileClientModuleFor(model.tileCode)?.autoLabels !== false : true)
-      ? selectAutomaticLabels(labels).filter((entry) => !hidden.has(entry.key) && !pinnedSet.has(entry.key) && entry.key !== hoverLabel?.key && !["rail_station", "rail_nearest", "rail_entrance", "rail_line", "rail_station_axis"].includes(entry.layer))
-      : [];
-    placementCandidates.push(...pinnedLabels.map((entry) => ({ entry, variant: "fixed" as const, rank: -2 })), ...(hoverLabel ? [{ entry: hoverLabel, variant: "hover" as const, rank: -1 }] : []), ...automatic.map((entry) => ({ entry, variant: "auto" as const, rank: 2 - (entry.labelPriority ?? 0) })));
-  }
   // 면 라벨 기준점은 자동·고정·호버로 뽑힌 면에만 다시 잡는다: 면 안쪽, 가능하면 좌우 카드 칸 사이 띠(옛 규칙은 둘레의 한 꼭짓점).
   // 링이 같은 면이 한 점·칸 밑에 몰려 지시선이 다른 카드를 지나는 것을 막는다. 후보 상한은 interiorAnchor가 둔다.
   {
@@ -1757,13 +1803,25 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     }
   }
   const candidateLayouts = placementCandidates.map(({ entry, variant, rank }) => {
-    const fontSize = variant === "auto" ? Math.max(9 * labelScale, entry.small ? 10.5 * u * 0.9 * labelScale : 10.5 * u * labelScale) : calloutLabelFs;
+    const fontSize = candidateFontSize(entry, variant);
     const custom = labelBoxes[entry.key];
     const maxWidth = custom ? Math.max(1, custom.w * W) : calloutFrameModel.cardW;
     return { entry, variant, rank, custom, text: mapCalloutTextLayout(entry, fontSize, maxWidth, calloutTextLeft, calloutTextRight, calloutPadY, protectTerrainLabel(entry.layer), custom ? Infinity : 2) };
   });
-  const layout = layoutCallouts(calloutFrameModel, candidateLayouts.map(({ entry, rank, text }) => ({ id: entry.key, x: entry.p[0], y: entry.p[1], rank, width: text.width, height: text.height })));
-  const placedByKey = new Map(layout.placed.map((placed) => [placed.id, placed]));
+  const layoutPoints = (list: typeof candidateLayouts) => list.map(({ entry, rank, text }) => ({ id: entry.key, x: entry.p[0], y: entry.p[1], rank, width: text.width, height: text.height }));
+  // 칸이 모자라면 칸마다 따로 버리지 않고 가까운 순 앞쪽 후보만 남긴다(놓인 라벨은 모두 숨긴 라벨보다 대지에 가깝다).
+  // 자동 후보는 selectAutomaticLabels 순서(등급 → 가까운 순)이므로, 넘침이 늘지 않는 가장 긴 앞쪽 접두를 이분 탐색한다.
+  const nonAuto = candidateLayouts.filter((candidate) => candidate.variant !== "auto");
+  const autoCandidates = candidateLayouts.filter((candidate) => candidate.variant === "auto");
+  const baseOverflow = layoutCallouts(calloutFrameModel, layoutPoints(nonAuto)).overflow.length;
+  let autoLo = 0;
+  let autoHi = autoCandidates.length;
+  while (autoLo < autoHi) {
+    const mid = (autoLo + autoHi + 1) >> 1;
+    if (layoutCallouts(calloutFrameModel, layoutPoints([...nonAuto, ...autoCandidates.slice(0, mid)])).overflow.length === baseOverflow) autoLo = mid;
+    else autoHi = mid - 1;
+  }
+  const layout = layoutCallouts(calloutFrameModel, layoutPoints([...nonAuto, ...autoCandidates.slice(0, autoLo)]));  const placedByKey = new Map(layout.placed.map((placed) => [placed.id, placed]));
   const labelPlacements: MapSceneLabelPlacement[] = [];
   for (const { entry, variant, custom, text } of candidateLayouts) {
     const placed = placedByKey.get(entry.key);
@@ -1855,6 +1913,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     routePoints,
     labels,
     labelPlacements,
+    calloutFrame: calloutFrameModel,
     hiddenKeys: hidden,
     rail,
     occupiedBoxes,

@@ -452,6 +452,8 @@ export type FrameSpec = {
   /** 칸이 놓이는 세로 범위 (제목 칩 아래 ~ 출처 띠 위) */
   top: number;
   bottom: number;
+  /** 오른쪽 칸의 위 끝. 없으면 top (오른쪽 위 방위표처럼 칸마다 비켜야 할 것이 다를 때) */
+  rightTop?: number;
   /** 왼쪽 칸만 더 위에서 끝나야 할 때(왼쪽 아래 값 카드) */
   leftBottom?: number;
   /** 오른쪽 정보 판이 덮는 폭: 오른쪽 칸이 그만큼 안쪽으로 이동 */
@@ -473,7 +475,7 @@ export function calloutFrame(s: FrameSpec): CalloutFrame {
   const cardH = cardHeight(m, s.variant, s.rows, s.compactNameWrap === true);
   const rx1 = W - (s.rightInset ?? 0) - s.edge;
   const left: Column = { x0: s.edge, x1: s.edge + cardW, top: s.top, bottom: s.leftBottom ?? s.bottom };
-  const right: Column = { x0: rx1 - cardW, x1: rx1, top: s.top, bottom: s.bottom };
+  const right: Column = { x0: rx1 - cardW, x1: rx1, top: s.rightTop ?? s.top, bottom: s.bottom };
   const pad = m.stub * 0.6;
   const lo = left.x1 + m.stub + pad;
   const hi = right.x0 - m.stub - pad;
