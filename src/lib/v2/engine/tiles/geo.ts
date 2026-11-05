@@ -1,6 +1,6 @@
 /** 선형 지물 보조: 중심점(WGS84)에서 EPSG:5179 선형까지의 직선거리, 원 안 구간 표본점. */
 import type { Feature, Geometry, MultiPolygon, Polygon } from "geojson";
-import { bboxClip, featureCollection, intersect, multiPolygon, polygon } from "@turf/turf";
+import { bboxClip, booleanPointInPolygon, featureCollection, intersect, multiPolygon, polygon } from "@turf/turf";
 import { toLngLat, toUtmk, type LngLat } from "../../crs";
 import type { MapCandidate } from "./common";
 import { maxOf, minOf } from "../../extent";
@@ -28,6 +28,38 @@ export function distanceToLineM(center: LngLat, g: Geometry): number | null {
     }
   }
   return best;
+}
+
+/** 중심(WGS84)에서 EPSG:5179 도형까지의 직선거리(m). 면 안(구멍 밖)이면 0, 지원하지 않는 도형·빈 도형은 null. */
+export function distanceToGeometryM(center: LngLat, g: Geometry): number | null {
+  const [cx, cy] = toUtmk(center);
+  const min = (a: number | null, b: number | null) => (a === null ? b : b === null ? a : Math.min(a, b));
+  const ringEdges = (rings: number[][][]) => {
+    let best: number | null = null;
+    for (const r of rings) for (let i = 1; i < r.length; i++) best = min(best, segDist(cx, cy, r[i - 1], r[i]));
+    return best;
+  };
+  const polyDist = (rings: number[][][]) => {
+    if (rings.length === 0 || rings[0].length < 4) return null;
+    return booleanPointInPolygon([cx, cy], polygon(rings)) ? 0 : ringEdges(rings);
+  };
+  switch (g.type) {
+    case "Point":
+      return Math.hypot(cx - g.coordinates[0], cy - g.coordinates[1]);
+    case "MultiPoint":
+      return g.coordinates.reduce<number | null>((b, p) => min(b, Math.hypot(cx - p[0], cy - p[1])), null);
+    case "LineString":
+    case "MultiLineString":
+      return distanceToLineM(center, g);
+    case "Polygon":
+      return polyDist(g.coordinates);
+    case "MultiPolygon":
+      return g.coordinates.reduce<number | null>((b, p) => min(b, polyDist(p)), null);
+    case "GeometryCollection":
+      return g.geometries.reduce<number | null>((b, p) => min(b, distanceToGeometryM(center, p)), null);
+    default:
+      return null;
+  }
 }
 
 /**

@@ -119,6 +119,26 @@ export function nearestHit<T extends FeatureHit>(hits: T[]): T | null {
   return best;
 }
 
+const nearestOrder = <T>(distOf: (item: T) => number | null, idOf: (item: T) => number) => (a: T, b: T) => distOf(a)! - distOf(b)! || idOf(a) - idOf(b);
+
+/** 그룹마다 거리가 가장 짧은 항목(같으면 idOf 작은 쪽). 그룹·거리가 null인 항목은 건너뛴다. */
+export function nearestPerGroup<T>(items: readonly T[], groupOf: (item: T) => string | null, distOf: (item: T) => number | null, idOf: (item: T) => number): Map<string, T> {
+  const cmp = nearestOrder(distOf, idOf);
+  const best = new Map<string, T>();
+  for (const item of items) {
+    const group = groupOf(item);
+    if (group === null || distOf(item) === null) continue;
+    const prev = best.get(group);
+    if (prev === undefined || cmp(item, prev) < 0) best.set(group, item);
+  }
+  return best;
+}
+
+/** 거리 오름차순(같으면 id 오름차순) 앞 n개. 거리가 null인 항목은 건너뛴다. */
+export function nearestN<T>(items: readonly T[], distOf: (item: T) => number | null, n: number, idOf: (item: T) => number): T[] {
+  return items.filter((item) => distOf(item) !== null).sort(nearestOrder(distOf, idOf)).slice(0, n);
+}
+
 /** 상한을 넘으면 highlight는 모두 두고 나머지를 feature_id 순으로 등간격 추린다. 결정적. */
 export function capFeatures(items: MapCandidate[]): { features: MapFeature[]; total: number } {
   const hl = items.filter((c) => c.f.highlight).sort((a, b) => a.id - b.id);
@@ -193,7 +213,13 @@ export function capD05BuildingCandidates(items: PolygonCandidate[], center: read
 
 /** 상한을 넘으면 면적이 큰 것부터 남긴다. 결정적. 일반 타일 기본값은 3,000이다. */
 export function capPolygons(items: PolygonCandidate[], max = MAX_MAP_POLYGONS): { polygons: MapPolygon[]; total: number } {
-  const sorted = [...items].sort((a, b) => Number(isSiteParcelLayer(b.p.layer)) - Number(isSiteParcelLayer(a.p.layer)) || b.areaM2 - a.areaM2 || a.id - b.id);
+  const byOrder = (a: PolygonCandidate, b: PolygonCandidate) => Number(isSiteParcelLayer(b.p.layer)) - Number(isSiteParcelLayer(a.p.layer)) || b.areaM2 - a.areaM2 || a.id - b.id;
+  let sorted = [...items].sort(byOrder);
+  if (items.length > max) {
+    // 넘칠 때만: 라벨 우선순위 2를 먼저 남기고 나머지를 같은 비교 순서로 채운다. 출력 순서는 그대로 byOrder.
+    const kept = new Set([...sorted.filter((c) => c.p.labelPriority === 2), ...sorted.filter((c) => c.p.labelPriority !== 2)].slice(0, max));
+    sorted = sorted.filter((c) => kept.has(c));
+  }
   return { polygons: sorted.slice(0, max).map((c) => ({ ...c.p, fid: c.p.fid ?? String(c.id) })), total: items.length };
 }
 
