@@ -213,12 +213,6 @@ export function d10(ctx: EngineContext, options: CanopyForOptions = {}): TileRes
   limitations.push({ kind: "unknown", note: "수관·OSM 녹지·OSM 수계는 독립 레이어라 서로 겹칠 수 있어 구성비 합이 100%가 아닐 수 있습니다. 수관 구성비의 분모는 π·반경²이며 항공영상 결측 영역은 분자에서 제외합니다." });
 
   const polygonCandidates: PolygonCandidate[] = [];
-  if (canopy) {
-    for (const [index, rings] of canopy.polygons.entries()) {
-      const candidate = polygonCandidate(index + 1, "canopy", rings, polygonArea(rings));
-      if (candidate) polygonCandidates.push(candidate);
-    }
-  }
   polygonCandidates.push(...green.polygons, ...water.polygons, ...topoWater.polygons);
   const basisMetricIds = metrics.filter((metric) => (metric.status === "estimated" || metric.status === "observed") && !metric.id.startsWith("share_")).map((metric) => metric.id);
   const canopyText = canopy ? `항공사진 검출 수관 ${canopyMetric.value?.toFixed(1)}%` : "항공사진 수관 자료 미확인";

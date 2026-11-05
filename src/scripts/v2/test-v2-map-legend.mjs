@@ -1,8 +1,9 @@
 /** W3 공용 지도 범례·래스터 견본·선 불투명도 계약. */
 import assert from "node:assert/strict";
 
-const { compactLegendItems, legendItemsForModel, layerStyle, normalizeLegendStripLabels, RASTER_STYLES } = await import("../../lib/v2/ui/map-layers.ts");
-const { rasterLegendColor, rasterLegendEntries, rasterLegendTitle } = await import("../../lib/v2/ui/raster-image.ts");
+const { compactLegendItems, legendItemsForModel, layerControlItemsForModel, modelWithHiddenLayers, rasterLegendItems, layerStyle, normalizeLegendStripLabels, RASTER_STYLES } = await import("../../lib/v2/ui/map-layers.ts");
+const { slideLegend } = await import("../../lib/v2/ui/overlay-layout.ts");
+const { paintRgba, rasterLegendColor, rasterLegendEntries, rasterLegendTitle } = await import("../../lib/v2/ui/raster-image.ts");
 
 const base = {
   center: [127.15, 37.62],
@@ -259,6 +260,17 @@ const d10Raster = {
   rasters: [{ name: "canopy", palette: "canopy", label: "수관 · 1m 격자" }],
 };
 assert.equal(legendItemsForModel(d10Raster).filter((item) => item.label === "수관").length, 0, "D10 canopy 래스터가 있으면 중복 벡터 범례를 만들지 않음");
+for (const model of [d10Raster, { ...d10Raster, polygons: [] }]) {
+  assert.equal(rasterLegendItems(model).filter((item) => item.label === "수관").length, 1, "보드·펼침 창의 수관 래스터 범례");
+  assert.equal(slideLegend(model).items.filter((item) => item.label === "수관").length, 1, "보고서·PPT의 수관 범례");
+  assert.equal(layerControlItemsForModel(model).filter((item) => item.label === "수관").length, 1, "보고서 레이어 목록에 수관 한 칸");
+  const hidden = modelWithHiddenLayers({ ...model, rasterOptions: model.rasters }, ["raster:canopy"]);
+  assert.equal(hidden.rasters.length, 0, "수관을 끄면 실제 래스터가 사라진다");
+  assert.equal(hidden.rasterOptions.length, 0, "대체 래스터 목록에서 다시 선택되지 않는다");
+  assert.equal(hidden.polygons.length, 0, "옛 저장본의 수관 면도 함께 사라진다");
+}
+const canopyRgba = paintRgba({ name: "canopy", palette: "canopy", kind: "mask", dtype: "u8", cols: 3, rows: 1, bands: 1, nodata: 255, scale: 1, offset: 0 }, Uint8Array.of(1, 0, 255), RASTER_STYLES.canopy);
+assert.deepEqual([canopyRgba[3], canopyRgba[7], canopyRgba[11]], [179, 0, 0], "수관만 칠하고 비수관·결측은 투명");
 const d10DuplicateEngine = {
   ...base,
   polygons: polygons("canopy", 1),

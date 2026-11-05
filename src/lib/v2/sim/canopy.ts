@@ -86,9 +86,8 @@ function otsuThreshold(histogram: Uint32Array, count: number): number {
 type MorphologyMode = "dilate" | "erode";
 
 /** Binary rectangular morphology in O(width*height), using separable windows. */
-function windowPass(input: Uint8Array, width: number, height: number, radius: number, mode: MorphologyMode): Uint8Array {
-  if (radius <= 0) return input.slice();
-  const horizontal = new Uint16Array(input.length);
+function windowPass(input: Uint8Array, output: Uint8Array, horizontal: Uint16Array, width: number, height: number, radius: number, mode: MorphologyMode): void {
+  if (radius <= 0) { output.set(input); return; }
   const diameter = radius * 2 + 1;
   const kernelArea = diameter * diameter;
   for (let row = 0; row < height; row++) {
@@ -103,7 +102,6 @@ function windowPass(input: Uint8Array, width: number, height: number, radius: nu
       if (remove >= 0) sum -= input[rowStart + remove];
     }
   }
-  const output = new Uint8Array(input.length);
   for (let column = 0; column < width; column++) {
     let sum = 0;
     for (let row = 0; row <= radius && row < height; row++) sum += horizontal[row * width + column];
@@ -116,20 +114,19 @@ function windowPass(input: Uint8Array, width: number, height: number, radius: nu
       if (remove >= 0) sum -= horizontal[remove * width + column];
     }
   }
-  return output;
-}
-
-function openMask(mask: Uint8Array, width: number, height: number, radius: number): Uint8Array {
-  return windowPass(windowPass(mask, width, height, radius, "erode"), width, height, radius, "dilate");
-}
-
-function closeMask(mask: Uint8Array, width: number, height: number, radius: number): Uint8Array {
-  return windowPass(windowPass(mask, width, height, radius, "dilate"), width, height, radius, "erode");
 }
 
 function removeSmallComponents(mask: Uint8Array, width: number, height: number, minimumPixels: number): void {
   if (minimumPixels <= 1) return;
-  const queue = new Int32Array(mask.length);
+  let queue = new Int32Array(Math.min(mask.length, 4096));
+  const enqueue = (index: number, tail: number): void => {
+    if (tail === queue.length) {
+      const grown = new Int32Array(Math.min(mask.length, queue.length * 2));
+      grown.set(queue);
+      queue = grown;
+    }
+    queue[tail] = index;
+  };
   for (let start = 0; start < mask.length; start++) {
     if (mask[start] !== 1) continue;
     let head = 0;
@@ -142,19 +139,19 @@ function removeSmallComponents(mask: Uint8Array, width: number, height: number, 
       const column = index - row * width;
       if (column > 0 && mask[index - 1] === 1) {
         mask[index - 1] = 2;
-        queue[tail++] = index - 1;
+        enqueue(index - 1, tail++);
       }
       if (column + 1 < width && mask[index + 1] === 1) {
         mask[index + 1] = 2;
-        queue[tail++] = index + 1;
+        enqueue(index + 1, tail++);
       }
       if (row > 0 && mask[index - width] === 1) {
         mask[index - width] = 2;
-        queue[tail++] = index - width;
+        enqueue(index - width, tail++);
       }
       if (row + 1 < height && mask[index + width] === 1) {
         mask[index + width] = 2;
-        queue[tail++] = index + width;
+        enqueue(index + width, tail++);
       }
     }
     const kept = tail >= minimumPixels;
@@ -212,8 +209,12 @@ export function detectCanopy(m: Mosaic, opts: CanopyOptions = {}): { mask: Uint8
   // A completely eligible, complete image has no specks or holes to repair;
   // avoid spending the budget on morphology that could only touch the frame.
   if (!(allPixelsValid && candidatePixels === mask.length)) {
-    const morphed = closeMask(openMask(mask, m.width, m.height, openRadius), m.width, m.height, closeRadius);
-    mask.set(morphed);
+    const temporary = new Uint8Array(mask.length);
+    const horizontal = new Uint16Array(mask.length);
+    windowPass(mask, temporary, horizontal, m.width, m.height, openRadius, "erode");
+    windowPass(temporary, mask, horizontal, m.width, m.height, openRadius, "dilate");
+    windowPass(mask, temporary, horizontal, m.width, m.height, closeRadius, "dilate");
+    windowPass(temporary, mask, horizontal, m.width, m.height, closeRadius, "erode");
     removeSmallComponents(mask, m.width, m.height, Math.max(1, Math.ceil(minAreaM2 / (m.mPerPx * m.mPerPx))));
   }
   let validPixels = 0;

@@ -82,6 +82,24 @@ try {
     };
   };
 
+  const canopyCtx = {
+    ...makeFakeContext("reference", [], null),
+    rasterReader: (code, name) => code === "D10" && name === "canopy"
+      ? { ref: { x0: cx - 1, y0: cy - 1, cellM: 1, cols: 2, rows: 2, nodata: 255 }, values: Uint8Array.of(1, 0, 255, 1) }
+      : null,
+  };
+  const canopyRows = DETAIL_SPECS.D10.rows(canopyCtx);
+  assert.deepEqual(canopyRows.map((row) => row.cells.class), ["수관", "비수관", "수관"], "D10 목록·CSV는 유효 래스터 셀을 사용");
+  assert.match(DETAIL_SPECS.D10.summary(canopyCtx).subtitle, /표본 격자/);
+  assert.match(DETAIL_SPECS.D10.summary(canopyCtx).source, /국토지리정보원/);
+  const canopyCsv = detailCsv({ csvColumns: DETAIL_SPECS.D10.columns, rows: canopyRows });
+  assert.match(canopyCsv, /수관/);
+  assert.match(canopyCsv, /비수관/);
+  const canopyClick = DETAIL_SPECS.D10.at(canopyCtx, ...at(-0.5, -0.5));
+  assert.equal(canopyClick?.fid, "canopy:0:0");
+  assert.equal(canopyClick?.card.fields[0].value, "수관");
+  assert.equal(DETAIL_SPECS.D10.at(canopyCtx, ...at(-0.5, 0.5)), null, "결측 셀은 클릭 결과가 없다");
+
   const housingHit = {
     featureId: 901,
     stableId: "housing:901",

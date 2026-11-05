@@ -44,41 +44,12 @@ export interface CanopyForOptions {
   resultCacheDir?: string;
 }
 
-type Edge = { start: string; end: string; direction: number };
 type LatticePoint = { col: number; row: number };
 type Loop = { points: LatticePoint[]; signedArea: number };
+type CompactLoop = { points: Int32Array; signedArea: number };
 
 const MAX_VECTOR_POLYGONS = 3000;
 const MAX_VECTOR_VERTICES = 200;
-function key(point: LatticePoint): string {
-  return `${point.col},${point.row}`;
-}
-
-function pointOf(value: string): LatticePoint {
-  const [col, row] = value.split(",").map(Number);
-  return { col, row };
-}
-
-function directionOf(a: LatticePoint, b: LatticePoint): number {
-  if (b.col > a.col) return 0;
-  if (b.row > a.row) return 1;
-  if (b.col < a.col) return 2;
-  return 3;
-}
-
-function signedArea(points: readonly LatticePoint[]): number {
-  let area = 0;
-  for (let i = 1; i < points.length; i++) area += points[i - 1].col * points[i].row - points[i].col * points[i - 1].row;
-  return area / 2;
-}
-
-function addEdge(edges: Map<string, Edge[]>, start: LatticePoint, end: LatticePoint): void {
-  const from = key(start);
-  const list = edges.get(from) ?? [];
-  list.push({ start: from, end: key(end), direction: directionOf(start, end) });
-  edges.set(from, list);
-}
-
 function isCanopyCell(grid: LocalGrid, col: number, row: number, radiusM: number): boolean {
   if (col < 0 || row < 0 || col >= grid.cols || row >= grid.rows) return false;
   const x = grid.x0 + col * grid.cellM;
@@ -88,83 +59,90 @@ function isCanopyCell(grid: LocalGrid, col: number, row: number, radiusM: number
 }
 
 /** 1m binary grid의 경계만 걷는다. 셀별 Turf 폴리곤을 만들지 않아 800m도 선형 시간이다. */
-function boundaryLoops(grid: LocalGrid, radiusM: number): Loop[] {
-  const edges = new Map<string, Edge[]>();
+function compactBoundaryLoops(grid: LocalGrid, radiusM: number): CompactLoop[] {
+  // One byte per lattice vertex: four outgoing direction bits, cleared on use.
+  const stride = grid.cols + 1;
+  const edges = new Uint8Array(stride * (grid.rows + 1));
   for (let row = 0; row < grid.rows; row++) {
     for (let col = 0; col < grid.cols; col++) {
       if (!isCanopyCell(grid, col, row, radiusM)) continue;
-      if (!isCanopyCell(grid, col, row - 1, radiusM)) addEdge(edges, { col, row }, { col: col + 1, row });
-      if (!isCanopyCell(grid, col + 1, row, radiusM)) addEdge(edges, { col: col + 1, row }, { col: col + 1, row: row + 1 });
-      if (!isCanopyCell(grid, col, row + 1, radiusM)) addEdge(edges, { col: col + 1, row: row + 1 }, { col, row: row + 1 });
-      if (!isCanopyCell(grid, col - 1, row, radiusM)) addEdge(edges, { col, row: row + 1 }, { col, row });
+      if (!isCanopyCell(grid, col, row - 1, radiusM)) edges[row * stride + col] |= 1;
+      if (!isCanopyCell(grid, col + 1, row, radiusM)) edges[row * stride + col + 1] |= 2;
+      if (!isCanopyCell(grid, col, row + 1, radiusM)) edges[(row + 1) * stride + col + 1] |= 4;
+      if (!isCanopyCell(grid, col - 1, row, radiusM)) edges[(row + 1) * stride + col] |= 8;
     }
   }
 
-  const loops: Loop[] = [];
-  const compareEdges = (a: Edge, b: Edge) => a.direction - b.direction || a.end.localeCompare(b.end);
-  for (const list of edges.values()) list.sort(compareEdges);
-  const used = new Set<string>();
-  const edgeId = (edge: Edge) => `${edge.start}>${edge.end}`;
-  const nextEdge = (current: Edge): Edge | null => {
-    const candidates = (edges.get(current.end) ?? []).filter((edge) => !used.has(edgeId(edge)));
-    if (candidates.length === 0) return null;
-    // The boundary keeps the filled side on its left: left turn, straight,
-    // right turn, then the rare reverse at a diagonal contact.
-    const wanted = [
-      (current.direction + 3) % 4,
-      current.direction,
-      (current.direction + 1) % 4,
-      (current.direction + 2) % 4,
-    ];
-    candidates.sort((a, b) => wanted.indexOf(a.direction) - wanted.indexOf(b.direction) || compareEdges(a, b));
-    return candidates[0];
-  };
-
-  const starts = [...edges.values()].flat().sort((a, b) => a.start.localeCompare(b.start) || compareEdges(a, b));
-  for (const first of starts) {
-    if (used.has(edgeId(first))) continue;
-    const points = [pointOf(first.start)];
-    let edge: Edge | null = first;
-    const firstStart = first.start;
-    while (edge && !used.has(edgeId(edge))) {
-      used.add(edgeId(edge));
-      points.push(pointOf(edge.end));
-      if (edge.end === firstStart) break;
-      edge = nextEdge(edge);
-    }
-    if (points.length >= 4 && points.at(-1)?.col === points[0].col && points.at(-1)?.row === points[0].row) {
-      loops.push({ points, signedArea: signedArea(points) });
+  const loops: CompactLoop[] = [];
+  // Match the former localeCompare("col,row") start order, including prefixes.
+  const columns = Array.from({ length: grid.cols + 1 }, (_, i) => i).sort((a, b) => `${a},`.localeCompare(`${b},`));
+  const rows = Array.from({ length: grid.rows + 1 }, (_, i) => i).sort((a, b) => String(a).localeCompare(String(b)));
+  const dc = [1, 0, -1, 0], dr = [0, 1, 0, -1];
+  for (const startCol of columns) for (const startRow of rows) {
+    const start = startRow * stride + startCol;
+    for (let initial = 0; initial < 4; initial++) {
+      if (!(edges[start] & (1 << initial))) continue;
+      const points: number[] = [startCol, startRow];
+      let area = 0;
+      let col = startCol, row = startRow, direction = initial;
+      while (direction >= 0) {
+        const index = row * stride + col;
+        edges[index] &= ~(1 << direction);
+        const nextCol = col + dc[direction], nextRow = row + dr[direction];
+        area += col * nextRow - nextCol * row;
+        col = nextCol; row = nextRow;
+        points.push(col, row);
+        if (col === startCol && row === startRow) break;
+        const available = edges[row * stride + col];
+        const left = (direction + 3) % 4, right = (direction + 1) % 4, reverse = (direction + 2) % 4;
+        direction = available & (1 << left) ? left : available & (1 << direction) ? direction : available & (1 << right) ? right : available & (1 << reverse) ? reverse : -1;
+      }
+      if (points.length >= 8 && col === startCol && row === startRow) {
+        loops.push({ points: Int32Array.from(points), signedArea: area / 2 });
+      }
     }
   }
   return loops;
 }
 
-function pointInRing(point: LatticePoint, ring: readonly LatticePoint[]): boolean {
+/** Test-facing view preserves the original point and loop order. */
+export function boundaryLoops(grid: LocalGrid, radiusM: number): Loop[] {
+  return compactBoundaryLoops(grid, radiusM).map((loop) => {
+    const points: LatticePoint[] = [];
+    for (let i = 0; i < loop.points.length; i += 2) points.push({ col: loop.points[i], row: loop.points[i + 1] });
+    return { points, signedArea: loop.signedArea };
+  });
+}
+
+function pointInRing(col: number, row: number, ring: Int32Array): boolean {
   let inside = false;
-  for (let i = 1, j = ring.length - 1; i < ring.length; j = i++) {
-    const a = ring[i];
-    const b = ring[j];
-    const intersects = (a.row > point.row) !== (b.row > point.row)
-      && point.col < ((b.col - a.col) * (point.row - a.row)) / (b.row - a.row) + a.col;
+  for (let i = 2, j = ring.length - 2; i < ring.length; j = i, i += 2) {
+    const ax = ring[i], ay = ring[i + 1], bx = ring[j], by = ring[j + 1];
+    const intersects = (ay > row) !== (by > row)
+      && col < ((bx - ax) * (row - ay)) / (by - ay) + ax;
     if (intersects) inside = !inside;
   }
   return inside;
 }
 
 function vectorPolygons(ctx: EngineContext, grid: LocalGrid): number[][][][] {
-  const loops = boundaryLoops(grid, ctx.input.radiusM);
+  const loops = compactBoundaryLoops(grid, ctx.input.radiusM);
   const outer = loops.filter((loop) => loop.signedArea > 0).sort((a, b) => Math.abs(b.signedArea) - Math.abs(a.signedArea));
   const holes = loops.filter((loop) => loop.signedArea < 0);
-  const grouped = outer.map((loop) => ({ outer: loop.points, holes: [] as LatticePoint[][] }));
+  const grouped = outer.map((loop) => ({ outer: loop.points, holes: [] as Int32Array[] }));
   for (const hole of holes) {
-    const target = grouped.find((candidate) => pointInRing(hole.points[0], candidate.outer));
+    const target = grouped.find((candidate) => pointInRing(hole.points[0], hole.points[1], candidate.outer));
     if (target) target.holes.push(hole.points);
   }
 
-  const toMeters = (points: readonly LatticePoint[]): number[][] => points.map(({ col, row }) => [
-    grid.x0 + (col - 0.5) * grid.cellM,
-    grid.y0 + (row - 0.5) * grid.cellM,
-  ]);
+  const toMeters = (points: Int32Array): number[][] => {
+    const result: number[][] = [];
+    for (let i = 0; i < points.length; i += 2) result.push([
+      grid.x0 + (points[i] - 0.5) * grid.cellM,
+      grid.y0 + (points[i + 1] - 0.5) * grid.cellM,
+    ]);
+    return result;
+  };
   const candidates: Array<{ rings: number[][][]; areaM2: number }> = [];
   for (const candidate of grouped) {
     const rings = [candidate.outer, ...candidate.holes].map((ring) => simplifyRing(toMeters(ring), MAX_VECTOR_VERTICES));
@@ -219,7 +197,7 @@ function loadMosaic(ctx: EngineContext, options: CanopyForOptions): Mosaic | nul
     const start = 4 + length, end = start + header.rgbBytes;
     if (end + header.width * header.height !== result.stdout.length) return null;
     if (header.yearFetched) yearCache = { year: header.year, fetchedAt: Date.now() };
-    return { ...header, rgb: new Uint8Array(result.stdout.subarray(start, end)), valid: new Uint8Array(result.stdout.subarray(end)) };
+    return { ...header, rgb: result.stdout.subarray(start, end), valid: result.stdout.subarray(end) };
   } catch { return null; }
 }
 
@@ -287,9 +265,10 @@ export function canopyFor(ctx: EngineContext, options: CanopyForOptions = {}): C
       if (buildingMask[i] && Number.isFinite(grid.values[i])) grid.values[i] = 0;
     }
     const stats = canopyCellStats(grid, ctx.input.radiusM);
+    const polygons = vectorPolygons(ctx, grid);
     const result: CanopyResult = {
       grid,
-      polygons: vectorPolygons(ctx, grid),
+      polygons,
       threshold: detected.threshold,
       coveragePct: stats.valid === 0 ? 0 : (stats.canopy / stats.valid) * 100,
       missingTiles: mosaic.missingTiles,

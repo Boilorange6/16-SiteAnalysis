@@ -11,6 +11,7 @@ import { hitPoint } from "../tiles/common";
 import { demGridFor, demSources, terrainCellM } from "../tiles/terrain-shared";
 import type { LocalGrid } from "../tiles/raster-grid";
 import { maxOf, minOf } from "../../extent";
+import { canopySource } from "../tiles/canopy-shared";
 
 export const DENSITY_COLUMNS: DetailColumn[] = [
   { key: "name", label: "이름", kind: "text" },
@@ -416,9 +417,37 @@ function containsPoint(hit: FeatureHit, lng: number, lat: number): boolean {
 function environmentalSpec(code: "A04" | "D10"): DetailSpec {
   return {
     columns: ENV_COLUMNS,
-    summary(ctx) { const rows = environmentalRows(ctx, code); return { title: catalogEntry(code).title, subtitle: `${rows.length.toLocaleString("ko-KR")}개 지물`, fields: [{ label: "면적 합계", value: rows.length === 0 ? null : `${Math.round(rows.reduce((sum, row) => sum + (number(row.cells.area_m2) ?? 0), 0))}㎡` }], source: sourceLineOf([...ctx.sources("reference", ["park"]), ...ctx.sources("reference", ["osm_landuse", "osm_water"])]), ...(rows.length === 0 ? { missing: ["녹지·수계 자료"] } : {}) }; },
+    summary(ctx) {
+      const rows = environmentalRows(ctx, code);
+      const canopySamples = code === "D10" && rows.some((row) => row.fid.startsWith("canopy:"));
+      return {
+        title: catalogEntry(code).title,
+        subtitle: `${rows.length.toLocaleString("ko-KR")}개 ${canopySamples ? "표본 격자" : "지물"}`,
+        fields: [{ label: canopySamples ? "표본 격자 면적" : "면적 합계", value: rows.length === 0 ? null : `${Math.round(rows.reduce((sum, row) => sum + (number(row.cells.area_m2) ?? 0), 0))}㎡` }],
+        source: sourceLineOf(canopySamples ? [canopySource()] : [...ctx.sources("reference", ["park"]), ...ctx.sources("reference", ["osm_landuse", "osm_water"])]),
+        ...(rows.length === 0 ? { missing: ["녹지·수계 자료"] } : {}),
+      };
+    },
     rows(ctx) { return environmentalRows(ctx, code); },
-    at(ctx, lng, lat) { const hit = environmentalHits(ctx).find((candidate) => containsPoint(candidate, lng, lat)); return hit ? { card: { title: hit.name ?? "환경 지물", fields: [{ label: "분류", value: text(hit.properties.fclass) ?? hit.kind }], source: sourceLineOf(ctx.sources("reference", ["park", "osm_landuse", "osm_water"])) }, fid: String(hit.featureId) } : null; },
+    at(ctx, lng, lat) {
+      if (code === "D10") {
+        const canopy = rasterFor(ctx, "D10", ["canopy"]);
+        if (canopy) {
+          const [x, y] = toUtmk([lng, lat]);
+          const [cx, cy] = toUtmk(ctx.input.center);
+          const col = Math.floor((x - canopy.ref.x0) / canopy.ref.cellM);
+          const row = Math.floor((y - canopy.ref.y0) / canopy.ref.cellM);
+          if (Math.hypot(x - cx, y - cy) <= ctx.input.radiusM && col >= 0 && row >= 0 && col < canopy.ref.cols && row < canopy.ref.rows) {
+            const value = canopy.values[row * canopy.ref.cols + col];
+            if (Number.isFinite(value) && value !== canopy.ref.nodata && value > 0) {
+              return { card: { title: "수관", fields: [{ label: "분류", value: "수관" }], source: sourceLineOf([canopySource()]) }, fid: `canopy:${row}:${col}` };
+            }
+          }
+        }
+      }
+      const hit = environmentalHits(ctx).find((candidate) => containsPoint(candidate, lng, lat));
+      return hit ? { card: { title: hit.name ?? "환경 지물", fields: [{ label: "분류", value: text(hit.properties.fclass) ?? hit.kind }], source: sourceLineOf(ctx.sources("reference", ["park", "osm_landuse", "osm_water"])) }, fid: String(hit.featureId) } : null;
+    },
   };
 }
 

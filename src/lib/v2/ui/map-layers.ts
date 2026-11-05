@@ -729,6 +729,15 @@ export function legendItemsForModel(model: MapModel, limit = Number.POSITIVE_INF
   return [...orderedMapped, ...remainder].slice(0, Math.max(0, limit));
 }
 
+/** D10 수관은 면이 없어도 보고서 레이어 목록에서 켜고 끌 수 있다. */
+export function layerControlItemsForModel(model: MapModel): Array<{ layer: string; label: string }> {
+  const items = legendItemsForModel(model).map(({ layer, label }) => ({ layer, label }));
+  if (model.rasters?.some((raster) => raster.name === "canopy") && !items.some((item) => item.label === "수관")) {
+    items.unshift({ layer: "raster:canopy", label: "수관" });
+  }
+  return items;
+}
+
 const legendKeyPart = (value: string): string => value.replace(/[|\r\n]/g, "-").slice(0, 90);
 
 /** 보고서·미리보기에서 공유하는 범례 항목 키. 대지 표식은 지도 범례의 데이터 항목이 아니므로 제외한다. */
@@ -824,11 +833,15 @@ const hiddenLayer = (layer: string, hidden: readonly string[]): boolean => hidde
 /** 보고서 쪽이 끈 레이어(id 또는 표시명)를 뺀 모델. 끈 것이 없으면 같은 모델. 화면·그래프 자료가 쪽이 실제로 그리는 지도를 같게 얻는다. */
 export function modelWithHiddenLayers<M extends MapModel>(model: M, hidden: readonly string[]): M {
   if (hidden.length === 0) return model;
+  const extended = model as M & { rasterOptions?: RasterRef[] };
+  const canopyHidden = hidden.includes("canopy") || hidden.includes("raster:canopy") || hidden.includes("수관");
+  const visibleRaster = (raster: RasterRef) => !canopyHidden || raster.name !== "canopy";
   return {
     ...model,
     features: model.features.filter((feature) => !hiddenLayer(feature.layer, hidden)),
-    polygons: model.polygons?.filter((polygon) => !hiddenLayer(polygon.layer, hidden)),
+    polygons: model.polygons?.filter((polygon) => !hiddenLayer(polygon.layer, hidden) && !(canopyHidden && polygon.layer === "canopy")),
     lines: model.lines?.filter((line) => !hiddenLayer(line.layer, hidden)),
+    ...(canopyHidden ? { rasters: model.rasters?.filter(visibleRaster), rasterOptions: extended.rasterOptions?.filter(visibleRaster) } : {}),
   };
 }
 

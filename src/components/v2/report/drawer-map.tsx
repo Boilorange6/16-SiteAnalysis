@@ -6,7 +6,7 @@ import { cardName, dotColor, fmtInt, fmtMonth, isHollowComplexMarker, type Callo
 import { A05FilterPanel } from "@/lib/v2/tile/a05/Panel";
 import type { A05Filter } from "@/lib/v2/engine/a05-filter";
 import { formatScaleDenominator, parseScaleInput, SCALE_PRESETS, scaleForFrame, siteAnchoredZoomPatch, siteFitPatch, zoomForScale, type ReportScaleOptions } from "@/lib/v2/ui/report-scale";
-import { legendItemsForModel } from "@/lib/v2/ui/map-layers";
+import { layerControlItemsForModel, legendItemsForModel } from "@/lib/v2/ui/map-layers";
 import type { TileView } from "@/lib/v2/ui/tile-view";
 import styles from "./report-mode.module.css";
 
@@ -165,7 +165,7 @@ export default function DrawerMap({ page, frame, view, cell, scaleOptions, sameE
 
   const layers = useMemo(() => {
     if (view?.layerOptions && view.layerOptions.length > 0) return view.layerOptions.map((item) => ({ id: item.id, label: item.label }));
-    return model ? legendItemsForModel(model).map((item) => ({ id: item.layer, label: item.label })) : [];
+    return model ? layerControlItemsForModel(model).map((item) => ({ id: item.layer, label: item.label })) : [];
   }, [model, view?.layerOptions]);
 
   const legendItems = useMemo(() => {

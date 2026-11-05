@@ -123,7 +123,7 @@ try {
   assert.equal(parsed.status, "complete");
   assert.equal(parsed.presentation.basemap, "Satellite");
   assert.ok(parsed.presentation.rasters?.some((ref) => ref.name === "canopy"));
-  assert.ok(parsed.presentation.polygons?.some((polygon) => polygon.layer === "canopy"));
+  assert.ok(!parsed.presentation.polygons?.some((polygon) => polygon.layer === "canopy"), "D10 canopy is raster-only");
   assert.ok(parsed.presentation.polygons?.some((polygon) => polygon.layer === "osm_green"));
   assert.ok(parsed.presentation.polygons?.some((polygon) => polygon.layer === "osm_water"));
   const canopyPct = parsed.metrics.find((metric) => metric.id === "canopy_pct");
