@@ -223,6 +223,22 @@ for (const format of ["wide", "a3", "a4"]) {
   near(sb.left, saved.legend.y - 0.125, "왼쪽에 저장한 범례는 왼쪽 칸을 끊는다");
 }
 
+// ── T14b-3: 숫자 카드를 범례의 실제(저장) 자리와 견주어 받는다
+{
+  const g = geo({ layout: "map-key" });
+  const toP = (r) => ({ x: r.x / 13.333, y: r.y / 7.5, w: r.w / 13.333, h: r.h / 7.5 });
+  const card = { x: g.legend.x, y: g.legend.y - 0.3, w: g.legend.w, h: 1.2 }; // 기본 범례 자리와 겹치는 카드 자리
+  assert.ok(hit(card, g.legend), "전제: 카드 자리가 기본 범례 자리와 겹친다");
+  const legendLeft = { x: 0.3, y: 5, w: 0.05, h: 0.05 };
+  const keepsCard = geo({ layout: "map-key", panels: { summary: toP(card), legend: toP(legendLeft) } });
+  near(keepsCard.keyCard.x, card.x, "범례를 다른 데 저장했으면 카드 저장 자리를 받는다 x");
+  near(keepsCard.keyCard.y, card.y, "카드 y");
+  near(keepsCard.legend.x, 0.3, "저장 범례도 그대로");
+  assert.ok(!hit(keepsCard.keyCard, keepsCard.legend), "카드와 범례는 겹치지 않는다");
+  const lostCard = geo({ layout: "map-key", panels: { summary: toP(card) } });
+  assert.deepEqual(lostCard.keyCard, g.keyCard, "범례가 기본 자리에 남으면 겹치는 카드 저장 자리는 기각(그대로)");
+}
+
 // ── ① 저장 panels.summary: 틀 안·겹침 없음이면 카드를 그 자리에, 아니면 기본 자리. map-charts는 무시
 {
   const W = 13.333;

@@ -113,6 +113,16 @@ function place(input: GeometryInput): { geometry: ReportPageGeometry; cardMoved:
     return within(rect, map) && others.every((r) => !r || !hit(rect, r)) ? rect : null;
   };
 
+  // ── 2~3. 저장 자리를 제목 → 범례 → 방위표 → 축척 순으로 시험한다. 카드(`block`)는 이미 정해진 것으로 본다.
+  const arrange = (blk: Rect | null) => {
+    let legend = legendAuto;
+    const title = placed(stored.title, titleSize, [blk, legend, northAuto, scaleAuto]) ?? titleAuto;
+    if (legendSize) legend = placed(stored.legend, legendSize, [title, blk, northAuto, scaleAuto]) ?? legend;
+    const north = placed(stored.north, northSize, [title, blk, legend, scaleAuto]) ?? northAuto;
+    const scaleBar = placed(stored.scaleBar, scaleSize, [title, blk, legend, north]) ?? scaleAuto;
+    return { title, legend, north, scaleBar };
+  };
+
   let keyCard: Rect | null = null;
   let keyNotesChip: Rect | null = null;
   let cardMoved: Rect | null = null;
@@ -147,13 +157,13 @@ function place(input: GeometryInput): { geometry: ReportPageGeometry; cardMoved:
     // ① 기본 카드 y는 기본 제목 자리 기준으로 고정한다(제목 칩을 옮겨도 카드는 따라가지 않는다).
     keyCard = { x: EDGE, y: bottom(titleAuto) + TITLE_GAP, w: CARD_W, h: keyCardHeight };
     // ① 저장 카드(옮기고 크기도 바꿀 수 있다, §7): 카드 + 칩 묶음이 틀 안이고, 제목·방위표·축척과 겹치지 않으며,
-    // 그 카드가 밀어낼 범례도 틀 안에서 그것들과 겹치지 않을 때만 받는다. ②는 무시.
+    // 그 장의 실제 범례 자리(저장한 자리가 받아들여지면 그 자리, 아니면 기본 자리)가 카드와 겹치지 않을 때만 받는다(T14b-3). ②는 무시.
     if (stored.summary) {
       const cand = toRect(stored.summary);
       const block = union(cand, chipBelow(cand));
-      const pushed = legendAuto;
       const others = [titleAuto, northAuto, scaleAuto];
-      if (within(block, map) && others.every((r) => !hit(block, r)) && (!pushed || (within(pushed, map) && !hit(pushed, block) && others.every((r) => !hit(pushed, r))))) {
+      const lg = legendSize ? arrange(block).legend : null;
+      if (within(block, map) && others.every((r) => !hit(block, r)) && (!lg || (within(lg, map) && !hit(lg, block)))) {
         cardMoved = cand;
         keyCard = cand;
       }
@@ -162,12 +172,7 @@ function place(input: GeometryInput): { geometry: ReportPageGeometry; cardMoved:
   }
   const block: Rect | null = !withColumn && keyCard ? union(keyCard, keyNotesChip) : null;
 
-  // ── 2~3. 저장 자리를 카드 → 제목 → 범례 → 방위표 → 축척 순으로 시험한다(카드는 위에서 처리했다).
-  let legend = legendAuto;
-  const title = placed(stored.title, titleSize, [block, legend, northAuto, scaleAuto]) ?? titleAuto;
-  if (legendSize) legend = placed(stored.legend, legendSize, [title, block, northAuto, scaleAuto]) ?? legend;
-  const north = placed(stored.north, northSize, [title, block, legend, scaleAuto]) ?? northAuto;
-  const scaleBar = placed(stored.scaleBar, scaleSize, [title, block, legend, north]) ?? scaleAuto;
+  const { title, legend, north, scaleBar } = arrange(block);
 
   return { geometry: { map, footer, pageNo, title, keyCard, column, keyNotesChip, legend, north, scaleBar, unit, scenePxPerInch: SCENE_W / map.w }, cardMoved };
 }
