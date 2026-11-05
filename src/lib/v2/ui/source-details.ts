@@ -150,7 +150,7 @@ export const SOURCE_DETAIL_DEFINITIONS: Readonly<Record<string, SourceDefinition
     sourceUrl: "https://map.ngii.go.kr/mi/openKey/openKeyInfo.do",
     license: "공공누리 제1유형(출처표시) · 국토정보플랫폼 오픈API 결과물",
     notices: ["국토포털(국토정보플랫폼) 오픈API의 결과물"],
-    usedFor: "D10 수관 검출·S04 수목 그늘",
+    usedFor: "수관 검출·수목 그늘",
     collect: "실시간",
     cycle: "연 1회 촬영",
   },
