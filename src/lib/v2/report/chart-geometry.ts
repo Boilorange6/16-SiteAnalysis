@@ -5,7 +5,7 @@
 import type { CompositionItem, DistanceData } from "./analysis-charts";
 
 export type ChartShape =
-  | { kind: "rect"; x: number; y: number; w: number; h: number; fill: string; stroke?: string; name: string }
+  | { kind: "rect"; x: number; y: number; w: number; h: number; fill: string; stroke?: string; opacity?: number; name: string } // opacity 없으면 불투명
   | { kind: "line"; x1: number; y1: number; x2: number; y2: number; stroke: string; width: number; dash?: boolean; name: string }
   | { kind: "dots"; color: string; r: number; opacity: number; points: [number, number][]; stroke?: string; strokeWidth?: number; name: string } // 한 색 = 한 묶음(PPT custGeom 1개). strokeWidth는 pt
   | { kind: "text"; x: number; y: number; w: number; h: number; text: string; pt: number; bold?: boolean; color: string; align: "left" | "right" | "center"; name: string };
@@ -198,7 +198,9 @@ function scatterShapes(d: Scatter, radiusM: number, box: ChartBox, scale: number
     return { labels, covered: blocked ? Infinity : covered };
   });
   const chosen = sides.reduce((best, side) => (side.covered < best.covered ? side : best));
-  out.push(...chosen.labels);
+  // 글자가 점 위에 놓여도 읽히게 글자 뒤에 흰 바탕(글자 상자 + 좌우 0.03 in·위아래 0.01 in, 흰색 85 %, 모서리 0)을 깐다(T14b-4).
+  const backing = (l: TextShape): ChartShape => ({ kind: "rect", x: l.x - 0.03 * scale, y: l.y - 0.01 * scale, w: l.w + 0.06 * scale, h: l.h + 0.02 * scale, fill: "#ffffff", opacity: 0.85, name: l.name.replace("chart-distance-", "chart-distance-bg-") });
+  for (const l of chosen.labels) out.push(backing(l), l);
 
   if (d.site !== null) {
     // 테두리 있는 점 하나(분홍 속·진한 테두리 1.5 px). 반지름은 테두리 가운데선까지.
@@ -217,7 +219,7 @@ function scatterShapes(d: Scatter, radiusM: number, box: ChartBox, scale: number
       if (area < bestArea) [best, bestArea] = [cand, area];
       if (area === 0) break;
     }
-    out.push(best!);
+    out.push(backing(best!), best!);
   }
   return out;
 }

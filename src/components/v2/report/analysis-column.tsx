@@ -41,7 +41,7 @@ export function ChartSvg({ shapes, box, panel, unit, kind, label, styles }: { sh
       style={{ position: "absolute", left: (box.x - panel.x) * unit, top: (box.y - panel.y) * unit }}
     >
       {shapes.map((s) => {
-        if (s.kind === "rect") return <rect key={s.name} x={n(X(s.x))} y={n(Y(s.y))} width={n(s.w * unit)} height={n(s.h * unit)} fill={s.fill} {...(s.stroke ? { stroke: s.stroke, strokeWidth: RECT_STROKE_PT * ptPx } : {})} />;
+        if (s.kind === "rect") return <rect key={s.name} x={n(X(s.x))} y={n(Y(s.y))} width={n(s.w * unit)} height={n(s.h * unit)} fill={s.fill} {...(s.opacity !== undefined ? { fillOpacity: s.opacity } : {})} {...(s.stroke ? { stroke: s.stroke, strokeWidth: RECT_STROKE_PT * ptPx } : {})} />;
         if (s.kind === "line") {
           const w = s.width * ptPx;
           return <line key={s.name} x1={n(X(s.x1))} y1={n(Y(s.y1))} x2={n(X(s.x2))} y2={n(Y(s.y2))} stroke={s.stroke} strokeWidth={w} {...(s.dash ? { strokeDasharray: `${n(w * 4)} ${n(w * 3)}` } : {})} />;

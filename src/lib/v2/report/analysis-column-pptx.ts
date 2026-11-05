@@ -25,7 +25,7 @@ export function addChartShapes(s: Slide, shapes: readonly ChartShape[], namePref
       if (shape.h <= 0) continue;
       s.addShape("rect", {
         x: shape.x, y: shape.y, w: shape.w, h: shape.h,
-        fill: { color: hex(shape.fill) },
+        fill: { color: hex(shape.fill), ...(shape.opacity !== undefined ? { transparency: Math.round((1 - shape.opacity) * 100) } : {}) },
         line: shape.stroke ? { color: hex(shape.stroke), width: RECT_STROKE_PT } : { color: hex(shape.fill), width: 0, transparency: 100 },
         objectName,
       });

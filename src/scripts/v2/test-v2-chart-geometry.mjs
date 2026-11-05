@@ -135,6 +135,18 @@ for (const scale of SCALES) {
   assert.equal(byName(shapes, "chart-distance-site-label").text, "대지 평균 17층");
   assert.equal(byName(shapes, "chart-distance-median-label").text, "중앙값 4층");
   assert.equal(byName(shapes, "chart-distance-mean-label").text, "평균 6.2층");
+  // T14b-4: 중앙값·평균·대지 평균 글자마다 글자 앞(아래층)에 흰 바탕 — 상자 + 좌우 0.03 in·위아래 0.01 in, 흰색 85 %, 모서리 0
+  for (const label of ["median-label", "mean-label", "site-label"]) {
+    const t = byName(shapes, `chart-distance-${label}`);
+    const bg = byName(shapes, `chart-distance-bg-${label}`);
+    assert.equal(bg.kind, "rect");
+    assert.equal(bg.fill, "#ffffff");
+    assert.equal(bg.opacity, 0.85);
+    assert.equal(bg.stroke, undefined);
+    assert.ok(Math.abs(bg.x - (t.x - 0.03 * scale)) < EPS && Math.abs(bg.y - (t.y - 0.01 * scale)) < EPS && Math.abs(bg.w - (t.w + 0.06 * scale)) < EPS && Math.abs(bg.h - (t.h + 0.02 * scale)) < EPS, `${label} 바탕 크기(x${scale})`);
+    assert.ok(shapes.indexOf(bg) < shapes.indexOf(t), `${label} 바탕이 글자 앞(아래)`);
+    assert.equal(t.color, label === "median-label" ? med.stroke : label === "mean-label" ? mean.stroke : t.color, "글자색은 그대로");
+  }
 }
 assert.ok(!distanceShapes({ ...floors, site: null }, 1000, BOX, 1).some((s) => s.name.startsWith("chart-distance-site")), "대지가 없으면 대지 점·글자 없음");
 
