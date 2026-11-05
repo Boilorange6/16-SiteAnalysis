@@ -48,10 +48,12 @@ const farFirst = (n, extra) => Array.from({ length: n }, (_, i) => point(n - i, 
   });
 }
 
-// ② H 763: 왼쪽 아래 범례 판, 후보 12개, 같은 문구 중 가까운 쪽
+// ② H 763: 오른쪽 아래 범례 판(축척 판 바로 위, 2026-11-05), 후보 12개, 같은 문구 중 가까운 쪽
 {
   const H = 763;
-  const legendBox = { x0: 24, y0: H - 24 - 220, x1: 24 + 300, y1: H - 24 };
+  const bare = buildMapScene({ model: modelOf(farFirst(12)), width: W, height: H, activeLayer: "white", scale: true, north: 30 });
+  const legendBottom = bare.scaleBox.y0 - 11;
+  const legendBox = { x0: bare.scaleBox.x1 - 300, y0: legendBottom - 220, x1: bare.scaleBox.x1, y1: legendBottom };
   const twins = [point(9, { name: "같은이름", labelPriority: 1 }), point(1, { name: "같은이름", labelPriority: 1 })];
   const scene = buildMapScene({ model: modelOf([...farFirst(12), ...twins]), width: W, height: H, activeLayer: "white", scale: true, north: 30, legendBox });
   const placed = new Set(scene.labelPlacements.map((p) => p.entry.key));
@@ -233,4 +235,23 @@ globalThis.React = React;
   assert.equal(scene.labelPlacements.length, 1, "우선순위 2 조각 하나만 놓인다");
   const text = JSON.stringify(scene.labelPlacements[0].text);
   assert.ok(text.includes("5,000㎡") && !text.includes("100㎡"), `카드 글이 우선순위 2 조각의 것: ${text}`);
+}
+
+// ── Task 12b: 설명선 칸 아래 끝은 칸마다 따로 — 왼쪽은 지도 틀 아래 끝 − 여백, 오른쪽은 범례 판 위 − 간격(2026-11-05) ──
+{
+  const H = 519;
+  const edge = 24;
+  const bare = buildMapScene({ model: modelOf(farFirst(60)), width: W, height: H, activeLayer: "white", scale: true, north: 30, calloutEdge: edge });
+  const legendBox = { x0: bare.scaleBox.x1 - 260, y0: bare.scaleBox.y0 - 11 - 150, x1: bare.scaleBox.x1, y1: bare.scaleBox.y0 - 11 };
+  const rightBottom = legendBox.y0 - 12;
+  const scene = buildMapScene({ model: modelOf(farFirst(60)), width: W, height: H, activeLayer: "white", scale: true, north: 30, calloutEdge: edge, avoid: [legendBox], calloutLeftBottom: H - edge, calloutRightBottom: rightBottom });
+  const f = scene.calloutFrame;
+  assert.ok(Math.abs(f.left.bottom - (H - edge)) < 0.5, `왼쪽 칸 아래 끝 ${f.left.bottom} = 틀 아래 − 여백 ${H - edge}`);
+  assert.ok(Math.abs(f.right.bottom - rightBottom) < 0.5, `오른쪽 칸 아래 끝 ${f.right.bottom} = 범례 위 − 간격 ${rightBottom}`);
+  assert.ok(f.left.bottom > f.right.bottom, "왼쪽 칸이 더 아래까지 쓴다");
+  const cards = scene.labelPlacements.map((p) => p.box);
+  const rightCards = cards.filter((b) => b.x0 > W / 2);
+  assert.ok(rightCards.length > 0 && rightCards.every((b) => b.y1 <= rightBottom + 0.5), "오른쪽 칸 카드는 범례 위에서 끝난다");
+  assert.ok(Math.max(...cards.filter((b) => b.x0 < W / 2).map((b) => b.y1)) > rightBottom, "왼쪽 칸 카드는 범례 높이 아래까지 내려온다");
+  cards.forEach((b) => assert.ok(!overlap(b, legendBox) && !overlap(b, scene.scaleBox), "카드가 범례 판·축척 판을 덮음"));
 }

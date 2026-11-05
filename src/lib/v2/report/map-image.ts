@@ -31,7 +31,7 @@ import { mapFrameScaleOptions, scaleOptionsForFrame, zoomForScale, type ReportSc
 import { DEFAULT_REPORT_FONT_SIZES, frameSiteMarks, type MapFrameState } from "./report-doc";
 import { fontSizeForStyle } from "./pptx-kit";
 import { NORTH_INSET, NORTH_RADIUS, northArrowBox, scaleBarBox, scaleFontScaleForPt } from "../ui/map-scene";
-import { PAGE_EDGE, frameChromeUnit } from "../ui/report-page-layout";
+import { PAGE_EDGE, frameChromeUnit, reportCalloutBottoms } from "../ui/report-page-layout";
 import { figureSceneSize, pageFrameFor, reportMapAvoid, type PixelBox, type ReportPageFrame } from "./report-page-frame";
 import type { Rect } from "../ui/overlay-layout";
 
@@ -41,7 +41,7 @@ const VIEW_H = 540;
 const OUT_W = 1920;
 const OUT_H = 1080;
 const PX_PER_INCH = VIEW_W / SLIDE.w;
-type Extra = Partial<Pick<MapFigureProps, "muted" | "siteX" | "avoid" | "fill" | "siteY" | "calloutTop" | "calloutLeftBottom" | "calloutEdge" | "scale" | "legend" | "bare" | "baseTheme" | "transparent" | "pinnedKeys" | "hiddenKeys" | "deletedElementKeys" | "labelBoxes" | "showAutomaticLabels" | "north" | "credit" | "label" | "rightInset" | "backgroundOnly" | "terrainSection" | "layoutUnit" | "siteMarks" | "northX" | "scaleX" | "scaleY" | "scaleBoxOverride">> & {
+type Extra = Partial<Pick<MapFigureProps, "muted" | "siteX" | "avoid" | "fill" | "siteY" | "calloutTop" | "calloutLeftBottom" | "calloutRightBottom" | "calloutEdge" | "scale" | "legend" | "bare" | "baseTheme" | "transparent" | "pinnedKeys" | "hiddenKeys" | "deletedElementKeys" | "labelBoxes" | "showAutomaticLabels" | "north" | "credit" | "label" | "rightInset" | "backgroundOnly" | "terrainSection" | "layoutUnit" | "siteMarks" | "northX" | "scaleX" | "scaleY" | "scaleBoxOverride">> & {
   size?: { width: number; height: number };
   bottomInset?: number;
   style?: PageStyle;
@@ -308,6 +308,7 @@ function pageFrameExtra(p: PlannedSlide & { kind: "tile" }, model: MapModel, pag
   const calloutEntries = p.callout?.page === 0 ? calloutLegendEntries(p.callout.model, frame?.legend) : [];
   const calloutAlignment = slideCalloutAvoidance({ title: geo.title, summary: null, legend: geo.legend }, calloutEntries, slideLayout(format), format, fontSizeForStyle(baseStyle, "legend") / DEFAULT_REPORT_FONT_SIZES.legend);
   const calloutLegend = overviewDrawn ? geo.legend : calloutAlignment.calloutLegend;
+  const calloutBottoms = reportCalloutBottoms(geo);
   const dims = { width: VIEW_W, height, siteX: 0.5, siteY: 0.5, fill };
   const scaleOptions = frame ? mapFrameScaleOptions(format, pageFrame.layout, dims, { summaryDeleted: pageFrame.layout === "map-charts" && !geo.column }) : null;
   const style = frame && scaleOptions ? reportFrameStyle(frame, baseStyle, model, scaleOptions) : baseStyle;
@@ -338,7 +339,8 @@ function pageFrameExtra(p: PlannedSlide & { kind: "tile" }, model: MapModel, pag
     style, highlightLabel, legendFocus: highlightLabel,
     calloutTop: calloutAlignment.calloutTop * ppi,
     calloutEdge: PAGE_EDGE * ppi,
-    ...(calloutAlignment.calloutLeftBottom !== undefined ? { calloutLeftBottom: calloutAlignment.calloutLeftBottom * ppi } : {}),
+    calloutLeftBottom: calloutBottoms.left * ppi,
+    ...(calloutBottoms.right !== undefined ? { calloutRightBottom: calloutBottoms.right * ppi } : {}),
     pinnedKeys: [...new Set([...(p.pinnedKeys ?? []), ...(frame?.pinnedKeys ?? [])])],
     // D17 단면 장: 지도에 선택 단면선을 두껍게(선택 상태) 그린다
     ...(p.view.code === "D17" && p.view.terrainSections && p.terrainSection ? { terrainSection: p.terrainSection } : {}),

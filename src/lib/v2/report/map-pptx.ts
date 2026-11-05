@@ -13,7 +13,7 @@ import type { PlannedSlide } from "./report-plan";
 import type { PageStyle } from "../ui/board-state";
 import { metersPerPixel, slideViewport, type BasemapChoice } from "../ui/map-projection";
 import { scaleOptionsForFrame, zoomForScale } from "../ui/report-scale";
-import { PAGE_EDGE, frameChromeUnit, type ReportPageGeometry } from "../ui/report-page-layout";
+import { PAGE_EDGE, frameChromeUnit, reportCalloutBottoms, type ReportPageGeometry } from "../ui/report-page-layout";
 import { DEFAULT_REPORT_FONT_SIZES, frameSiteMarks, type MapFrameState, type PagePanelRect, type ReportLayout } from "./report-doc";
 import { reportMapAvoid } from "./report-page-frame";
 
@@ -635,6 +635,7 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
   const layout = slideLayout(format);
   const calloutEntries = calloutOverview ? calloutLegendEntries(plan.callout!.model, reportFrame?.legend) : [];
   const calloutAlignment = calloutDetail ? null : slideCalloutAvoidance(panels, calloutEntries, layout, format, fontSizeForStyle(style, "legend") / DEFAULT_REPORT_FONT_SIZES.legend);
+  const geoBottoms = geo ? reportCalloutBottoms(geo) : null;
   // 새 장 배치의 설명선 개요는 범례 자리가 기하의 legend다(화면 TileSurface의 resolvedCalloutLegend와 같다).
   const overviewDrawn = geo ? !!options.calloutOverview : calloutOverview;
   const calloutLegend = geo && overviewDrawn ? geo.legend : calloutAlignment?.calloutLegend ?? null;
@@ -686,7 +687,9 @@ function sceneFor(model: MapModel, options: { plan?: PlannedSlide & { kind: "til
     rightInset,
     ...(calloutDetail ? {} : { calloutTop: calloutTopPx }),
     ...(geo ? { calloutEdge: PAGE_EDGE * ppi } : {}),
-    ...(calloutAlignment?.calloutLeftBottom !== undefined
+    ...(geoBottoms
+      ? { calloutLeftBottom: geoBottoms.left * ppi, ...(geoBottoms.right !== undefined ? { calloutRightBottom: geoBottoms.right * ppi } : {}) }
+      : calloutAlignment?.calloutLeftBottom !== undefined
       ? { calloutLeftBottom: calloutAlignment.calloutLeftBottom * ppi }
       : terrainLayout?.calloutLeftBottom !== undefined ? { calloutLeftBottom: terrainLayout.calloutLeftBottom * activePxPerInch } : {}),
     model: displayModel,

@@ -105,6 +105,8 @@ export type MapFigureProps = {
   calloutTop?: number;
   /** 하단 밴드가 예약된 경우 왼쪽 콜아웃 열의 하단(px) */
   calloutLeftBottom?: number;
+  /** 오른쪽 콜아웃 열의 하단(px, 보고서 장 범례 판 위) */
+  calloutRightBottom?: number;
   /** 말풍선 칸이 지도 틀 좌우 가장자리에서 떨어진 거리(px). 생략하면 장면 기본(4u). */
   calloutEdge?: number;
   /** 상세 창에서 행/지도 선택을 같은 fid로 강조한다. */
@@ -425,7 +427,7 @@ function siteMarkNodes(scene: MapScene) {
   );
 }
 
-function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseTheme: baseThemeProp, tileHref, rasterHref, rasterName, bare, backgroundOnly = false, transparent = false, fixed, layoutUnit, labelScale = 1, compact = false, label, legend, legendY, north: northOpt, northX, northScale, scale = true, showRadius = true, showSiteMarker = true, credit = true, bottomInset = 0, avoid = EMPTY_BOXES, siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, scaleY, scaleBoxOverride, scaleChromeScale, scaleFontScale, siteMarks, siteY = 0.5, calloutTop: calloutTopOpt, calloutLeftBottom, calloutEdge, selectedFids = EMPTY_KEYS, terrainSection = "A", highlightLabel = null, legendFocus = null, highlightPinnedLabel = null, hoverKey = null, emphasisKey = null, pinnedKeys = EMPTY_KEYS, showAutomaticLabels = true, onFeatureClick, onFeatureHover, onFeatureSelect, onLabelSelect, onFeaturePin, onLegendHover, onLegendPin, path = EMPTY_PATH, onMapClick, view, viewport, dragging = false, previewInteraction = false, preserveShortCalloutLabels = false, hiddenKeys = EMPTY_KEYS, deletedElementKeys = EMPTY_KEYS, labelBoxes = EMPTY_LABEL_BOXES, onLabelBoxChange, onLabelBoxReset, selectedElementKey = null, selectedLabelKey = null }: MapFigureProps) {
+function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseTheme: baseThemeProp, tileHref, rasterHref, rasterName, bare, backgroundOnly = false, transparent = false, fixed, layoutUnit, labelScale = 1, compact = false, label, legend, legendY, north: northOpt, northX, northScale, scale = true, showRadius = true, showSiteMarker = true, credit = true, bottomInset = 0, avoid = EMPTY_BOXES, siteX = 0.5, muted, rightInset = 0, scaleLeft, fill = 0.8, scaleX, scaleY, scaleBoxOverride, scaleChromeScale, scaleFontScale, siteMarks, siteY = 0.5, calloutTop: calloutTopOpt, calloutLeftBottom, calloutRightBottom, calloutEdge, selectedFids = EMPTY_KEYS, terrainSection = "A", highlightLabel = null, legendFocus = null, highlightPinnedLabel = null, hoverKey = null, emphasisKey = null, pinnedKeys = EMPTY_KEYS, showAutomaticLabels = true, onFeatureClick, onFeatureHover, onFeatureSelect, onLabelSelect, onFeaturePin, onLegendHover, onLegendPin, path = EMPTY_PATH, onMapClick, view, viewport, dragging = false, previewInteraction = false, preserveShortCalloutLabels = false, hiddenKeys = EMPTY_KEYS, deletedElementKeys = EMPTY_KEYS, labelBoxes = EMPTY_LABEL_BOXES, onLabelBoxChange, onLabelBoxReset, selectedElementKey = null, selectedLabelKey = null }: MapFigureProps) {
   if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
     const target = window as Window & { __V2_PREVIEW_METRICS__?: Record<string, number> };
     const metrics = target.__V2_PREVIEW_METRICS__ ?? (target.__V2_PREVIEW_METRICS__ = {});
@@ -618,6 +620,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseT
     rightInset,
     calloutTop: calloutTopOpt,
     calloutLeftBottom,
+    calloutRightBottom,
     calloutEdge,
     scaleLeft,
     scaleX,
@@ -656,7 +659,7 @@ function MapFigure({ model, width: W, height: H, basemap = "tiles", layer, baseT
     // 호출자가 준 값만 넘긴다(없으면 장면이 같은 식으로 계산). 바탕 라벨이 "표면이 단위를 정했는가"를 구분한다.
     layoutUnit,
     labelScale: safeLabelScale,
-  }), [activeLayer, themeId, avoid, bare, bottomInset, calloutEdge, calloutLeftBottom, calloutTopOpt, compact, deletedElementKeys, effectiveLabelBoxes, emphasisKey, fill, fixed, H, hiddenKeys, highlightLabel, layoutUnit, legendFocus, mapCenterY, mapFill, mapSiteX, mapSiteY, muted, model, northOpt, northScale, northX, panelH, panelW, panelX, panelY, path, rightInset, safeLabelScale, scale, scaleChromeScale, scaleFontScale, scaleLeft, scaleX, scaleY, scaleBoxOverride, sceneDragging, siteMarks?.dims, siteMarks?.elevations, sceneHoverKey, showAutomaticLabels, showLegend, showRadius, showSiteMarker, siteX, selectedFids, terrainSection, pinnedKeys, W, view, viewport]);
+  }), [activeLayer, themeId, avoid, bare, bottomInset, calloutEdge, calloutLeftBottom, calloutRightBottom, calloutTopOpt, compact, deletedElementKeys, effectiveLabelBoxes, emphasisKey, fill, fixed, H, hiddenKeys, highlightLabel, layoutUnit, legendFocus, mapCenterY, mapFill, mapSiteX, mapSiteY, muted, model, northOpt, northScale, northX, panelH, panelW, panelX, panelY, path, rightInset, safeLabelScale, scale, scaleChromeScale, scaleFontScale, scaleLeft, scaleX, scaleY, scaleBoxOverride, sceneDragging, siteMarks?.dims, siteMarks?.elevations, sceneHoverKey, showAutomaticLabels, showLegend, showRadius, showSiteMarker, siteX, selectedFids, terrainSection, pinnedKeys, W, view, viewport]);
   const vp = scene.viewport;
   const proj = makeProjector(vp);
   const mpp = scene.mpp;

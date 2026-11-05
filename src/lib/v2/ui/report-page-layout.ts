@@ -54,6 +54,8 @@ const CARD_W = 3.125;
 const COLUMN_GAP = 0.21;
 /** 카드 사이 12 px */
 const CARD_GAP = 0.125;
+/** 범례 판과 그 아래 축척 판 사이 간격(inch, 1440 화면 11 px) */
+export const LEGEND_SCALE_GAP = 0.12;
 /** ① 숫자 카드와 그 아래 주석 칩 사이 */
 const KEY_CHIP_GAP = 0.08;
 /** 그래프 카드 최소 높이(제목 줄 + 그래프). 못 채우면 그래프 카드 2부터 뺀다. */
@@ -101,12 +103,8 @@ function place(input: GeometryInput): { geometry: ReportPageGeometry; cardMoved:
   const scaleSize = { w: (SCALE_MAX_PX + 2 * SCALE_PANEL_SIDE) * unit * k, h: (SCALE_PANEL_ABOVE + SCALE_PANEL_BELOW) * unit * k };
   const scaleAuto: Rect = { ...scaleSize, x: map.w - edgePx * unit * k - scaleSize.w, y: map.h - 12 * unit * k - scaleSize.h };
   const chipBelow = (card: Rect): Rect | null => (notes ? { x: right(card) - chip.w, y: bottom(card) + KEY_CHIP_GAP, ...chip } : null);
-  // 범례 기본 자리(왼쪽 아래). 카드(+칩)가 커서 세로로 겹치면 카드 오른쪽으로 민다(카드는 줄이지 않는다).
-  const legendAt = (block: Rect | null, card: Rect | null): Rect | null => {
-    if (!legendSize) return null;
-    const auto: Rect = { x: EDGE, y: map.h - EDGE - legendSize.h, ...legendSize };
-    return block && card && hit(auto, block) ? { ...auto, x: Math.min(right(card) + CARD_GAP, Math.max(EDGE, map.w - EDGE - legendSize.w)) } : auto;
-  };
+  // 범례 기본 자리(2026-11-05 사용자 결정): 오른쪽 아래, 축척 판 바로 위(간격 LEGEND_SCALE_GAP). 오른쪽 끝은 축척 판과 같다. 쪽마다 옮기지 않는다.
+  const legendAuto: Rect | null = legendSize ? { x: right(scaleAuto) - legendSize.w, y: scaleAuto.y - LEGEND_SCALE_GAP - legendSize.h, ...legendSize } : null;
   // 저장 자리는 틀 안이고 이미 놓인 요소와 겹치지 않을 때만 받는다. 크기는 저장값이 아니라 기하가 정한다.
   const placed = (panel: PagePanelRect | undefined, size: { w: number; h: number }, others: readonly (Rect | null)[]): Rect | null => {
     if (!panel) return null;
@@ -153,7 +151,7 @@ function place(input: GeometryInput): { geometry: ReportPageGeometry; cardMoved:
     if (stored.summary) {
       const cand = toRect(stored.summary);
       const block = union(cand, chipBelow(cand));
-      const pushed = legendAt(block, cand);
+      const pushed = legendAuto;
       const others = [titleAuto, northAuto, scaleAuto];
       if (within(block, map) && others.every((r) => !hit(block, r)) && (!pushed || (within(pushed, map) && !hit(pushed, block) && others.every((r) => !hit(pushed, r))))) {
         cardMoved = cand;
@@ -165,13 +163,24 @@ function place(input: GeometryInput): { geometry: ReportPageGeometry; cardMoved:
   const block: Rect | null = !withColumn && keyCard ? union(keyCard, keyNotesChip) : null;
 
   // ── 2~3. 저장 자리를 카드 → 제목 → 범례 → 방위표 → 축척 순으로 시험한다(카드는 위에서 처리했다).
-  let legend = legendAt(block, keyCard);
+  let legend = legendAuto;
   const title = placed(stored.title, titleSize, [block, legend, northAuto, scaleAuto]) ?? titleAuto;
   if (legendSize) legend = placed(stored.legend, legendSize, [title, block, northAuto, scaleAuto]) ?? legend;
   const north = placed(stored.north, northSize, [title, block, legend, scaleAuto]) ?? northAuto;
   const scaleBar = placed(stored.scaleBar, scaleSize, [title, block, legend, north]) ?? scaleAuto;
 
   return { geometry: { map, footer, pageNo, title, keyCard, column, keyNotesChip, legend, north, scaleBar, unit, scenePxPerInch: SCENE_W / map.w }, cardMoved };
+}
+
+/**
+ * 설명선 칸의 아래 끝(inch, 지도 틀 기준), 칸마다 따로(2026-11-05): 왼쪽은 지도 틀 아래 끝(안쪽 여백)까지, 오른쪽은 범례 판 위 − 간격에서 끝난다.
+ * 범례 판이 있는 쪽 칸만 판 위에서 끝난다(기본 자리는 오른쪽이고, 사용자가 왼쪽 절반으로 옮겨 저장했으면 왼쪽 칸이 끊긴다).
+ * `right`는 범례 판이 오른쪽에 있을 때만 값이 있다: 없으면 오른쪽 칸은 장면의 축척 판 규칙을 그대로 따른다.
+ */
+export function reportCalloutBottoms(geometry: Pick<ReportPageGeometry, "map" | "legend">): { left: number; right?: number } {
+  const above = geometry.legend ? geometry.legend.y - EDGE * 0.5 : null;
+  const onRight = !!geometry.legend && geometry.legend.x + geometry.legend.w / 2 >= geometry.map.w / 2;
+  return { left: above !== null && !onRight ? above : geometry.map.h - EDGE, ...(above !== null && onRight ? { right: above } : {}) };
 }
 
 /**

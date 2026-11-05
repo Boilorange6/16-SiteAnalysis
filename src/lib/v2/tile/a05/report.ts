@@ -155,10 +155,10 @@ function calloutOverview(s: Slide, p: PlannedSlide & { kind: "tile" }, overviewF
   const cards: { c: Complex; pl: Placed }[] = [];
   let cardFrame: CalloutFrame | undefined;
   if (overviewFrame && cm.complexes.length > 0) {
-    const { map, legend, calloutTop, calloutRightTop, calloutBottom } = overviewFrame;
+    const { map, calloutTop, calloutRightTop, calloutBottom, calloutLeftBottom } = overviewFrame;
     cardFrame = calloutFrame({
       W: map.w, H: map.h, m: INCH, edge: PAGE_EDGE, top: calloutTop, rightTop: calloutRightTop, bottom: Math.max(calloutTop, calloutRightTop, calloutBottom),
-      ...(legend ? { leftBottom: Math.max(calloutTop, legend.y - PAGE_EDGE * 0.5) } : {}), perSide: OVERVIEW_CARDS, rows: 3, variant: "compact",
+      leftBottom: Math.max(calloutTop, calloutLeftBottom), perSide: OVERVIEW_CARDS, rows: 3, variant: "compact",
     });
     const top = [...cm.complexes].sort((a, b) => a.rank - b.rank).slice(0, OVERVIEW_CARDS);
     const byKey = new Map(top.map((c) => [c.key, c]));

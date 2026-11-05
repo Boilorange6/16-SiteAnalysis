@@ -209,6 +209,12 @@ assert.deepEqual(C.rankSupply(list.map(() => sup({})), "2026-09-30").map((c) => 
   const overview = planReportDoc({ ...EMPTY_REPORT_DOC, pages }, cViews, cCtx).find((s) => s.kind === "tile" && s.callout?.page === 0);
   const frame = pageFrameFor(overview);
   assert.ok(frame?.calloutOverview, "A06 개요 틀");
+  // 범례 판은 오른쪽 아래(축척 판 위): 오른쪽 칸은 판 위 − 0.125 in, 왼쪽 칸은 지도 틀 아래 끝 − 0.25 in까지(2026-11-05)
+  const ov = frame.calloutOverview;
+  assert.ok(ov.legend, "개요 범례 판");
+  assert.ok(Math.abs(ov.legend.y + ov.legend.h + 0.12 - frame.geometry.scaleBar.y) < 1e-6, "범례–축척 판 간격 0.12 in");
+  assert.ok(Math.abs(ov.calloutBottom - (ov.legend.y - 0.125)) < 1e-6, "오른쪽 칸 아래 끝 = 범례 위 − 간격");
+  assert.ok(Math.abs(ov.calloutLeftBottom - (ov.map.h - 0.25)) < 1e-6, "왼쪽 칸 아래 끝 = 지도 틀 아래 끝 − 여백");
   const texts = [];
   const rec = { addShape: () => rec, addText: (value, o) => { texts.push({ value, o }); return rec; } };
   a05ReportModule.report.render({ slide: rec, planned: overview, part: "overview", overviewFrame: frame.calloutOverview });

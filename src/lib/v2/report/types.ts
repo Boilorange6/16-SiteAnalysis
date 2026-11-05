@@ -15,8 +15,10 @@ export type CalloutOverviewFrame = {
   /** 왼쪽 카드 칸의 위 끝(inch, 제목 칩 아래. ①은 숫자 카드·주석 칩 아래). 오른쪽 칸은 방위표 아래(`calloutRightTop`)에서 시작한다. */
   calloutTop: number;
   calloutRightTop: number;
-  /** 오른쪽 카드 칸의 아래 끝(축척 막대 위). 왼쪽 칸은 범례 판 위에서 끝난다. */
+  /** 오른쪽 카드 칸의 아래 끝(범례 판 위, 범례가 없으면 축척 막대 위). */
   calloutBottom: number;
+  /** 왼쪽 카드 칸의 아래 끝(지도 틀 아래 끝 − 안쪽 여백. 범례 판을 왼쪽에 저장한 쪽만 그 판 위). */
+  calloutLeftBottom: number;
 };
 
 export type TileReportRenderContext = {

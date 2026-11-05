@@ -687,6 +687,8 @@ export type MapSceneOptions = {
   /** 슬라이드처럼 지도 밖 판이 있을 때 말풍선 칸 위 끝·왼쪽 칸 아래 끝(px). */
   calloutTop?: number;
   calloutLeftBottom?: number;
+  /** 오른쪽 칸 아래 끝(px): 보고서 장 범례 판 위. 축척 판 위 제한과 함께 쓰면 더 위쪽이 이긴다. */
+  calloutRightBottom?: number;
   /** 말풍선 칸이 지도 틀 좌우 가장자리에서 떨어진 거리(px). 생략하면 4u. 보고서 새 틀 장은 장 가장자리(0.25 in)를 넘긴다. */
   calloutEdge?: number;
   path?: Array<[number, number]>;
@@ -1563,6 +1565,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
     avoid = [],
     calloutTop: calloutTopOpt,
     calloutLeftBottom,
+    calloutRightBottom,
     calloutEdge,
     path = [],
     north: northOpt,
@@ -1784,7 +1787,7 @@ export function buildMapScene(options: MapSceneOptions): MapScene {
   const naturalCalloutBottom = legendBox && legendY > H / 2 ? legendY - 6 * u : H - bottomInset - 4 * u;
   // 축척 판은 occupiedBoxes에만 기록하면 이미 배치된 콜아웃과 겹칠 수 있다.
   // 콜아웃 하단을 축척 판 위로 먼저 제한해 조판 셀에서도 카드가 축척을 가리지 않게 한다.
-  const calloutBottom = Math.min(naturalCalloutBottom, scale ? scaleBox.y0 - 6 * u : H);
+  const calloutBottom = Math.min(naturalCalloutBottom, scale ? scaleBox.y0 - 6 * u : H, calloutRightBottom ?? H);
   const calloutFrameModel = calloutFrame({ W, H, m: calloutMetrics, edge: calloutEdge ?? 4 * u, top: calloutTop, rightTop: calloutRightTop, bottom: Math.max(calloutTop, calloutRightTop, calloutBottom), ...(calloutLeftBottom !== undefined ? { leftBottom: Math.max(calloutTop, calloutLeftBottom) } : {}), rightInset, perSide: 100, rows: 3, variant: "compact", maxFill: 0.8 });
   const hasTerrainSupplement = (model.lines ?? []).some((line) => ["retaining_wall", "cut_fill", "fence"].includes(line.layer));
   const protectTerrainLabel = (layerName: string) => hasTerrainSupplement && (layerName === "contour" || layerName === "retaining_wall" || layerName === "cut_fill" || layerName === "fence" || layerName === "terrain_section_a" || layerName === "terrain_section_b");

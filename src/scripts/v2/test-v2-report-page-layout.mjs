@@ -1,7 +1,7 @@
 /** 보고서 장 기하(reportPageGeometry)와 핵심 숫자 카드 맞춤(keyFigureFit): 화면·PPT·그림·축척이 같은 값을 읽는 순수 함수. */
 import assert from "node:assert/strict";
 
-const { reportPageGeometry, frameChromeUnit, keyCardBox } = await import("../../lib/v2/ui/report-page-layout.ts");
+const { reportPageGeometry, frameChromeUnit, keyCardBox, reportCalloutBottoms } = await import("../../lib/v2/ui/report-page-layout.ts");
 const { keyFigureFit } = await import("../../lib/v2/report/key-figure-fit.ts");
 const { textIn } = await import("../../lib/v2/report/pptx-kit.ts");
 
@@ -194,18 +194,33 @@ for (const format of ["wide", "a3", "a4"]) {
   assert.equal(c.map.w, 13.333);
 }
 
-// ── ① 카드가 커서 범례(왼쪽 아래)와 세로로 겹치면 범례를 카드 오른쪽으로 민다. 카드는 줄이지 않는다
+// ── 범례 기본 자리(2026-11-05): 오른쪽 아래, 축척 판 바로 위(간격 0.12 in), 오른쪽 끝은 축척 판과 같다. 카드가 커도 자리를 옮기지 않는다
 {
-  const small = geo({ layout: "map-key" });
-  near(small.legend.x, 0.25, "범례 기본 x");
-  near(bottom(small.legend), small.map.h - 0.25, "범례 기본 아래");
+  for (const layout of ["map-key", "map-charts"]) {
+    const small = geo({ layout });
+    near(right(small.legend), right(small.scaleBar), `${layout} 범례 오른쪽 끝 = 축척 판 오른쪽 끝`);
+    near(bottom(small.legend) + 0.12, small.scaleBar.y, `${layout} 범례–축척 판 간격 0.12 in`);
+    assert.ok(!hit(small.legend, small.scaleBar) && !hit(small.legend, small.north) && inside(small.legend, small.map), `${layout} 겹침 없이 틀 안`);
+  }
   const tall = geo({ layout: "map-key", keyCardHeight: 5.6 });
   assert.equal(tall.keyCard.h, 5.6);
-  near(tall.legend.x, right(tall.keyCard) + 0.125, "범례는 카드 오른쪽 끝 + 0.125");
-  near(bottom(tall.legend), small.map.h - 0.25, "y는 그대로");
-  assert.ok(!hit(tall.legend, tall.keyCard) && inside(tall.legend, tall.map), "겹침 없이 틀 안");
+  assert.deepEqual(tall.legend, geo({ layout: "map-key" }).legend, "카드 크기와 상관없이 범례는 그 자리");
   assert.equal(tall.legend.w, 2.2);
   assert.equal(geo({ layout: "map-key", legendSize: null }).legend, null);
+  // 설명선 칸 아래 끝: 오른쪽은 범례 판 위 − 0.125, 왼쪽은 지도 틀 아래 끝 − 0.25
+  const g = geo({ layout: "map-key" });
+  const cb = reportCalloutBottoms(g);
+  near(cb.right, g.legend.y - 0.125, "오른쪽 칸 아래 끝 = 범례 위 − 간격");
+  near(cb.left, g.map.h - 0.25, "왼쪽 칸 아래 끝 = 지도 틀 아래 끝 − 여백");
+  const none = reportCalloutBottoms(geo({ layout: "map-key", legendSize: null }));
+  assert.equal(none.right, undefined, "범례가 없으면 오른쪽 칸은 축척 판 규칙");
+  near(none.left, g.map.h - 0.25, "범례가 없어도 왼쪽은 틀 아래 끝");
+  // 사용자가 왼쪽 절반으로 옮겨 저장한 범례는 그 자리를 지키고, 그 쪽(왼쪽) 칸이 범례 위에서 끝난다
+  const saved = geo({ layout: "map-key", panels: { legend: { x: 5 / 13.333, y: 5 / 7.5, w: 0.05, h: 0.05 } } });
+  near(saved.legend.x, 5, "저장 범례 x");
+  const sb = reportCalloutBottoms(saved);
+  assert.equal(sb.right, undefined);
+  near(sb.left, saved.legend.y - 0.125, "왼쪽에 저장한 범례는 왼쪽 칸을 끊는다");
 }
 
 // ── ① 저장 panels.summary: 틀 안·겹침 없음이면 카드를 그 자리에, 아니면 기본 자리. map-charts는 무시
@@ -327,12 +342,13 @@ for (const format of ["wide", "a3", "a4"]) {
   const W = 13.333;
   const H = 7.5;
   const p = (x, y, w = 0.05, h = 0.05) => ({ x: x / W, y: y / H, w: w / W, h: h / H });
-  // 기본 범례(왼쪽 아래)가 옮겨 둔 방위표·축척과 겹치면 기본 자리로 돌아간다(① ②)
+  // 기본 범례(오른쪽 아래)가 옮겨 둔 방위표·축척과 겹치면 기본 자리로 돌아간다(① ②)
   for (const layout of ["map-key", "map-charts"]) {
-    const n = geo({ layout, panels: { north: p(1, 6) } });
+    const lg = geo({ layout }).legend;
+    const n = geo({ layout, panels: { north: p(lg.x + 0.1, lg.y + 0.1) } });
     assert.ok(!hit(n.north, n.legend), `${layout} 방위표가 기본 범례와 겹침`);
     assert.deepEqual(n.north, geo({ layout }).north, `${layout} 겹치면 기본 방위표`);
-    const s = geo({ layout, panels: { scaleBar: p(0.5, 6.3) } });
+    const s = geo({ layout, panels: { scaleBar: p(lg.x + 0.1, lg.y + 0.1) } });
     assert.ok(!hit(s.scaleBar, s.legend), `${layout} 축척이 기본 범례와 겹침`);
     assert.deepEqual(s.scaleBar, geo({ layout }).scaleBar);
     const ok = geo({ layout, panels: { scaleBar: p(5, 3) } });
@@ -370,10 +386,9 @@ for (const format of ["wide", "a3", "a4"]) {
   assert.ok(k.keyNotesChip.y >= bottom(k.keyCard) && k.keyNotesChip.y - bottom(k.keyCard) < 0.2, "① 칩은 카드 바로 아래");
   assert.equal(geo({ layout: "map-key", notes: false }).keyNotesChip, null);
   assert.equal(geo({ layout: "map-key", summaryDeleted: true }).keyNotesChip, null);
-  // 범례 밀기 판정은 카드 + 칩 아래 끝
+  // 범례는 오른쪽 아래 고정이라 카드(+칩)가 커도 밀리지 않고 칩과 겹치지 않는다
   const edge = geo({ layout: "map-key", keyCardHeight: 4.5 });
-  near(edge.legend.x, right(edge.keyCard) + 0.125, "칩까지 겹치면 범례를 민다");
-  near(geo({ layout: "map-key", keyCardHeight: 4.5, notes: false }).legend.x, 0.25, "칩이 없으면 그대로");
+  assert.deepEqual(edge.legend, geo({ layout: "map-key" }).legend, "카드가 커도 범례는 그 자리");
   assert.ok(!hit(edge.legend, edge.keyNotesChip));
   // 카드 폭을 먼저 얻는다
   const t4 = { w: 4.2, h: 0.5 };
