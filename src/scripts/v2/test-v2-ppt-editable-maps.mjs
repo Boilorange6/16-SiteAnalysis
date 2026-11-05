@@ -457,6 +457,18 @@ assert.equal(textShapesInRect(sheetXml, sheetCellRects[0]).some((shape) => shape
 
 for (const name of slideNames) assertValidGroupedXml(await zip.file(name).async("string"), name);
 
+// 래스터로 넣은 밀집 레이어의 라벨도 PPT에 벡터 텍스트로 들어간다(배경 이미지에는 라벨이 없다 — 화면과 같은 MapScene 라벨 목록).
+{
+  const labeled = feature("bus_stop", "dense-labeled", 40, 60, { label: null, name: "래스터층 정류장", labelPriority: 2, sublabel: "직선 72m" });
+  const labeledMap = { ...denseMap, features: [...denseFeatures, labeled], total: denseFeatures.length + 1 };
+  assert.ok(nativeMapStatus(labeledMap).rasterLayers.includes("bus_stop"), "전제: bus_stop은 래스터 레이어");
+  const labeledPlan = { ...plannedTile("D02", labeledMap, "dense-labeled"), no: 1, total: 1 };
+  const labeledImages = Object.fromEntries(mapKeysOf(labeledPlan).map((key) => [key, BACKGROUND_PNG]));
+  const labeledZip = await JSZip.loadAsync(await renderReportPptx([labeledPlan], labeledImages));
+  const labeledXml = await labeledZip.file("ppt/slides/slide1.xml")?.async("string") ?? "";
+  assert.match(textContent(labeledXml), /래스터층 정류장/, "래스터 레이어 라벨이 PPTX 텍스트에 있다");
+}
+
 counts.push({ code: fallbackMap.tileCode, native: true, shapeCount: shapeCount(fallbackXml), groups: groupCount(fallbackXml), pictures: pictureCount(fallbackXml), reason: nativeMapStatus(fallbackMap).reason });
 counts.push({ code: "D02:dense", native: true, rasterLayers: nativeMapStatus(denseMap).rasterLayers, shapeCount: shapeCount(denseXml), groups: groupCount(denseXml), pictures: pictureCount(denseXml), reason: nativeMapStatus(denseMap).reason });
 console.log(`editable map PPT sample: ${SAMPLE_PATH}`);

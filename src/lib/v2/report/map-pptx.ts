@@ -1017,7 +1017,7 @@ function addSiteMarks(slide: Slide, code: string, scene: MapScene): void {
 function addLabels(slide: Slide, code: string, scene: MapScene): void {
   for (const placement of scene.labelPlacements) {
     const entry = placement.entry;
-    if (isRasterizedLayer(entry.layer)) continue;
+    // 래스터 배경 이미지에는 라벨이 없다(backgroundOnly는 native chrome·라벨을 그리지 않는다). 래스터 레이어의 라벨도 화면과 같은 자리에 벡터로 그린다.
     const box = placement.box;
     if (!rectInsideFrame(box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0)) continue;
     const anchorRadius = Math.max(1.8 * scene.unit, placement.text.fontSize * 0.2);
