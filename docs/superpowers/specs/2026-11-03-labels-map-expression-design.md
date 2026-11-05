@@ -8,7 +8,7 @@
 - 범위 정본: `.superpowers/sdd/2026-10-30-report-page-layout/next-plan-decisions.md`(결정 페이지 https://claude.ai/artifact/94PRWRSHijQHBHVWbmvg9G). 이미 정한 결정은 다시 묻지 않는다.
 - 근거 조사(같은 폴더): `checkpoint-g-inv-b.md`(라벨), `checkpoint-g-inv-c.md`(색·선·바탕·D11·등고선), `next-plan-inv-buildings.md`(건물 이름·준공 연대), `next-plan-inv-sources.md`(도로폭·등고선·용도지구), `checkpoint-g-inv-a.md` 1번(A05 오피스텔), `checkpoint-g-review.md`(쪽별 사용자 의견 원문). file:line은 HEAD 157bd523 기준으로 다시 맞췄다(검토 §5).
 - 검토: `next-plan-spec-review.md`(Critical 3 · Important 15 · Minor 18)와 판정 `next-plan-spec-rulings.md`. 결정 19건 + outsideBasemap이 이 문서 어디에 반영됐는지는 검토 §2 결정 대조표를 본다. 결정과 다르게 쓴 곳은 없고, 결정과 자료 사실이 부딪히는 곳은 §5-1에 적었다.
-- 필독: `docs/design/v2-design-language.md` §1·§6·§8·§8-1·§9-8·§9-12·§10과 결정 이력. 실행자 브리프에도 정본 필독과 `ui-ux-pro-max`·`my-design-taste` 사용 지시를 넣는다. 정본에 없는 패턴은 만들지 말고 보고한다.
+- 필독: `docs/design/v2-design-language.md` §1·§6·§8·§8-1·§9-8·§9-12·§9-13·§10과 결정 이력. (2026-11-06: 정본 §9-8의 「지도 타일」 하위 규칙 — D17 줄·새 열·범례 판·숫자 카드 등 — 은 §9-13으로 옮겼다. 이 문서의 「§9-8 D17 줄」 등은 §9-13에서 찾는다.) 실행자 브리프에도 정본 필독과 `ui-ux-pro-max`·`my-design-taste` 사용 지시를 넣는다. 정본에 없는 패턴은 만들지 말고 보고한다.
 - 표기: *(Judge 제안)*은 사용자 결정이 아니라 이 초안의 제안이다. *(쪽 의견)*은 결정 19건이 아니라 `checkpoint-g-review.md`의 쪽별 사용자 의견 원문에서 온 수와 대상이다. [추측]은 확인하지 않은 것이다.
 
 ## 1. 목표 · 비목표 · 반목표
