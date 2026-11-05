@@ -168,6 +168,8 @@ export const RoseSetSchema = z.object({
 });
 export type RoseSet = z.infer<typeof RoseSetSchema>;
 
+export const MAX_RASTER_SIDE = 4096;
+
 /** 격자 남서 모서리·셀 크기를 포함한 압축 래스터 참조. 바이너리는 앱 DB에 둔다. */
 export const RasterRefSchema = z.object({
   name: z.string().regex(/^[a-z0-9_]{1,48}$/),
@@ -176,8 +178,8 @@ export const RasterRefSchema = z.object({
   x0: z.number().finite(),
   y0: z.number().finite(),
   cellM: z.number().positive(),
-  cols: z.number().int().min(1).max(4096),
-  rows: z.number().int().min(1).max(4096),
+  cols: z.number().int().min(1).max(MAX_RASTER_SIDE),
+  rows: z.number().int().min(1).max(MAX_RASTER_SIDE),
   dtype: z.enum(["u8", "u16", "i16", "bits"]),
   bands: z.union([z.literal(1), z.literal(2)]),
   scale: z.number().finite(),

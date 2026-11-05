@@ -1,6 +1,6 @@
 /** D10 수관·녹지 — 국토정보플랫폼 영상지도 수관 검출과 OSM 보조층. */
 import type { Feature, MultiPolygon as GeoMultiPolygon, Polygon as GeoPolygon, Position } from "geojson";
-import type { TileResult } from "../../tile-result";
+import { MAX_RASTER_SIDE, type TileResult } from "../../tile-result";
 import type { EngineContext } from "../../engine/context";
 import { featureCollection, multiPolygon, polygon, union } from "@turf/turf";
 import { areaInCircle, polygonArea } from "../../engine/tiles/geo";
@@ -146,6 +146,28 @@ function siteCanopyPct(ctx: EngineContext, canopy: ReturnType<typeof canopyFor>)
   return est("canopy_site_pct", "대지 수관 면적률", percent(canopyCells * canopy.grid.cellM ** 2, siteAreaM2), "%", "d10-canopy-site@2:대지 안 수관 셀 면적÷대지 반경 교차면적", Math.round(canopyCells * canopy.grid.cellM ** 2), Math.round(siteAreaM2));
 }
 
+/** u8 마스크(0·1, nodata 255)를 step×step 다수결로 묶는다. 래스터 한 변 상한(3 km의 1 m 격자 6,003칸)을 넘을 때 표시용으로만 쓴다. */
+export function downsampleMask(values: Uint8Array, cols: number, rows: number, step: number): { values: Uint8Array; cols: number; rows: number } {
+  if (step <= 1) return { values, cols, rows };
+  const outCols = Math.ceil(cols / step);
+  const outRows = Math.ceil(rows / step);
+  const out = new Uint8Array(outCols * outRows);
+  for (let row = 0; row < outRows; row++) {
+    for (let col = 0; col < outCols; col++) {
+      let valid = 0;
+      let hit = 0;
+      for (let r = row * step; r < Math.min(rows, row * step + step); r++) {
+        for (let c = col * step; c < Math.min(cols, col * step + step); c++) {
+          const value = values[r * cols + c];
+          if (value !== 255) { valid += 1; hit += value; }
+        }
+      }
+      out[row * outCols + col] = valid === 0 ? 255 : hit * 2 >= valid ? 1 : 0;
+    }
+  }
+  return { values: out, cols: outCols, rows: outRows };
+}
+
 export function d10(ctx: EngineContext, options: CanopyForOptions = {}): TileResult {
   const green = osmPolygons(ctx, "osm_landuse", "landuse", "osm_green");
   const water = osmPolygons(ctx, "osm_water", "water", "osm_water");
@@ -208,6 +230,8 @@ export function d10(ctx: EngineContext, options: CanopyForOptions = {}): TileRes
   ] : [];
   if (!canopy) limitations.push({ kind: "not_provided", note: "영상지도를 받지 못해 수관 면적률·수관 면을 계산하지 않고 OSM 녹지·수계만 표시합니다." });
   if (canopy && canopy.missingTiles > 0) limitations.push({ kind: "partial", note: `영상지도 ${canopy.missingTiles}/${canopy.totalTiles}개 타일을 받지 못해 유효 영역만 표시했습니다.` });
+  const displayStep = canopy ? Math.ceil(Math.max(canopy.grid.cols, canopy.grid.rows) / MAX_RASTER_SIDE) : 1;
+  if (canopy && displayStep > 1) limitations.push({ kind: "estimated", note: `지도 표시용 수관은 ${displayStep * canopy.grid.cellM}m 격자로 묶어 그림(다수결) · 수관 면적률은 ${canopy.grid.cellM}m 격자로 계산` });
   if (greenSources.length === 0) limitations.push({ kind: "not_provided", note: "OSM 녹지 면 자료를 확인하지 못해 수관과 별도인 보조층을 표시하지 않았습니다." });
   if (!waterAvailable) limitations.push({ kind: "not_provided", note: "OSM 수계 면 자료를 확인하지 못해 수관과 별도인 보조층을 표시하지 않았습니다." });
   limitations.push({ kind: "unknown", note: "수관·OSM 녹지·OSM 수계는 독립 레이어라 서로 겹칠 수 있어 구성비 합이 100%가 아닐 수 있습니다. 수관 구성비의 분모는 π·반경²이며 항공영상 결측 영역은 분자에서 제외합니다." });
@@ -241,6 +265,7 @@ export function d10(ctx: EngineContext, options: CanopyForOptions = {}): TileRes
         values[index] = canopy.grid.values[index] >= 0.5 ? 1 : 0;
       }
     }
+    const shown = downsampleMask(values, canopy.grid.cols, canopy.grid.rows, displayStep);
     const ref = ctx.emitRaster("D10", {
       ref: {
         name: "canopy",
@@ -250,18 +275,18 @@ export function d10(ctx: EngineContext, options: CanopyForOptions = {}): TileRes
         // the outer edge of the first cell so the mask aligns with vectors.
         x0: canopy.grid.x0 - canopy.grid.cellM / 2,
         y0: canopy.grid.y0 - canopy.grid.cellM / 2,
-        cellM: canopy.grid.cellM,
-        cols: canopy.grid.cols,
-        rows: canopy.grid.rows,
+        cellM: canopy.grid.cellM * displayStep,
+        cols: shown.cols,
+        rows: shown.rows,
         dtype: "u8",
         bands: 1,
         scale: 1,
         offset: 0,
         nodata: 255,
         palette: "canopy",
-        label: "수관 · 1m 격자",
+        label: `수관 · ${canopy.grid.cellM * displayStep}m 격자`,
       },
-      values,
+      values: shown.values,
     });
     return { ...tile, presentation: { ...tile.presentation, basemap: "Satellite", rasters: [ref] } };
   }

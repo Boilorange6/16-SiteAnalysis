@@ -210,6 +210,16 @@ try {
   const raw = inflateRawSync(firstRasters[0].blob);
   assert.ok(raw.includes(1));
   assert.ok(raw.includes(255));
+  // 3 km(1 m 격자 6,003칸)는 래스터 한 변 상한 4,096을 넘으므로 표시용으로만 2×2 다수결로 묶는다.
+  const { downsampleMask } = await import("../../lib/v2/tile/d10/engine.ts");
+  const same = new Uint8Array([1, 0, 255]);
+  assert.equal(downsampleMask(same, 3, 1, 1).values, same, "step 1은 그대로");
+  const down = downsampleMask(new Uint8Array([
+    1, 0, 0, 0, 1,
+    1, 255, 0, 0, 255,
+    255, 255, 1, 0, 0,
+  ]), 5, 3, 2);
+  assert.deepEqual([down.cols, down.rows, [...down.values]], [3, 2, [1, 0, 1, 255, 1, 0]], "다수결(동률=수관)·전부 결측=255·가장자리 부분 칸");
   console.log("✓ v2 D10 canopy and green-space tile");
 } finally {
   await cleanup(dataDir);
