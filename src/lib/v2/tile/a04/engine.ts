@@ -79,7 +79,7 @@ export function a04(ctx: EngineContext): TileResult {
       `공원 도보 ${formatDistanceM(walkPark.route.distanceM)} · ${walkPark.route.minutes}분`,
       {
         name: walkPark.hit.name ?? null,
-        sublabel: `도보 ${formatDistanceM(walkPark.route.distanceM)} · ${walkPark.route.minutes}분`,
+        sublabel: `도보 ${formatDistanceM(walkPark.route.distanceM)}(${walkPark.route.minutes}분)`, // ` · `는 정본 §8에서 줄 구분이라 거리·시간을 한 줄에 둔다
         labelPriority: walkLabeled ? 0 : 2,
       },
     );
@@ -96,7 +96,7 @@ export function a04(ctx: EngineContext): TileResult {
     const isLabeled = labeled.has(h);
     const meters = distanceToGeometryM(ctx.input.center, h.geometry) ?? h.distanceM;
     const sublabel = h === walkPark?.hit && isLabeled
-      ? `도보 ${formatDistanceM(walkPark.route.distanceM)} · ${walkPark.route.minutes}분`
+      ? `도보 ${formatDistanceM(walkPark.route.distanceM)}(${walkPark.route.minutes}분)`
       : isLabeled || isNearest ? (meters === null ? null : `직선 ${formatDistanceM(meters)}`) : null;
     const pointExtra = {
       distanceM: h.distanceM,

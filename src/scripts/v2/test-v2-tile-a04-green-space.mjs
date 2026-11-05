@@ -89,7 +89,7 @@ const makeContext = async (options, radiusM = 800) => {
     assert.equal(nearestPark?.name, "p1");
     assert.equal(nearestPark?.highlight, true);
     assert.equal(nearestPark?.label, undefined, "최근접 공원 legacy label 없음");
-    assert.match(nearestPark?.sublabel ?? "", /^도보 .+ · \d+분$/, "도보 대상 공원이 라벨 6곳 안이면 그 점의 상세가 도보 글");
+    assert.match(nearestPark?.sublabel ?? "", /^도보 [^·]+\(\d+분\)$/, "도보 대상 공원이 라벨 6곳 안이면 그 점의 상세가 도보 글(` · ` 없이 한 줄)");
     assert.equal(nearestPark?.labelPriority, 2);
     const polygonPark = tile.presentation.polygons.find((polygon) => polygon.layer === "park");
     assert.equal(polygonPark?.name, "다산근린공원");
@@ -101,7 +101,7 @@ const makeContext = async (options, radiusM = 800) => {
     assert.equal(tile.presentation.lines?.length, 1, "최근접 공원 보행선 하나");
     assert.equal(tile.presentation.lines?.[0]?.name, "p1");
     assert.match(tile.presentation.lines?.[0]?.label ?? "", /^공원 도보 .+ · \d+분$/, "보행선 legacy label 하위 호환");
-    assert.match(tile.presentation.lines?.[0]?.sublabel ?? "", /^도보 .+ · \d+분$/);
+    assert.match(tile.presentation.lines?.[0]?.sublabel ?? "", /^도보 [^·]+\(\d+분\)$/);
     assert.equal(tile.presentation.lines?.[0]?.labelPriority, 0, "도보 대상이 6곳 안이면 선 라벨은 0(점 라벨이 한 장으로 대신한다)");
     assert.doesNotMatch(tile.judgment.sentence, /운영 공원/);
 

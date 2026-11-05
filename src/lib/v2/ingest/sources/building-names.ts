@@ -41,8 +41,11 @@ export function isLabelNoiseName(value: string | null): boolean {
     || /\s\([가-힣]{3}\)$/.test(name)
     || /^[가-힣]{2,4}\s건물$/.test(name)
     // 법인 표기(`(유)갈현상가`, `서울주택(주)`, `㈜`은 NFKC로 `(주)`)로 시작하거나 끝나면 단지·건물 이름이 아니라 소유 법인이다.
-    || /^(\([유주재사]\)|주식회사|유한회사)|(\([유주재사]\)|주식회사|유한회사)$/.test(name);
+    // 표기를 뗀 나머지에 띄어쓰기가 있으면(`(주)건영 경로당`) 법인 뒤에 시설 이름이 붙은 것이라 이름으로 둔다.
+    || (CORP_MARK.test(name) && !/\s/.test(name.replace(CORP_MARK, "")));
 }
+
+const CORP_MARK = /^(\([유주재사]\)|주식회사|유한회사)\s*|\s*(\([유주재사]\)|주식회사|유한회사)$/;
 
 /** 단지·동 이름의 표기 차이(공백·괄호·구두점)만 제거한다. 모르는 접두어는 보수적으로 남긴다. */
 export function normalizeBuildingName(value: string | null): string | null {
