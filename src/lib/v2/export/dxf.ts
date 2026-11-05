@@ -351,13 +351,14 @@ export function sceneToDxf(scene: Scene, opts: DxfOptions = {}): string {
     [0, "SECTION"], [2, "CLASSES"], [0, "ENDSEC"],
     [0, "SECTION"], [2, "TABLES"],
   ]);
-  lines.push(...tableLines);
+  // push(...큰 배열)은 인자 수 한도로 호출 스택을 넘는다(대치 1 km) — 한 줄씩 넣는다.
+  for (const line of tableLines) lines.push(line);
   pushPairs(lines, [[0, "ENDSEC"], [0, "SECTION"], [2, "BLOCKS"]]);
-  lines.push(...blockLines);
+  for (const line of blockLines) lines.push(line);
   pushPairs(lines, [[0, "ENDSEC"], [0, "SECTION"], [2, "ENTITIES"]]);
-  lines.push(...entityLines);
+  for (const line of entityLines) lines.push(line);
   pushPairs(lines, [[0, "ENDSEC"], [0, "SECTION"], [2, "OBJECTS"]]);
-  lines.push(...objectLines);
+  for (const line of objectLines) lines.push(line);
   pushPairs(lines, [[0, "ENDSEC"], [0, "EOF"]]);
 
   return `${lines.join(CRLF)}${CRLF}`;

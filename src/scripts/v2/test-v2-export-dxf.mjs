@@ -124,6 +124,10 @@ const absolute = sceneToDxf(scene, { origin: "utmk" });
 assert.match(absolute, /10\r\n930001\.12\r\n\s*20\r\n1810001\.34/);
 assert.match(absolute, /10\r\n930000\.12\r\n\s*20\r\n1810000\.34/);
 
+// 촘촘한 1 km 대지(대치 1,789동 + 지형·도로)에서 lines.push(...entityLines)가 호출 스택을 넘었다(2026-11-06).
+const dense = sceneToDxf({ ...scene, buildings: Array.from({ length: 20000 }, (_, i) => ({ ...scene.buildings[0], id: `b${i}` })) });
+assert.equal((dense.match(/BLDG/g) ?? []).length >= 20000, true, "건물이 많은 장면도 DXF로 나간다");
+
 assert.equal(dxfFileName("서울특별시 강남구/테스트", "2026-09-30"), "사이트분석_서울특별시_강남구_테스트_20260930.dxf");
 assert.equal(dxfFileName(" 주소 ", "20260930"), "사이트분석_주소_20260930.dxf");
 
