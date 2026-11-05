@@ -156,7 +156,9 @@ function near(actual, expected, tolerance, message) {
   assert.match(point?.sublabel ?? "", /최근 전세 5억원 · 전용 84㎡ · 4층 · 2026년 6월/);
   assert.equal((point?.sublabel?.match(/2026년/g) ?? []).length, 3, "A08 건물 모드 최근 계약은 최대 3건");
   const monthlyPoint = tile.presentation.features?.find((feature) => feature.layer.startsWith("rent_monthly_"));
-  assert.match(monthlyPoint?.sublabel ?? "", /^월세 중앙값 95만원 · 최근 보증금 .* · 월세 /, "A08 월세 점 최근 3건은 월세만 포함");
+  // P1 T7(1c24c078): 중앙값은 지표·점 크기로 전해지므로 라벨 상세에서 뺐다 — 상세는 `최근 …`으로 시작한다.
+  assert.match(monthlyPoint?.sublabel ?? "", /^최근 보증금 .* · 월세 /, "A08 월세 점 최근 3건은 월세만 포함");
+  assert.doesNotMatch(monthlyPoint?.sublabel ?? "", /중앙값/, "A08 월세 점 상세에 중앙값 조각이 없다");
   assert.equal((monthlyPoint?.sublabel?.match(/2026년/g) ?? []).length, 3, "A08 월세 점 최근 계약은 최대 3건");
   assert.doesNotMatch(point?.sublabel ?? "", /월세/, "A08 전세 점 최근 3건은 전세만 포함");
   assert.ok(tile.presentation.features?.every((feature) => !Object.hasOwn(feature, "badges")), "A08 건물 점에는 배지가 없다");
