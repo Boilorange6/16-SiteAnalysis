@@ -220,14 +220,21 @@ assert.deepEqual(C.rankSupply(list.map(() => sup({})), "2026-09-30").map((c) => 
   a05ReportModule.report.render({ slide: rec, planned: overview, part: "overview", overviewFrame: frame.calloutOverview });
   const complexes = overview.callout.model.complexes;
   assert.ok(complexes.length > 0 && complexes.every((c) => c.supply), "전제: A06 사업");
-  const shown = complexes.slice(0, 8);
+  // 카드 줄이 늘어 칸에 안 들어가는 곳은 번호 없는 점으로 남는다: 놓인 카드만 검사하고 1번은 반드시 놓인다.
+  const hasCard = (c) => texts.some((t) => t.o.objectName?.includes(C.calloutKeyTag(c.key)) && t.o.objectName.endsWith("|card-no"));
+  const shown = complexes.slice(0, 8).filter(hasCard);
+  assert.ok(shown.length >= 1 && shown.some((c) => c.rank === 1), "1번 카드는 놓인다");
   for (const c of shown) {
     const tag = C.calloutKeyTag(c.key);
     const own = texts.filter((t) => t.o.objectName?.includes(tag));
     assert.equal(own.find((t) => t.o.objectName.endsWith("|card-no"))?.value, String(c.rank), `${c.name}: 카드 번호 = 순위`);
     assert.equal(own.find((t) => t.o.objectName.endsWith("|name"))?.value, c.name, `${c.name}: 사업명`);
-    const hh = own.find((t) => /\|row-0-value$/.test(t.o.objectName));
-    assert.match(hh?.value ?? "", /(세대|호)$/, `${c.name}: 세대 줄(오피스텔은 호)`);
+    // 상세 장 카드와 같은 줄을 보인다(T12c)
+    C.cardRows(c, overview.callout.model.analysisYear).forEach((r, i) => {
+      const val = own.find((t) => t.o.objectName.endsWith(`|row-${i}-value`));
+      assert.ok(val, `${c.name}: ${r.label} 줄`);
+      if (!r.unitType) assert.equal(val.value, r.value, `${c.name}: ${r.label} 값`);
+    });
   }
   assert.equal(texts.filter((t) => t.o.objectName?.endsWith("|card-no")).length, shown.length, "카드는 상위 8곳(또는 그 아래 전부)만");
 }

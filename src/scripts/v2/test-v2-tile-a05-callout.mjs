@@ -334,22 +334,29 @@ const spec = (o = {}) => ({ W: 1200, H: 800, m: C.PX, edge: 12, top: 96, bottom:
     assert.ok(complexes.length > 8, "전제: 단지가 8곳을 넘는다");
     const { shapes, texts } = draw(overview, f.calloutOverview);
     const cards = shapes.filter((s) => s.o.objectName?.endsWith("|card"));
-    assert.equal(cards.length, 8, `${layout}: 카드 묶음 8개`);
+    assert.ok(cards.length >= 3 && cards.length <= 8, `${layout}: 카드는 줄이 늘어 들어가는 만큼만(상위 8곳 이내): ${cards.length}`);
     const tagKey = (name) => decodeURIComponent(/callout-key:([^|]+)\|/.exec(name)[1]);
     const cardKeys = cards.map((c) => tagKey(c.o.objectName)).sort();
-    assert.deepEqual(cardKeys, complexes.slice(0, 8).map((c) => c.key).sort(), `${layout}: 카드는 상위 8곳(상세 장 순위 1~8)`);
+    const placedRanks = cardKeys.map((k) => complexes.find((c) => c.key === k).rank).sort((a, b) => a - b);
+    assert.ok(placedRanks.every((r) => r >= 1 && r <= 8) && placedRanks[0] === 1, `${layout}: 카드는 상위 8곳(상세 장 번호) 안, 1번은 반드시: ${placedRanks}`);
     const dotNo = texts.filter((t) => t.o.objectName?.endsWith("|dot-no"));
-    assert.deepEqual(dotNo.map((t) => t.value).sort(), ["1", "2", "3", "4", "5", "6", "7", "8"], `${layout}: 번호 점 1~8`);
+    assert.deepEqual(dotNo.map((t) => t.value).sort(), placedRanks.map(String).sort(), `${layout}: 번호 점 = 카드 번호`);
     const cardNo = texts.filter((t) => t.o.objectName?.endsWith("|card-no"));
-    assert.deepEqual(cardNo.map((t) => t.value).sort(), ["1", "2", "3", "4", "5", "6", "7", "8"], `${layout}: 카드 번호 1~8`);
-    for (const c of complexes.slice(0, 8)) {
+    assert.deepEqual(cardNo.map((t) => t.value).sort(), placedRanks.map(String).sort(), `${layout}: 카드 번호`);
+    for (const c of complexes.filter((x) => cardKeys.includes(x.key))) {
       const tag = C.calloutKeyTag(c.key);
       const no = texts.find((t) => t.o.objectName?.includes(tag) && t.o.objectName.endsWith("|card-no"));
       assert.equal(no?.value, String(c.rank), `${layout}: ${c.name} 카드 번호 = 순위`);
       const name = texts.find((t) => t.o.objectName?.includes(tag) && t.o.objectName.endsWith("|name"));
       assert.equal(name?.value, C.cardName(c), `${layout}: ${c.name} 카드 단지명`);
-      const hh = texts.find((t) => t.o.objectName?.includes(tag) && /\|row-0-value$/.test(t.o.objectName));
-      assert.equal(hh?.value, C.cardRows(c, 2026)[0].value, `${layout}: ${c.name} 세대수 줄`);
+      // 상세 장 카드와 같은 줄(타입·최고 층수·세대수·주차 …)이 개요 카드에도 있다
+      C.cardRows(c, overview.callout.model.analysisYear).forEach((r, i) => {
+        const lab = texts.find((t) => t.o.objectName?.includes(tag) && t.o.objectName.endsWith(`|row-${i}-label`));
+        assert.equal(lab?.value, r.label, `${layout}: ${c.name} ${i}번째 줄 이름`);
+        const val = texts.find((t) => t.o.objectName?.includes(tag) && t.o.objectName.endsWith(`|row-${i}-value`));
+        assert.ok(val, `${layout}: ${c.name} ${r.label} 줄 값`);
+        if (!r.unitType) assert.equal(val.value, r.value, `${layout}: ${c.name} ${r.label} 줄`);
+      });
     }
     // 나머지 점은 번호 없이 그대로, 점 크기는 개요 그대로(설명 장의 절반)
     const dots = shapes.filter((s) => s.o.objectName?.endsWith("|dot"));
@@ -370,8 +377,9 @@ const spec = (o = {}) => ({ W: 1200, H: 800, m: C.PX, edge: 12, top: 96, bottom:
     });
     // 단지가 5곳이면 카드 5개, 0곳이면 「확인된 단지 0」 판만
     const five = draw(withCount(overview, 5), f.calloutOverview);
-    assert.equal(five.shapes.filter((s) => s.o.objectName?.endsWith("|card")).length, 5, `${layout}: 5곳이면 카드 5개`);
-    assert.equal(five.texts.filter((t) => t.o.objectName?.endsWith("|dot-no")).length, 5, `${layout}: 5곳이면 번호 점 5개`);
+    const fiveCards = five.shapes.filter((s) => s.o.objectName?.endsWith("|card")).length;
+    assert.ok(fiveCards >= 3 && fiveCards <= 5, `${layout}: 5곳이면 들어가는 만큼만 카드: ${fiveCards}`);
+    assert.equal(five.texts.filter((t) => t.o.objectName?.endsWith("|dot-no")).length, fiveCards, `${layout}: 번호 점 = 카드 수`);
     const zero = draw(withCount(overview, 0), f.calloutOverview);
     assert.equal(zero.shapes.some((s) => s.o?.objectName?.endsWith("|card")), false, `${layout}: 0곳이면 카드 없음`);
     assert.ok(zero.texts.some((t) => String(t.value).includes("확인된 단지 0")), `${layout}: 0곳이면 「확인된 단지 0」 판`);
