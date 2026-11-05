@@ -13,6 +13,35 @@ export function isMeaningfulBuildingName(value: string | null): boolean {
   return Boolean(name && /[\p{L}\p{N}]/u.test(name) && !isOnlyJamo(name));
 }
 
+/** 건축물대장 주용도 이름(`useLabelOf` 값 전체)과 원천에 자주 오는 용도성 값. 라벨 제목이 되면 안 된다. */
+const USE_NAME_NOISE = new Set([
+  "단독주택", "공동주택", "제1종근린생활시설", "제2종근린생활시설", "문화및집회시설", "종교시설", "판매시설", "운수시설", "의료시설",
+  "교육연구시설", "노유자시설", "수련시설", "운동시설", "업무시설", "숙박시설", "위락시설", "공장", "창고시설", "위험물저장및처리시설",
+  "자동차관련시설", "동물및식물관련시설", "자원순환관련시설", "교정및군사시설", "방송통신시설", "발전시설", "묘지관련시설", "관광휴게시설",
+  "장례시설", "야영장시설", "다세대주택", "연립주택", "다가구주택", "창고", "경비실",
+]);
+
+/**
+ * 지도 라벨 제목이 되면 안 되는 이름: 동 번호·한글 동 기호·용도 이름·지번·코드·치수·소유자/용도 문장.
+ * 진짜 단지·건물 이름(`개포1차우성아파트6동`, `예일빌라(다동)`)은 거짓이다. 빈 값은 잡음이다.
+ */
+export function isLabelNoiseName(value: string | null): boolean {
+  const name = value?.normalize("NFKC").trim() ?? "";
+  if (!name) return true;
+  const compact = name.replace(/\s/g, "");
+  return /^\d+$/.test(name)
+    || /^\d+동$/.test(name)
+    || /^[A-Za-z가-힣]{1,2}동$/.test(name)
+    || USE_NAME_NOISE.has(compact)
+    || /^\d+-\d+$/.test(name)
+    || /^[A-Z]\d{3,}$/.test(name)
+    || /^\d+(_\d+)+$/.test(name)
+    || /^\d+(\.\d+)?m?x\d+(\.\d+)?m?$/i.test(name)
+    || /^[가-힣0-9]+[동리가]\s+산?\d+(-\d+)?(\s|$)/.test(name)
+    || /\s\([가-힣]{3}\)$/.test(name)
+    || /^[가-힣]{2,4}\s건물$/.test(name);
+}
+
 /** 단지·동 이름의 표기 차이(공백·괄호·구두점)만 제거한다. 모르는 접두어는 보수적으로 남긴다. */
 export function normalizeBuildingName(value: string | null): string | null {
   const name = value?.trim();

@@ -2,6 +2,7 @@ import type BetterSqlite3 from "better-sqlite3";
 import type { Geometry, MultiPolygon, Polygon } from "geojson";
 import { normalizeBuildingName, overlapArea, planarArea, RETIRED_GIS_MAX_APPROVAL_YEAR } from "../../ingest/sources/juso-buildings";
 import { FLOOR_HEIGHT_M } from "../../ingest/sources/buildings";
+import { isLabelNoiseName } from "../../ingest/sources/building-names";
 import { toUtmk } from "../../crs";
 import { queryFeaturesInBboxes, type FeatureHit } from "../../data/features";
 import type { EngineContext } from "../context";
@@ -40,6 +41,22 @@ export interface BuildingRow {
   approvalDateSource: "building_fact" | "ledger_title" | "core_ledger_pnu" | null;
   grossFloorM2: number | null;
   footprintM2: number | null;
+  /** 라벨·D04 대상 판정 전용 PNU 보충. 원천 `hit.name`·`approvalDate`는 바꾸지 않는다. 값이 하나라도 있을 때만 둔다. */
+  pnuSupplement?: PnuSupplement;
+}
+
+export type PnuSupplement = {
+  /** 같은 PNU core housing_complex·kapt_complex 이름이 별칭 병합 뒤 하나일 때(이름 없는 주거 건물만). 라벨 전용. */
+  name: string | null;
+  /** 단일 core feature(title-housing buildingCount 1 · recap: · 단일 officetel)의 승인일. `row.approvalDate`가 null일 때만. D04만 읽는다. */
+  approvalDate: string | null;
+  /** 같은 PNU에 housing_complex·kapt_complex가 있다(D04 대상 판정). */
+  hasComplex: boolean;
+};
+
+/** 라벨 제목: 잡음이 아닌 원천 이름, 없으면 같은 PNU 단지명, 없으면 null. */
+export function buildingLabelName(row: BuildingRow): string | null {
+  return !isLabelNoiseName(row.hit.name) ? row.hit.name : row.pnuSupplement?.name ?? null;
 }
 
 type SupplementStateContext = EngineContext & { topoBuildingSupplementByRadius?: Map<number, boolean>; topoBuildingSupplementApplied?: boolean };
@@ -212,6 +229,84 @@ function ledgerApprovalByPnu(ctx: EngineContext, pnus: readonly string[]): Map<s
     for (const pnu of missing) cache.set(pnu, null);
   }
   return cache;
+}
+
+type PnuCoreRow = { pnu: string; name: string | null; kind: string; stable_id: string; properties_json: string };
+
+/** PNU별 core 단지·오피스텔 행. 분석당 한 번(500개씩) 읽고 `ctx.memo`에 둔다. 철거 판정은 읽지 않는다. */
+function coreComplexRowsByPnu(ctx: EngineContext, pnus: readonly string[]): Map<string, PnuCoreRow[]> {
+  const cache = ctx.memo("buildings:core-complex-by-pnu", () => new Map<string, PnuCoreRow[]>());
+  const missing = [...new Set(pnus.filter((pnu) => pnu !== ""))].filter((pnu) => !cache.has(pnu));
+  if (missing.length === 0) return cache;
+  const db = ctx.db("core");
+  if (!db) {
+    for (const pnu of missing) cache.set(pnu, []);
+    return cache;
+  }
+  try {
+    for (let offset = 0; offset < missing.length; offset += 500) {
+      const chunk = missing.slice(offset, offset + 500);
+      const sql = "SELECT pnu, name, kind, stable_id, properties_json FROM feature WHERE pnu IN (" + chunk.map(() => "?").join(",") + ") AND kind IN ('housing_complex','kapt_complex','officetel')";
+      const found = db.prepare(sql).all(...chunk) as PnuCoreRow[];
+      const byPnu = new Map<string, PnuCoreRow[]>();
+      for (const row of found) byPnu.set(row.pnu, [...(byPnu.get(row.pnu) ?? []), row]);
+      for (const pnu of chunk) cache.set(pnu, byPnu.get(pnu) ?? []);
+    }
+  } catch {
+    for (const pnu of missing) cache.set(pnu, []);
+  }
+  return cache;
+}
+
+/** 별칭 병합 키: 정규화한 이름에서 끝의 `\d+동`, 끝의 `아파트`를 뗀다. */
+function complexAliasKey(name: string): string {
+  return (normalizeBuildingName(name) ?? "").replace(/\d+동$/, "").replace(/아파트$/, "");
+}
+
+function parseProperties(json: string): Record<string, unknown> {
+  try {
+    const value = JSON.parse(json) as unknown;
+    return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+/** 한 PNU의 core 행에서 라벨용 이름·승인일·단지 유무를 정한다(이름 보충 자격은 호출자가 따로 판정한다). */
+function pnuSupplementOf(ctx: EngineContext, rows: readonly PnuCoreRow[]): { name: string | null; approvalDate: string | null; hasComplex: boolean } {
+  const byStable = (a: PnuCoreRow, b: PnuCoreRow) => (a.stable_id < b.stable_id ? -1 : a.stable_id > b.stable_id ? 1 : 0);
+  const housing = rows.filter((row) => row.kind === "housing_complex").sort(byStable);
+  const kapt = rows.filter((row) => row.kind === "kapt_complex").sort(byStable);
+  const officetel = rows.filter((row) => row.kind === "officetel");
+  const named = [...housing, ...kapt].filter((row) => row.name !== null && !isLabelNoiseName(row.name));
+  const keys = named.map((row) => complexAliasKey(row.name!));
+  const merged = named.length > 0 && keys.every((key) => key !== "") && keys.every((a) => keys.every((b) => a.includes(b) || b.includes(a)));
+  const core = [...housing, ...officetel];
+  let approvalDate: string | null = null;
+  if (core.length === 1) {
+    const only = core[0]!;
+    const props = parseProperties(only.properties_json);
+    const single = only.kind === "officetel" || only.stable_id.startsWith("recap:") || (only.stable_id.startsWith("title-housing:") && props.buildingCount === 1);
+    if (single) approvalDate = validApprovalDate(props.approvalDate, ctx.input.analysisDate);
+  }
+  return { name: merged ? named[0]!.name : null, approvalDate, hasComplex: housing.length + kapt.length > 0 };
+}
+
+/** filterRetiredRows 뒤의 행에 PNU 보충을 붙인다. 철거 판정에는 쓰이지 않는다. */
+function withPnuSupplement(ctx: EngineContext, rows: BuildingRow[]): BuildingRow[] {
+  const coreRows = coreComplexRowsByPnu(ctx, rows.flatMap((row) => (row.hit.pnu ? [row.hit.pnu] : [])));
+  return rows.map((row) => {
+    const core = row.hit.pnu ? coreRows.get(row.hit.pnu) : undefined;
+    if (!core || core.length === 0) return row;
+    const found = pnuSupplementOf(ctx, core);
+    const nameEligible = (row.useCode === null || /^0[12]/.test(row.useCode)) && isLabelNoiseName(row.hit.name);
+    const supplement: PnuSupplement = {
+      name: nameEligible ? found.name : null,
+      approvalDate: row.approvalDate === null ? found.approvalDate : null,
+      hasComplex: found.hasComplex,
+    };
+    return supplement.name !== null || supplement.approvalDate !== null || supplement.hasComplex ? { ...row, pnuSupplement: supplement } : row;
+  });
 }
 
 type ArealGeometry = Polygon | MultiPolygon;
@@ -656,7 +751,7 @@ function buildingRowsUncached(ctx: EngineContext, radiusM: number): { rows: Buil
   const currentParcelEvidence = currentParcelCandidates(ctx, out, currentParcelHitsForRadius, radiusM);
   ledgerApprovalByPnu(ctx, currentParcelEvidence.parcels.filter((hit) => hit.pnu).map((hit) => hit.pnu!));
   const filtered = filterRetiredRows(out, { currentParcels: currentParcelEvidence.parcels, currentParcelMatches: currentParcelEvidence.matches, approvalByPnu: ledgerApproval });
-  return { rows: supplementTopoBuildings(ctx, filtered.rows, radiusM), retirement: filtered.retirement };
+  return { rows: supplementTopoBuildings(ctx, withPnuSupplement(ctx, filtered.rows), radiusM), retirement: filtered.retirement };
 }
 
 /** 한 분석에서 같은 반경의 건물 행·fact 결합을 여러 타일이 공유한다. */
