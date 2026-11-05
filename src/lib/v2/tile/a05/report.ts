@@ -1,5 +1,6 @@
 import { GROUP_TAG_PREFIX } from "../../../pptx-shape-group";
-import { INCH, SLIDE_OVERVIEW_FILL, calloutKeyTag, calloutPageItems, cardName, cardRows, dotColor, dotRadius, inkOn, isHollowComplexMarker, layoutCallouts, overlapChip, rowsFor, slideCalloutFrame, type CalloutFrame, type Complex, type Placed, type Pt } from "../../ui/callout-layout";
+import { PAGE_EDGE } from "../../ui/report-page-layout";
+import { INCH, SLIDE_OVERVIEW_FILL, calloutFrame, calloutKeyTag, calloutPageItems, cardName, cardRows, dotColor, dotRadius, inkOn, isHollowComplexMarker, layoutCallouts, overlapChip, rowsFor, slideCalloutFrame, type CalloutFrame, type Complex, type Placed, type Pt } from "../../ui/callout-layout";
 import { makeProjector, slideViewport } from "../../ui/map-projection";
 import { scaleOptionsForFrame, zoomForScale } from "../../ui/report-scale";
 import { calloutLegendEntries, slideCalloutLegendLayout, slideSiteX, type CalloutLegendOptions } from "../../ui/overlay-layout";
@@ -96,6 +97,33 @@ function calloutCard(s: Slide, c: Complex, p: Placed, f: CalloutFrame, year: num
   });
 }
 
+/** 개요 장 compact 카드: 번호 점 + 이름 한 줄 / 세대수(호실) 한 줄. 이름이 길면 pt를 줄이고(`fitPt`), A06 중복 가능 칩은 둘째 줄 오른쪽에 둔다. */
+function compactCard(s: Slide, c: Complex, p: Placed, f: CalloutFrame, labelsScale = 1, palette?: CalloutModel["palette"]) {
+  const { m } = f;
+  const color = dotColor(c, palette);
+  const hollow = isHollowComplexMarker(c);
+  const chip = overlapChip(c);
+  s.addShape("roundRect", { x: p.x, y: p.y, w: f.cardW, h: f.cardH, fill: { color: "FFFFFF", transparency: 8 }, line: { color: INK, width: 0.5, transparency: 88 }, rectRadius: 0.08, objectName: cTag(c, "card") });
+  s.addShape("ellipse", { x: p.x + 0.09, y: p.y + m.head / 2 - 0.09, w: 0.18, h: 0.18, fill: { color: hollow ? "FFFFFF" : hex(color), transparency: hollow ? 100 : 0 }, line: { color: hex(color), width: 0.5, transparency: 0 }, objectName: cTag(c, "card-no-bg") });
+  s.addText(String(c.rank), { x: p.x + 0.09, y: p.y + m.head / 2 - 0.09, w: 0.18, h: 0.18, align: "center", valign: "middle", fontFace: FONT, fontSize: 8 * labelsScale, bold: true, color: hex(hollow ? color : inkOn(color)), margin: 0, objectName: cTag(c, "card-no") });
+  const name = cardName(c);
+  const nameW = f.cardW - 0.42;
+  s.addText(name, { x: p.x + 0.34, y: p.y, w: nameW, h: m.head, valign: "middle", fontFace: FONT, fontSize: fitPt(name, 9.5 * labelsScale, nameW, 1, 7 * labelsScale), bold: true, color: c.name ? INK : AMBER, margin: 0, objectName: cTag(c, "name") });
+  seg(s, [p.x, p.y + m.head], [p.x + f.cardW, p.y + m.head], INK, 0.5, 90, cTag(c, "head-sep"));
+  const row = cardRows(c, 0).find((r) => r.label === "세대수" || r.label === "호실")!;
+  const fs = Math.min(8.5 * labelsScale, Math.floor(m.row * 72 * 0.68 * labelsScale * 2) / 2);
+  const y = p.y + m.head + 0.03;
+  const chipW = chip ? 0.6 : 0;
+  s.addText(row.value, { x: p.x + 0.1, y, w: f.cardW - 0.2 - (chip ? chipW + 0.06 : 0), h: m.row, valign: "middle", fontFace: FONT, fontSize: fitPt(row.value, fs, f.cardW - 0.2 - (chip ? chipW + 0.06 : 0), 1, 6 * labelsScale), bold: true, color: row.missing ? AMBER : INK, margin: 0, objectName: cTag(c, "row-0-value") });
+  if (chip) {
+    s.addShape("roundRect", { x: p.x + f.cardW - 0.08 - chipW, y: y + m.row / 2 - 0.09, w: chipW, h: 0.18, fill: { color: "FDF1D3" }, line: { color: "FDF1D3", width: 0 }, rectRadius: 0.09, objectName: cTag(c, "chip-bg") });
+    s.addText(chip, { x: p.x + f.cardW - 0.08 - chipW, y: y + m.row / 2 - 0.09, w: chipW, h: 0.18, align: "center", valign: "middle", fontFace: FONT, fontSize: 7.5 * labelsScale, bold: true, color: "7A5200", margin: 0, objectName: cTag(c, "chip") });
+  }
+}
+
+/** 개요 카드로 번호를 다는 상위 곳 수(A05 세대수 순·A06 입주 시기 순, 순위는 상세 장 번호와 같다) */
+const OVERVIEW_CARDS = 8;
+
 /** 준공 연대 색 + 크기 = 세대수 범례 판. 아래 가장자리(bottom)에 붙고, 폭(maxW)을 넘으면 줄을 바꾄다 */
 function calloutLegend(s: Slide, model: CalloutModel, x: number, bottom: number, maxW: number, style: PlannedSlide["style"], legendOptions?: CalloutLegendOptions) {
   const entries = calloutLegendEntries(model, legendOptions);
@@ -123,7 +151,29 @@ function calloutOverview(s: Slide, p: PlannedSlide & { kind: "tile" }, overviewF
   // 새 장 배치(화면, Task 7 뒤 PPT)는 지도 틀 가운데(siteX 0.5)·틀 모양으로, 옛 경로는 오른쪽 정보 판을 뺀 영역으로 그린다.
   const proj = projector(p, cm, overviewFrame ? 0.5 : slideSiteX(style, style.summary !== false), SLIDE_OVERVIEW_FILL, overviewFrame?.map);
   const hMax = Math.max(0, ...cm.complexes.map((c) => c.households ?? 0));
-  cm.complexes.forEach((c) => numberDot(s, c, proj(c), dotRadius(c.households, hMax, INCH.rMin / 2, INCH.rMax / 2), labelsScale, false, cm.palette));
+  // 새 틀 개요: 상위 8곳에 번호 카드. 칸이 모자라 못 놓은 곳은 번호 없는 점으로 남는다.
+  const cards: { c: Complex; pl: Placed }[] = [];
+  let cardFrame: CalloutFrame | undefined;
+  if (overviewFrame && cm.complexes.length > 0) {
+    const { map, legend, calloutTop, calloutRightTop, calloutBottom } = overviewFrame;
+    cardFrame = calloutFrame({
+      W: map.w, H: map.h, m: INCH, edge: PAGE_EDGE, top: calloutTop, rightTop: calloutRightTop, bottom: Math.max(calloutTop, calloutRightTop, calloutBottom),
+      ...(legend ? { leftBottom: Math.max(calloutTop, legend.y - PAGE_EDGE * 0.5) } : {}), perSide: OVERVIEW_CARDS, rows: 3, variant: "compact",
+    });
+    const top = [...cm.complexes].sort((a, b) => a.rank - b.rank).slice(0, OVERVIEW_CARDS);
+    const byKey = new Map(top.map((c) => [c.key, c]));
+    const { placed } = layoutCallouts(cardFrame, top.map((c) => ({ id: c.key, rank: c.rank, x: proj(c)[0], y: proj(c)[1] })));
+    placed.forEach((pl) => cards.push({ c: byKey.get(pl.id)!, pl }));
+    for (const { c, pl } of cards) {
+      seg(s, pl.dot, pl.knee, "FFFFFF", 3.4, 8, cTag(c, "leader-halo-1"));
+      seg(s, pl.knee, pl.edge, "FFFFFF", 3.4, 8, cTag(c, "leader-halo-2"));
+      seg(s, pl.dot, pl.knee, INK, 1, 0, cTag(c, "leader-1"));
+      seg(s, pl.knee, pl.edge, INK, 1, 0, cTag(c, "leader-2"));
+    }
+  }
+  const numbered = new Set(cards.map(({ c }) => c.key));
+  cm.complexes.forEach((c) => numberDot(s, c, proj(c), dotRadius(c.households, hMax, INCH.rMin / 2, INCH.rMax / 2), labelsScale, numbered.has(c.key), cm.palette));
+  cards.forEach(({ c, pl }) => compactCard(s, c, pl, cardFrame!, labelsScale, cm.palette));
   if (cm.complexes.length === 0) {
     const w = 4.6;
     // 새 틀 개요는 `기준 …` 줄을 빼고 한 줄 크기 판만 둔다(같은 기준 정보가 각주와 출처 장에 있다). 옛 경로는 두 줄 판 그대로.

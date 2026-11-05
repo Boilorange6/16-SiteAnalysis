@@ -191,4 +191,39 @@ assert.deepEqual(C.rankSupply(list.map(() => sup({})), "2026-09-30").map((c) => 
   assert.deepEqual(toTileView(forced).grades, []);
 }
 
+// ── P1 Task 10: A06 개요 장 카드 글 = 번호 · 사업명 / N세대, 순위는 rankSupply(상세 장 번호) ──
+{
+  const { toSummaryView } = await import("../../lib/v2/ui/tile-view.ts");
+  const { GODEOK_SUMMARY } = await import("../../lib/v2/ui/fixtures/godeok.ts");
+  const { initBoard } = await import("../../lib/v2/ui/board-state.ts");
+  const { EMPTY_REPORT_DOC } = await import("../../lib/v2/report/report-doc.ts");
+  const { planReportDoc, recommendedPages } = await import("../../lib/v2/report/report-doc-plan.ts");
+  const { pageFrameFor } = await import("../../lib/v2/report/report-page-frame.ts");
+  const { a05ReportModule } = await import("../../lib/v2/tile/a05/report.ts");
+  const result = GODEOK_RESULTS.find((r) => r.tileCode === "A06");
+  const raw = toTileView(result);
+  const cView = { ...raw, keyFigure: raw.keyFigure ?? { question: "반경 확인", answer: { value: "1,000세대", kind: "number" }, stats: [{ value: "9곳", label: "사업" }] }, backdrop: raw.backdrop ?? raw.map };
+  const cViews = new Map([[result.tileId, cView]]);
+  const cCtx = { summary: toSummaryView(GODEOK_SUMMARY, [result]), analysisDate: "2026-10-27", views: cViews };
+  const pages = recommendedPages(EMPTY_REPORT_DOC, cViews, initBoard([result]), cCtx).filter((p) => p.kind === "tile");
+  const overview = planReportDoc({ ...EMPTY_REPORT_DOC, pages }, cViews, cCtx).find((s) => s.kind === "tile" && s.callout?.page === 0);
+  const frame = pageFrameFor(overview);
+  assert.ok(frame?.calloutOverview, "A06 개요 틀");
+  const texts = [];
+  const rec = { addShape: () => rec, addText: (value, o) => { texts.push({ value, o }); return rec; } };
+  a05ReportModule.report.render({ slide: rec, planned: overview, part: "overview", overviewFrame: frame.calloutOverview });
+  const complexes = overview.callout.model.complexes;
+  assert.ok(complexes.length > 0 && complexes.every((c) => c.supply), "전제: A06 사업");
+  const shown = complexes.slice(0, 8);
+  for (const c of shown) {
+    const tag = C.calloutKeyTag(c.key);
+    const own = texts.filter((t) => t.o.objectName?.includes(tag));
+    assert.equal(own.find((t) => t.o.objectName.endsWith("|card-no"))?.value, String(c.rank), `${c.name}: 카드 번호 = 순위`);
+    assert.equal(own.find((t) => t.o.objectName.endsWith("|name"))?.value, c.name, `${c.name}: 사업명`);
+    const hh = own.find((t) => /\|row-0-value$/.test(t.o.objectName));
+    assert.match(hh?.value ?? "", /(세대|호)$/, `${c.name}: 세대 줄(오피스텔은 호)`);
+  }
+  assert.equal(texts.filter((t) => t.o.objectName?.endsWith("|card-no")).length, shown.length, "카드는 상위 8곳(또는 그 아래 전부)만");
+}
+
 console.log("v2 a06 callout tests passed");

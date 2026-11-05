@@ -297,4 +297,85 @@ const spec = (o = {}) => ({ W: 1200, H: 800, m: C.PX, edge: 12, top: 96, bottom:
   assert.equal(C.countCrossings(placed), 0);
 }
 
+// ── P1 Task 10: 개요 장 상위 8곳 번호 카드(렌더 전용). 실제 계획 경로의 새 틀(overviewFrame)로 그린다 ──
+{
+  const { GODEOK_RESULTS } = await import("../../lib/v2/ui/fixtures/godeok.ts");
+  const { toTileView, toSummaryView } = await import("../../lib/v2/ui/tile-view.ts");
+  const { GODEOK_SUMMARY } = await import("../../lib/v2/ui/fixtures/godeok.ts");
+  const { initBoard } = await import("../../lib/v2/ui/board-state.ts");
+  const { EMPTY_REPORT_DOC } = await import("../../lib/v2/report/report-doc.ts");
+  const { planReportDoc, recommendedPages } = await import("../../lib/v2/report/report-doc-plan.ts");
+  const { pageFrameFor } = await import("../../lib/v2/report/report-page-frame.ts");
+  const { a05ReportModule } = await import("../../lib/v2/tile/a05/report.ts");
+  const code = "A05";
+  const result = GODEOK_RESULTS.find((r) => r.tileCode === code);
+  const raw = toTileView(result, null, null, { distance: { max: 900 } });
+  const cView = { ...raw, keyFigure: raw.keyFigure ?? { question: "반경 확인", answer: { value: "21,549세대", kind: "number" }, stats: [{ value: "35개", label: "단지" }] }, backdrop: raw.backdrop ?? raw.map };
+  const cViews = new Map([[result.tileId, cView]]);
+  const cCtx = { summary: toSummaryView(GODEOK_SUMMARY, [result]), analysisDate: "2026-10-27", views: cViews };
+  const pages = recommendedPages(EMPTY_REPORT_DOC, cViews, initBoard([result]), cCtx).filter((p) => p.kind === "tile");
+  const overviewOf = (layout) => planReportDoc({ ...EMPTY_REPORT_DOC, pages: layout ? pages.map((p) => (p.part.type === "callout" && p.part.page === 0 ? { ...p, layout } : p)) : pages }, cViews, cCtx).find((s) => s.kind === "tile" && s.callout?.page === 0);
+  const withCount = (slide, n) => ({ ...slide, callout: { ...slide.callout, model: { ...slide.callout.model, complexes: slide.callout.model.complexes.slice(0, n) } } });
+  const draw = (slide, frame) => {
+    const shapes = [];
+    const texts = [];
+    const rec = { addShape: (kind, o) => { shapes.push({ kind, o }); return rec; }, addText: (value, o) => { texts.push({ value, o }); return rec; } };
+    a05ReportModule.report.render({ slide: rec, planned: slide, part: "overview", overviewFrame: frame });
+    return { shapes, texts };
+  };
+  const hit = (a, b) => a.x < b.x + b.w - 1e-6 && b.x < a.x + a.w - 1e-6 && a.y < b.y + b.h - 1e-6 && b.y < a.y + a.h - 1e-6;
+  for (const layout of ["map-charts", "map-key"]) {
+    const overview = overviewOf(layout);
+    const f = pageFrameFor(overview);
+    assert.ok(f?.calloutOverview, `${layout}: 개요 틀`);
+    assert.equal(typeof f.calloutOverview.calloutTop, "number", "틀에 calloutTop(제목 칩 아래)이 있다");
+    assert.ok(f.calloutOverview.calloutTop >= f.geometry.title.y + f.geometry.title.h - 1e-6, "calloutTop은 제목 칩 아래");
+    const complexes = overview.callout.model.complexes;
+    assert.ok(complexes.length > 8, "전제: 단지가 8곳을 넘는다");
+    const { shapes, texts } = draw(overview, f.calloutOverview);
+    const cards = shapes.filter((s) => s.o.objectName?.endsWith("|card"));
+    assert.equal(cards.length, 8, `${layout}: 카드 묶음 8개`);
+    const tagKey = (name) => decodeURIComponent(/callout-key:([^|]+)\|/.exec(name)[1]);
+    const cardKeys = cards.map((c) => tagKey(c.o.objectName)).sort();
+    assert.deepEqual(cardKeys, complexes.slice(0, 8).map((c) => c.key).sort(), `${layout}: 카드는 상위 8곳(상세 장 순위 1~8)`);
+    const dotNo = texts.filter((t) => t.o.objectName?.endsWith("|dot-no"));
+    assert.deepEqual(dotNo.map((t) => t.value).sort(), ["1", "2", "3", "4", "5", "6", "7", "8"], `${layout}: 번호 점 1~8`);
+    const cardNo = texts.filter((t) => t.o.objectName?.endsWith("|card-no"));
+    assert.deepEqual(cardNo.map((t) => t.value).sort(), ["1", "2", "3", "4", "5", "6", "7", "8"], `${layout}: 카드 번호 1~8`);
+    for (const c of complexes.slice(0, 8)) {
+      const tag = C.calloutKeyTag(c.key);
+      const no = texts.find((t) => t.o.objectName?.includes(tag) && t.o.objectName.endsWith("|card-no"));
+      assert.equal(no?.value, String(c.rank), `${layout}: ${c.name} 카드 번호 = 순위`);
+      const name = texts.find((t) => t.o.objectName?.includes(tag) && t.o.objectName.endsWith("|name"));
+      assert.equal(name?.value, C.cardName(c), `${layout}: ${c.name} 카드 단지명`);
+      const hh = texts.find((t) => t.o.objectName?.includes(tag) && /\|row-0-value$/.test(t.o.objectName));
+      assert.equal(hh?.value, C.cardRows(c, 2026)[0].value, `${layout}: ${c.name} 세대수 줄`);
+    }
+    // 나머지 점은 번호 없이 그대로, 점 크기는 개요 그대로(설명 장의 절반)
+    const dots = shapes.filter((s) => s.o.objectName?.endsWith("|dot"));
+    assert.equal(dots.length, complexes.length, `${layout}: 점은 전부 그린다`);
+    const hMax = Math.max(0, ...complexes.map((c) => c.households ?? 0));
+    for (const c of complexes) {
+      const dot = dots.find((s) => s.o.objectName.includes(C.calloutKeyTag(c.key)));
+      assert.equal(dot.o.w / 2, C.dotRadius(c.households, hMax, C.INCH.rMin / 2, C.INCH.rMax / 2), `${layout}: ${c.name} 점 반지름 그대로`);
+    }
+    // 카드 상자는 서로·제목 칩·범례 판·숫자 카드·방위표·축척 막대와 겹치지 않고 지도 틀 안
+    const boxes = cards.map((c) => ({ x: c.o.x, y: c.o.y, w: c.o.w, h: c.o.h }));
+    const g = f.geometry;
+    const others = [["제목 칩", g.title], ["범례 판", f.calloutOverview.legend], ["방위표", g.north], ["축척 막대", g.scaleBar], ...(g.keyCard && !g.column ? [["숫자 카드", g.keyCard]] : [])].filter(([, r]) => r);
+    boxes.forEach((b, i) => {
+      assert.ok(b.x >= g.map.x - 1e-6 && b.y >= g.map.y - 1e-6 && b.x + b.w <= g.map.x + g.map.w + 1e-6 && b.y + b.h <= g.map.y + g.map.h + 1e-6, `${layout}: 카드 ${i}가 지도 틀 안`);
+      for (const [name, r] of others) assert.ok(!hit(b, r), `${layout}: 카드 ${i}가 ${name}와 겹친다`);
+      for (let j = i + 1; j < boxes.length; j++) assert.ok(!hit(b, boxes[j]), `${layout}: 카드 ${i}·${j} 겹침`);
+    });
+    // 단지가 5곳이면 카드 5개, 0곳이면 「확인된 단지 0」 판만
+    const five = draw(withCount(overview, 5), f.calloutOverview);
+    assert.equal(five.shapes.filter((s) => s.o.objectName?.endsWith("|card")).length, 5, `${layout}: 5곳이면 카드 5개`);
+    assert.equal(five.texts.filter((t) => t.o.objectName?.endsWith("|dot-no")).length, 5, `${layout}: 5곳이면 번호 점 5개`);
+    const zero = draw(withCount(overview, 0), f.calloutOverview);
+    assert.equal(zero.shapes.some((s) => s.o?.objectName?.endsWith("|card")), false, `${layout}: 0곳이면 카드 없음`);
+    assert.ok(zero.texts.some((t) => String(t.value).includes("확인된 단지 0")), `${layout}: 0곳이면 「확인된 단지 0」 판`);
+  }
+}
+
 console.log("callout layout ok");

@@ -12,7 +12,7 @@ import { wrapToLines } from "./analysis-column-fit";
 import { keyFigureFit, sentenceFit, type KeyFigureFit } from "./key-figure-fit";
 import { DEFAULT_REPORT_FONT_SIZES, type PagePanels } from "./report-doc";
 import { fitFooterText, footerBasemaps, fontSizeForStyle, textIn } from "./pptx-kit";
-import { keyCardBox, reportPageGeometry, type PageLayoutKind, type ReportPageGeometry } from "../ui/report-page-layout";
+import { PAGE_EDGE, keyCardBox, reportPageGeometry, type PageLayoutKind, type ReportPageGeometry } from "../ui/report-page-layout";
 import { calloutLegendEntries, slideCalloutLegendLayout, slideGeometry, slideLegend, type Rect, type SlideFormat } from "../ui/overlay-layout";
 import { calloutPageTitleTail } from "../ui/callout-layout";
 import type { BasemapChoice } from "../ui/map-projection";
@@ -303,6 +303,21 @@ export function reportMapAvoid(geometry: ReportPageGeometry, unit: number): Pixe
   return boxes;
 }
 
+/**
+ * 설명선 개요 카드 칸의 세로 범위(inch). 칸마다 비켜야 할 것이 다르다: 왼쪽은 제목 칩(①은 숫자 카드·주석 칩까지), 오른쪽은 방위표,
+ * 오른쪽 아래는 축척 막대다. 왼쪽 아래 끝은 범례 판이 정한다(그리는 쪽이 `legend`에서 뺀다).
+ */
+function overviewColumns(geometry: ReportPageGeometry): Pick<CalloutOverviewFrame, "calloutTop" | "calloutRightTop" | "calloutBottom"> {
+  const gap = PAGE_EDGE * 0.5;
+  const titleBottom = geometry.title.y + geometry.title.h + gap;
+  const keyBottom = geometry.keyCard && !geometry.column ? Math.max(geometry.keyCard.y + geometry.keyCard.h, geometry.keyNotesChip ? geometry.keyNotesChip.y + geometry.keyNotesChip.h : 0) + gap : 0;
+  return {
+    calloutTop: Math.max(titleBottom, keyBottom),
+    calloutRightTop: Math.max(titleBottom, geometry.north.y + geometry.north.h + gap),
+    calloutBottom: geometry.scaleBar.y - gap,
+  };
+}
+
 const sameNotes = (slide: TileSlide): string[] => [...new Set([...slide.view.caveats, ...slide.view.notes])];
 
 export function reportPageFrame(slide: TileSlide, charts: AnalysisCharts | null, basemap?: BasemapChoice): ReportPageFrame {
@@ -386,7 +401,7 @@ export function reportPageFrame(slide: TileSlide, charts: AnalysisCharts | null,
     layout, geometry, fit, figure: cardDeleted ? null : figure, summaryPt, sentence: sentenceInfo,
     title: { text: titleFit.text, fullText: titleText, titleClipped: titleFit.titleClipped, kind: titleFit.kind, fullKind: titleKind, kindClipped: titleFit.kindClipped, pt: titlePt, kindPt: titleKindPt(titlePt) },
     legend, calloutLegend,
-    calloutOverview: callout && callout.page === 0 ? { map: geometry.map, legend: calloutLegend ? geometry.legend : null, legendMaxW: calloutLegend?.maxW ?? 0 } : null,
+    calloutOverview: callout && callout.page === 0 ? { map: geometry.map, legend: calloutLegend ? geometry.legend : null, legendMaxW: calloutLegend?.maxW ?? 0, ...overviewColumns(geometry) } : null,
     notes,
     footer: footnoteText(slide, basemap, footerWidth, !fit || fit.filterClipped),
     charts: layout === "map-charts" ? charts : null,
