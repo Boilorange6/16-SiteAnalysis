@@ -11,6 +11,7 @@ import type { PlannedSlide } from "../../report/report-plan";
 import type { CalloutOverviewFrame, TileReportRenderContext } from "../../report/types";
 import type { Rect } from "../../ui/overlay-layout";
 import type { TileReportModule } from "../types";
+import { nameLines } from "./name-lines";
 
 // The A05 and A06 callout pages are one ownership unit, matching their shared screen Stage.
 const AMBER = "9A5B00";
@@ -78,7 +79,12 @@ function calloutCard(s: Slide, c: Complex, p: Placed, f: CalloutFrame, year: num
   s.addText(String(c.rank), { x: p.x + 0.09, y: p.y + m.head / 2 - 0.09, w: 0.18, h: 0.18, align: "center", valign: "middle", fontFace: FONT, fontSize: 8 * labelsScale, bold: true, color: hex(hollow ? color : inkOn(color)), margin: 0, objectName: cTag(c, "card-no") });
   const name = cardName(c);
   const chipW = chip ? 0.62 : 0;
-  s.addText(name, { x: p.x + 0.34, y: p.y, w: f.cardW - 0.42 - chipW, h: m.head, valign: "middle", fontFace: FONT, fontSize: fitPt(name, 9.5 * labelsScale, f.cardW - 0.42 - chipW, 1, 7 * labelsScale), bold: true, color: c.name ? INK : AMBER, margin: 0, objectName: cTag(c, "name") });
+  // 이름은 한 줄이면 그대로, 길면 머리 높이에 두 줄이 들어가는 크기로 두 줄까지 접고 넘치면 말줄임(…)
+  const nameW = f.cardW - 0.42 - chipW;
+  const namePt = 9.5 * labelsScale;
+  const oneLine = textIn(name, namePt) <= nameW;
+  const twoPt = Math.min(namePt, Math.floor(((m.head * 72) / 2.4) * 2) / 2);
+  s.addText(oneLine ? name : nameLines(name, twoPt, nameW, 2).join("\n"), { x: p.x + 0.34, y: p.y, w: nameW, h: m.head, valign: "middle", fontFace: FONT, fontSize: oneLine ? namePt : twoPt, bold: true, color: c.name ? INK : AMBER, margin: 0, objectName: cTag(c, "name") });
   if (chip) {
     s.addShape("roundRect", { x: p.x + f.cardW - 0.68, y: p.y + m.head / 2 - 0.09, w: 0.6, h: 0.18, fill: { color: "FDF1D3" }, line: { color: "FDF1D3", width: 0 }, rectRadius: 0.09, objectName: cTag(c, "chip-bg") });
     s.addText(chip, { x: p.x + f.cardW - 0.68, y: p.y + m.head / 2 - 0.09, w: 0.6, h: 0.18, align: "center", valign: "middle", fontFace: FONT, fontSize: 7.5 * labelsScale, bold: true, color: "7A5200", margin: 0, objectName: cTag(c, "chip") });

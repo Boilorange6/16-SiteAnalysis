@@ -228,7 +228,9 @@ assert.deepEqual(C.rankSupply(list.map(() => sup({})), "2026-09-30").map((c) => 
     const tag = C.calloutKeyTag(c.key);
     const own = texts.filter((t) => t.o.objectName?.includes(tag));
     assert.equal(own.find((t) => t.o.objectName.endsWith("|card-no"))?.value, String(c.rank), `${c.name}: 카드 번호 = 순위`);
-    assert.equal(own.find((t) => t.o.objectName.endsWith("|name"))?.value, c.name, `${c.name}: 사업명`);
+    const shownName = own.find((t) => t.o.objectName.endsWith("|name"))?.value.replace(/\n/g, " ") ?? "";
+    assert.ok(shownName === c.name || (shownName.endsWith("…") && c.name.startsWith(shownName.slice(0, -1))), `${c.name}: 사업명(두 줄까지, 넘치면 …): ${shownName}`);
+    assert.ok(own.find((t) => t.o.objectName.endsWith("|name")).value.split("\n").length <= 2, `${c.name}: 사업명 두 줄 이하`);
     // 상세 장 카드와 같은 줄을 보인다(T12c)
     C.cardRows(c, overview.callout.model.analysisYear).forEach((r, i) => {
       const val = own.find((t) => t.o.objectName.endsWith(`|row-${i}-value`));
