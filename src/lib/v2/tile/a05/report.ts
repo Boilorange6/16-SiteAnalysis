@@ -125,8 +125,8 @@ function calloutLegend(s: Slide, model: CalloutModel, x: number, bottom: number,
 }
 
 /** 연립·다세대 등 기타 공동주택: 보드 카드와 같은 번호·라벨 없는 작은 회색 점(반지름 2/960 장면 폭, 불투명 70%). 번호·아파트 점 아래에 먼저 그린다 */
-function otherHousingDots(s: Slide, cm: CalloutModel, proj: (c: { lng: number; lat: number }) => Pt, sceneW: number = SLIDE.w) {
-  const r = (2 / 960) * sceneW; // 장면 폭 = 투영이 채우는 틀 폭(② 개요는 지도 틀 폭, 그 밖은 장 폭)
+function otherHousingDots(s: Slide, cm: CalloutModel, proj: (c: { lng: number; lat: number }) => Pt) {
+  const r = (2 / 960) * SLIDE.w;
   cm.others.forEach((o, i) => {
     const [x, y] = proj(o);
     s.addShape("ellipse", { x: x - r, y: y - r, w: 2 * r, h: 2 * r, fill: { color: hex(OTHER_HOUSING_COLOR), transparency: 30 }, line: { color: "FFFFFF", width: 0, transparency: 100 }, objectName: `${GROUP_TAG_PREFIX}other-housing|기타 공동주택 ${i + 1}|other-dot` });
@@ -143,7 +143,7 @@ function calloutOverview(s: Slide, p: PlannedSlide & { kind: "tile" }, overviewF
   const proj = projector(p, cm, overviewFrame ? 0.5 : slideSiteX(style, style.summary !== false), SLIDE_OVERVIEW_FILL, overviewFrame?.map);
   const hMax = Math.max(0, ...cm.complexes.map((c) => c.households ?? 0));
   // 새 틀 개요: 상위 8곳에 번호 카드. 칸이 모자라 못 놓은 곳은 번호 없는 점으로 남는다.
-  otherHousingDots(s, cm, proj, overviewFrame?.map.w);
+  otherHousingDots(s, cm, proj);
   const cards: { c: Complex; pl: Placed }[] = [];
   let cardFrame: CalloutFrame | undefined;
   if (overviewFrame && cm.complexes.length > 0) {

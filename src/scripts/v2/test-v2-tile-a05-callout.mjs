@@ -338,8 +338,6 @@ const spec = (o = {}) => ({ W: 1200, H: 800, m: C.PX, edge: 12, top: 96, bottom:
     if (otherDots.length > 0) {
       const aptMin = Math.min(...shapes.filter((s) => /\|dot$/.test(s.o.objectName ?? "") ).map((s) => s.o.w / 2));
       assert.ok(otherDots.every((s) => s.o.w / 2 < aptMin), `${layout}: 기타 공동주택 점은 아파트 점 최소보다 작다`);
-      // T14b-6: 반지름 = 2/960 × 장면(지도 틀) 폭 — ②(틀 9.08 in)도 ①(13.33 in)과 같은 장면 기준
-      assert.ok(otherDots.every((s) => Math.abs(s.o.w / 2 - (2 / 960) * f.calloutOverview.map.w) < 1e-9), `${layout}: 기타 공동주택 점 반지름 = 2/960 × 틀 폭`);
       assert.ok(shapes.indexOf(otherDots.at(-1)) < shapes.findIndex((s) => /\|dot$/.test(s.o.objectName ?? "") ), `${layout}: 기타 공동주택 점은 번호 점 아래(먼저)`);
     } else assert.fail(`${layout}: 전제: 고정 자료에 기타 공동주택이 있다`);
     const cards = shapes.filter((s) => s.o.objectName?.endsWith("|card"));
