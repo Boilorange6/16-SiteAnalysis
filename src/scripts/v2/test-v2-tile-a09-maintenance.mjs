@@ -278,4 +278,40 @@ const forbidden = /도보|\d\s*분|종합/;
   ctx.close();
 }
 
+{
+  // 공공누리 제4유형: 서울플랜+ 정비구역 면은 200점으로 줄이지 않는다(상한 5,000점). 다른 타일 경로는 여전히 200점.
+  const { polygonCandidate } = await import("../../lib/v2/engine/tiles/common.ts");
+  const { MAX_ZONE_POLYGON_VERTICES } = await import("../../lib/v2/tile-result.ts");
+  const { toLngLat } = await import("../../lib/v2/crs.ts");
+  assert.equal(MAX_ZONE_POLYGON_VERTICES, 5000);
+  const ctx = await make({ maint: "zones" });
+  const [x, y] = toUtmk(CENTER);
+  // 한 바퀴 도는 n점 닫힌 고리(첫점=끝점). 반지름이 바뀌어 Douglas–Peucker가 점을 버릴 수 있다.
+  const ringOf = (n, cx, cy) => Array.from({ length: n }, (_, i) => { const a = (2 * Math.PI * i) / (n - 1); const r = 60 + 5 * Math.sin(a * 7); return [cx + r * Math.cos(a), cy + r * Math.sin(a)]; }).map((p, i, all) => (i === n - 1 ? all[0] : p));
+  const zone = (id, cx, coords) => ({ featureId: id, stableId: `fixture:${id}`, kind: "maintenance_zone", releaseId: "fixture", pnu: null, legalCode: "1111000000", name: `큰구역${id}`, properties: { layer: "seoul_plan", projectKey: `seoulplan:big${id}`, projectType: "재건축", stage: "조합", areaKind: null }, distanceM: null, geometry: { type: "Polygon", coordinates: [coords] } });
+  const rounded = ([px, py]) => toLngLat([px, py]).map((v) => Math.round(v * 1e6) / 1e6);
+
+  const big = ringOf(1050, x, y);
+  ctx.hits = () => [zone(301, x, big)];
+  let tile = d23(ctx);
+  parseTileResult(tile);
+  let ring = tile.presentation.polygons[0].rings[0];
+  assert.equal(ring.length, 1050, "1,049점 구역은 줄이지 않는다(닫는 점 포함 1,050)");
+  assert.deepEqual(ring, big.map(rounded), "꼭짓점 좌표가 원본과 같다(1e-6 반올림)");
+  assert.ok(!tile.limitations.some((l) => /5,000점/.test(l.note)), "5,000점 이하면 한계 문구 없음");
+
+  // 5,000점을 넘으면 5,001점 이하로 줄이고, 그때만 한계 문구를 단다.
+  ctx.hits = () => [zone(302, x, ringOf(6000, x, y)), zone(303, x, ringOf(5000, x, y))];
+  tile = d23(ctx);
+  parseTileResult(tile);
+  assert.ok(tile.presentation.polygons.every((p) => p.rings.every((r) => r.length <= MAX_ZONE_POLYGON_VERTICES + 1)));
+  assert.ok(tile.presentation.polygons.some((p) => p.name === "큰구역302" && p.rings[0].length > 1000), "큰 구역도 크게 남는다");
+  assert.ok(tile.limitations.some((l) => l.note === "꼭짓점이 5,000점을 넘는 정비구역 1곳은 모양을 단순화했습니다."), tile.limitations.map((l) => l.note).join("|"));
+
+  // 다른 타일 경로(옵션 생략)는 200점 이하.
+  const c = polygonCandidate(1, "land_use", [ringOf(300, x, y)], 1000);
+  assert.ok(c.p.rings[0].length <= 201, `기본은 200점 상한 (${c.p.rings[0].length})`);
+  ctx.close();
+}
+
 console.log("v2 D23 maintenance tile: ok");

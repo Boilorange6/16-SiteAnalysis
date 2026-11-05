@@ -1,5 +1,5 @@
 /** D23 정비사업 — 정비구역 경계와 사업 단계별 분포. */
-import type { TileResult } from "../../tile-result";
+import { MAX_ZONE_POLYGON_VERTICES, type TileResult } from "../../tile-result";
 import type { EngineContext } from "../../engine/context";
 import { areaInCircle, polygonParts } from "../../engine/tiles/geo";
 import {
@@ -124,6 +124,7 @@ export function d23(ctx: EngineContext): TileResult {
   const layers: string[] = [];
   let zoneArea = 0;
   let invalidArea = false;
+  let simplifiedZones = 0;
   const order = [...zones].sort((a, b) => a.featureId - b.featureId);
   const drawn = new Set<string>();
   const countedProjects = new Set<string>();
@@ -154,19 +155,22 @@ export function d23(ctx: EngineContext): TileResult {
     const counted = !countedProjects.has(key);
     countedProjects.add(key);
     let polygonCount = 0;
+    let oversize = false;
     // 구역은 반경으로 자르지 않고 원래 형태 그대로 그린다(사용자 결정 2026-10-28). 순서·상한은 반경 안 면적 기준.
     for (const rings of polygonParts(geometry)) {
+      if (rings.some((ring) => ring.length > MAX_ZONE_POLYGON_VERTICES)) oversize = true;
       const polygon = polygonCandidate(zone.featureId, layer, rings, clipped?.areaM2 ?? 0, null, {
         name,
         sublabel,
         labelPriority,
         counted,
-      });
+      }, { maxVertices: MAX_ZONE_POLYGON_VERTICES }); // 공공누리 제4유형 변경금지: 200점으로 줄이지 않는다
       if (polygon) {
         polygons.push(polygon);
         polygonCount++;
       }
     }
+    if (oversize) simplifiedZones++;
     // 면을 그릴 수 있는 지물은 같은 fid의 대표점을 만들지 않는다. 도형 변환에 실패한 경우만 점을 fallback으로 둔다.
     if (polygonCount === 0) points.push(candidate(zone, layer, { label: null, name, sublabel, labelPriority, counted }));
   }
@@ -180,6 +184,7 @@ export function d23(ctx: EngineContext): TileResult {
     { kind: "unknown", note: "예정 세대는 사업 전체 값이며 반경 안 배분값이 아닙니다." },
     ...(zones.length > 0 && linked < zones.length ? [{ kind: "unknown" as const, note: `사업 연결이 없는 구역 ${zones.length - linked}곳은 구역 속성으로 단계·유형을 표시합니다.` }] : []),
     ...(invalidArea ? [{ kind: "unknown" as const, note: "일부 정비구역 도형의 반경 교차 면적을 계산하지 못했습니다." }] : []),
+    ...(simplifiedZones > 0 ? [{ kind: "unknown" as const, note: `꼭짓점이 ${fmt(MAX_ZONE_POLYGON_VERTICES)}점을 넘는 정비구역 ${simplifiedZones}곳은 모양을 단순화했습니다.` }] : []),
     ...coverageLimitations(ctx),
   ];
   const sentence = projects.length === 0

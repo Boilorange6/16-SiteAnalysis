@@ -27,7 +27,7 @@ const TILE_CACHE_REVISION: Readonly<Record<string, string>> = {
   A06: "w2b-r1+composition-r1+source-basis-r1",
   A07: "w3-merge-r1+w2b-r1+w2-trade-modes-r1+price-size-r1+chart-value-r1+chart-count-r1+chart-cap-r1+labels-r1",
   A08: "w2b-r1+w2-trade-modes-r1+w6-building-modes-r1+labels-r1",
-  A09: "w3-merge-r1+w2b-r1+clip-r1+maint-profile-r1+seoulplan-r1+noclip-r1+onezone-r1+chart-count-r1+chart-cap-r1",
+  A09: "w3-merge-r1+w2b-r1+clip-r1+maint-profile-r1+seoulplan-r1+noclip-r1+onezone-r1+chart-count-r1+chart-cap-r1+zone-vertices-r1",
   A10: "w3-merge-r1+w2b-r1",
   A11: "w3-merge-r1+w2b-r1+clip-r1",
   A12: "w3-merge-r1+w2b-r1+clip-r1+provenance-r1+callout-total-r1",
@@ -151,23 +151,26 @@ export function capFeatures(items: MapCandidate[]): { features: MapFeature[]; to
 // ── 면 지물 ──
 export type PolygonCandidate = { id: number; areaM2: number; p: MapPolygon };
 
-const polygonRingCache = new WeakMap<number[][], Array<[number, number]>>();
+const polygonRingCache = new Map<number, WeakMap<number[][], Array<[number, number]>>>();
 
-function projectedRing(ring: number[][]): Array<[number, number]> {
-  const cached = polygonRingCache.get(ring);
+function projectedRing(ring: number[][], maxVertices: number): Array<[number, number]> {
+  const byRing = polygonRingCache.get(maxVertices) ?? new WeakMap<number[][], Array<[number, number]>>();
+  polygonRingCache.set(maxVertices, byRing);
+  const cached = byRing.get(ring);
   if (cached) return cached;
-  const value = simplifyRing(ring, MAX_POLYGON_VERTICES).map((xy) => {
+  const value = simplifyRing(ring, maxVertices).map((xy) => {
     const [lng, lat] = toLngLat([xy[0], xy[1]]);
     return [Math.round(lng * 1e6) / 1e6, Math.round(lat * 1e6) / 1e6] as [number, number];
   });
-  polygonRingCache.set(ring, value);
+  byRing.set(ring, value);
   return value;
 }
 
-/** EPSG:5179 미터 폴리곤([바깥, 구멍…]) → 지도용 후보. 고리마다 200점 이하로 줄이고 WGS84로 바꾼다. */
-export function polygonCandidate(id: number, layer: string, rings: number[][][], areaM2: number, label: string | null = null, extra: Partial<Omit<MapPolygon, "layer" | "rings">> = {}): PolygonCandidate | null {
+/** EPSG:5179 미터 폴리곤([바깥, 구멍…]) → 지도용 후보. 고리마다 options.maxVertices(기본 200)점 이하로 줄이고 WGS84로 바꾼다. */
+export function polygonCandidate(id: number, layer: string, rings: number[][][], areaM2: number, label: string | null = null, extra: Partial<Omit<MapPolygon, "layer" | "rings">> = {}, options: { maxVertices?: number } = {}): PolygonCandidate | null {
+  const maxVertices = options.maxVertices ?? MAX_POLYGON_VERTICES;
   const out = rings
-    .map((r) => projectedRing(r))
+    .map((r) => projectedRing(r, maxVertices))
     .filter((r) => r.length >= 4)
     .map((r) => r);
   return out.length === 0 || rings[0].length < 4 ? null : { id, areaM2, p: { layer, rings: out, label, ...extra } };

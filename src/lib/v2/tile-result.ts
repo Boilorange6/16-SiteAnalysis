@@ -91,6 +91,8 @@ export const MAX_MAP_POLYGONS = 3000;
 /** D05는 한 건물을 기본·고층·저층 보기로 합쳐 저장하므로 결과 envelope만 3배까지 허용한다. */
 export const MAX_D05_BUILDING_POLYGONS = MAX_MAP_POLYGONS * 3;
 export const MAX_POLYGON_VERTICES = 200;
+/** 서울플랜+ 정비구역 면(공공누리 제4유형 변경금지)의 고리 상한. 다른 타일은 엔진이 200점을 지킨다. */
+export const MAX_ZONE_POLYGON_VERTICES = 5000;
 const LngLatSchema = z.tuple([z.number().finite(), z.number().finite()]);
 export const MAX_MAP_LINES = 2000;
 export const MAX_LINE_VERTICES = 200;
@@ -126,7 +128,7 @@ const MapPolygonSchema = z.object({
   fid: z.string().min(1).optional(),
   layer: z.string().min(1),
   /** 첫 고리는 바깥, 나머지는 구멍. WGS84 [lng, lat]. 첫점=끝점으로 닫는다. */
-  rings: z.array(z.array(LngLatSchema).min(4).max(MAX_POLYGON_VERTICES + 1)).min(1),
+  rings: z.array(z.array(LngLatSchema).min(4).max(MAX_ZONE_POLYGON_VERTICES + 1)).min(1),
   label: z.string().nullable().optional(),
   name: z.string().nullable().optional(),
   sublabel: z.string().nullable().optional(),
