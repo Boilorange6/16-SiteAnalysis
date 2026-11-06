@@ -18,6 +18,8 @@
 
 ## 개발과 검증
 
+- DB 조회에는 `node -e` 대신 `node tools/db-query.mjs "<SQL>"`을 사용한다 (`--db app|v2-app|core|buildings|parcels|reference|market|osm|terrain|weather|<경로>`, `--tables`, `--columns <table>`, `--limit N`, `--table`).
+
 - 명령의 정본은 `package.json`이다. 관련 검사는 `npm run lint`, `npm run test:v2`, `npm test` 등 변경 범위에 맞게 고른다.
 - v2 타일 엔진 결과를 바꾸면 `src/lib/v2/engine/tiles/common.ts`에서 해당 타일 캐시 리비전을 올린다. 렌더 전용 변경에는 불필요하다. 리비전 변경은 새 분석이나 재분석에 적용되며 저장된 기존 분석을 열 때 자동 재계산되지 않는다.
 - PNG·PDF 내보내기는 크기·구조뿐 아니라 실제 렌더, 불투명 픽셀과 잉크를 확인하고 PDF의 내장 이미지도 검사한다. PPTX 실렌더에는 PowerPoint의 Presentation SaveAs PNG를 사용하고 타임아웃을 둔다. 지도 도형이 많은 장에서 Slide Export는 멈출 수 있다. 테스트 덱에 배경 지도 이미지가 필요한지 확인한다.
