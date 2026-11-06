@@ -142,7 +142,12 @@ export async function loadRasters(model: MapModel, rasterCache: Map<string, stri
       const style = RASTER_STYLES[ref.palette];
       if (!style) return;
       try {
-        const response = await fetch(`/site/api/v2/analyses/${encodeURIComponent(model.analysisId!)}/tiles/${encodeURIComponent(model.tileCode!)}/rasters/${encodeURIComponent(ref.name)}`);
+        const url = `/site/api/v2/analyses/${encodeURIComponent(model.analysisId!)}/tiles/${encodeURIComponent(model.tileCode!)}/rasters/${encodeURIComponent(ref.name)}`;
+        let response = await fetch(url, { credentials: "include" });
+        // 접근 토큰(15분)이 만료됐으면 한 번 갱신하고 다시 받는다. 실패를 그냥 두면 이 세션은 래스터 없이(D29 하늘열림 등) 그려진다.
+        if (response.status === 401 && (await fetch("/site/api/auth/refresh", { method: "POST", credentials: "include" }).then((r) => r.ok, () => false))) {
+          response = await fetch(url, { credentials: "include" });
+        }
         if (!response.ok) return;
         const values = await inflateRaster(ref, await response.arrayBuffer());
         rasterCache.set(key, paintRaster(ref, values, style));
